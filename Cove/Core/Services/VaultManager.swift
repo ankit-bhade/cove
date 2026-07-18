@@ -44,6 +44,7 @@ final class VaultManager {
     private let scanner = VaultTreeScanner()
     private let fileOperations = VaultFileOperations()
     private let indexBuilder = VaultIndexBuilder()
+    private let notificationScheduler = TaskNotificationScheduler()
 
     /// Set only when `startAccessingSecurityScopedResource()` returned true,
     /// so every stop is matched to a successful start. `@ObservationIgnored`
@@ -166,6 +167,11 @@ final class VaultManager {
             lastErrorDescription = nil
             state = .open
             startObservingChanges(at: url)
+            // Every index rebuild — launch, mutations, external changes,
+            // foreground refreshes — reschedules the task notifications.
+            let scheduler = notificationScheduler
+            let tasks = index.allTasks
+            Task { await scheduler.rebuildNotifications(for: tasks) }
         } catch {
             endAccess()
             rootNode = nil

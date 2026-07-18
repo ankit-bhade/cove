@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 6 — task parsing and Tasks screen.**
+**Current phase: Phase 7 — local task notifications.**
 
-Status: Phase 6 implemented. See CHANGELOG.md for merged work.
+Status: Phase 7 implemented. See CHANGELOG.md for merged work.
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -321,6 +321,23 @@ merged.
   completed tasks below, checkbox buttons toggle, and rows navigate to the
   editor through a `URL` navigation destination. The tab refreshes the
   vault on each appearance because editor autosaves don't trigger a rescan.
+* **Task notifications.** Split into a pure, unit-tested planner and a thin
+  scheduler (both in `Cove/Core/Services/`). `TaskNotificationPlanner` turns
+  the task list into `TaskNotificationPlan`s: incomplete tasks only, firing
+  at 9:00 local time on the due day, skipping tasks whose fire time has
+  passed, soonest-due first, capped at 60 (the system holds at most 64
+  pending local notifications per app). Identifiers carry the
+  `cove-task:` prefix. `TaskNotificationScheduler` (an actor) wraps
+  `UNUserNotificationCenter`: each rebuild removes every pending request
+  with that prefix, then — only when there is something to schedule —
+  ensures authorization (prompting on first use; a denial silently skips
+  scheduling) and adds one `UNCalendarNotificationTrigger` request per
+  plan. Rebuilds are chained through a stored `Task` so overlapping calls
+  never interleave their remove/add steps. `VaultManager` enqueues a
+  rebuild at the end of every successful tree load, which covers launch,
+  app-created mutations, external changes, and the scene-activation
+  refresh (the spec's "foreground or files change"). No push
+  notifications and no background scheduling.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files
@@ -429,4 +446,21 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
   double space after the marker, or an invalid calendar date silently keeps
   the line out of the Tasks screen even though the editor still styles its
   checkbox.
-* Phase 7+ features (notifications) are intentionally absent.
+* Notifications fire at 9:00 local time on the due day; there is no way to
+  pick a different time, and a task already past that time (overdue, or due
+  today with 9:00 gone) gets no notification.
+* At most 60 notifications are scheduled (soonest due dates win) to stay
+  under the system's 64-pending cap.
+* The notification permission prompt appears the first time a rebuild has a
+  task to schedule, not at launch. A denial silently disables scheduling;
+  re-enabling lives in the system settings until the in-app Settings screen
+  arrives in Phase 8.
+* A notification is a reminder, not a live view: tapping it opens the app
+  but not the specific task, and a task completed on another device keeps
+  its scheduled notification here until this device next rebuilds (launch,
+  foreground, or a detected iCloud change).
+* `TaskNotificationScheduler` is untestable in unit tests (scheduling would
+  prompt for permission in the test host); only the planner is unit-tested.
+  Verify delivery manually.
+* Phase 8 features (appearance polish, app icon, launch screen, and the
+  Settings screen) are intentionally absent.

@@ -1,6 +1,10 @@
 import XCTest
 @testable import Cove
 
+/// Ports the grove-app parser test suite (`src/lib/parser/parse.test.ts`)
+/// to Cove's `QuickTaskParser`, plus the documented Cove divergences:
+/// undated input resolves to today, time ranges keep only their start
+/// time, and hashtags are not a feature.
 final class QuickTaskParserTests: XCTestCase {
 
     private let calendar: Calendar = {
@@ -9,141 +13,259 @@ final class QuickTaskParserTests: XCTestCase {
         return calendar
     }()
 
-    /// Saturday 2026-07-18, 10:00 — matches a known weekday layout:
-    /// Sun 19th, Mon 20th, … Fri 24th.
-    private var saturdayMorning: Date {
+    /// Grove's fixed "now": Wednesday, July 1, 2026, 10:00 AM.
+    private var now: Date {
         calendar.date(from: DateComponents(
-            year: 2026, month: 7, day: 18, hour: 10))!
+            year: 2026, month: 7, day: 1, hour: 10))!
     }
 
-    private func parse(_ input: String, now: Date? = nil) -> TaskDraft {
-        QuickTaskParser.parse(input, now: now ?? saturdayMorning, calendar: calendar)
+    private func parse(_ input: String) -> TaskDraft {
+        QuickTaskParser.parse(input, now: now, calendar: calendar)
     }
 
-    // MARK: - The spec examples
+    // MARK: - Plain capture
 
-    func testGetBread3pTomorrow() {
-        let draft = parse("get bread 3p tmr")
-        XCTAssertEqual(draft.title, "Get bread")
-        XCTAssertEqual(draft.dueDateString, "2026-07-19")
-        XCTAssertEqual(draft.dueTimeString, "15:00")
-        XCTAssertNil(draft.recurrence)
-        XCTAssertEqual(draft.markdownLine, "- [ ] Get bread @due(2026-07-19 15:00)")
+    func testUndatedTaskResolvesToToday() {
+        // Cove divergence: grove leaves this undated; Cove tasks need @due.
+        let p = parse("buy milk")
+        XCTAssertEqual(p.title, "Buy milk")
+        XCTAssertEqual(p.dueDateString, "2026-07-01")
+        XCTAssertNil(p.dueTimeString)
+        XCTAssertNil(p.recurrence)
     }
 
-    func testLaundryEverySunday6p() {
-        let draft = parse("laundry every sun 6p")
-        XCTAssertEqual(draft.title, "Laundry")
-        XCTAssertEqual(draft.recurrence, .weekly(weekday: 1))
-        XCTAssertEqual(draft.dueTimeString, "18:00")
-        XCTAssertEqual(draft.dueDateString, "2026-07-19") // first upcoming Sunday
-        XCTAssertEqual(draft.markdownLine,
-                       "- [ ] Laundry @due(2026-07-19 18:00) @repeat(every sunday)")
+    func testDigitsInWordsAreNotTimes() {
+        let p = parse("hw4 draft")
+        XCTAssertEqual(p.title, "Hw4 draft")
+        XCTAssertNil(p.dueTimeString)
     }
 
-    func testTennisFridayHasNoTime() {
-        let draft = parse("tennis fri")
-        XCTAssertEqual(draft.title, "Tennis")
-        XCTAssertEqual(draft.dueDateString, "2026-07-24")
-        XCTAssertNil(draft.dueTimeString)
-        XCTAssertNil(draft.recurrence)
-        XCTAssertEqual(draft.markdownLine, "- [ ] Tennis @due(2026-07-24)")
+    // MARK: - Relative dates
+
+    func testTomorrowForms() {
+        XCTAssertEqual(parse("hw4 tmr").dueDateString, "2026-07-02")
+        for word in ["tomorrow", "tmrw", "tom"] {
+            XCTAssertEqual(parse("pack bags \(word)").dueDateString, "2026-07-02", word)
+        }
+        XCTAssertEqual(parse("hw4 tmr").title, "Hw4")
     }
 
-    // MARK: - Dates
-
-    func testTodayAbbreviationsAndDefault() {
-        XCTAssertEqual(parse("pay rent tdy").dueDateString, "2026-07-18")
-        XCTAssertEqual(parse("pay rent today").dueDateString, "2026-07-18")
-        // No scheduling tokens at all: due today.
-        let bare = parse("pay rent")
-        XCTAssertEqual(bare.title, "Pay rent")
-        XCTAssertEqual(bare.dueDateString, "2026-07-18")
-        XCTAssertNil(bare.dueTimeString)
+    func testTodayForms() {
+        for word in ["today", "tdy"] {
+            XCTAssertEqual(parse("laundry \(word)").dueDateString, "2026-07-01", word)
+        }
     }
 
-    func testWeekdayTokenOnItsOwnDayMeansToday() {
-        XCTAssertEqual(parse("stretch sat").dueDateString, "2026-07-18")
+    func testDayAfterTomorrow() {
+        XCTAssertEqual(parse("mail form day after tomorrow").dueDateString, "2026-07-03")
     }
 
-    func testNextWeekdaySkipsTheSoonestOne() {
-        XCTAssertEqual(parse("dentist next fri").dueDateString, "2026-07-31")
-        XCTAssertEqual(parse("dentist fri").dueDateString, "2026-07-24")
+    func testTonightIsTodayAt8pm() {
+        let p = parse("call mom tonight")
+        XCTAssertEqual(p.title, "Call mom")
+        XCTAssertEqual(p.dueDateString, "2026-07-01")
+        XCTAssertEqual(p.dueTimeString, "20:00")
     }
 
-    func testPastTimePushesImplicitDateForward() {
-        // 10:00 now; "9a" already passed, so an implicit today becomes
-        // tomorrow, while an explicit "today" stays put.
-        XCTAssertEqual(parse("standup 9a").dueDateString, "2026-07-19")
-        XCTAssertEqual(parse("standup 11a").dueDateString, "2026-07-18")
-        XCTAssertEqual(parse("standup today 9a").dueDateString, "2026-07-18")
-        // A weekday matching today with a passed time rolls a week out.
-        XCTAssertEqual(parse("standup sat 9a").dueDateString, "2026-07-25")
+    func testTonightKeepsAnExplicitTime() {
+        XCTAssertEqual(parse("call mom tonight 9pm").dueTimeString, "21:00")
+    }
+
+    func testInUnits() {
+        XCTAssertEqual(parse("submit paper in 3 days").dueDateString, "2026-07-04")
+        XCTAssertEqual(parse("submit paper in 3 days").title, "Submit paper")
+        XCTAssertEqual(parse("renew passport in 2 weeks").dueDateString, "2026-07-15")
+        XCTAssertEqual(parse("dentist in 1 month").dueDateString, "2026-08-01")
+        XCTAssertEqual(parse("ship it in 3d").dueDateString, "2026-07-04")
+    }
+
+    func testNextWeekIsNextMonday() {
+        XCTAssertEqual(parse("plan trip next week").dueDateString, "2026-07-06")
+    }
+
+    // MARK: - Weekdays
+
+    func testWeekdayWithTime() {
+        let p = parse("meeting fri 3pm")
+        XCTAssertEqual(p.title, "Meeting")
+        XCTAssertEqual(p.dueDateString, "2026-07-03")
+        XCTAssertEqual(p.dueTimeString, "15:00")
+    }
+
+    func testPlainWeekdayIncludesToday() {
+        // Now is a Wednesday.
+        XCTAssertEqual(parse("standup wed").dueDateString, "2026-07-01")
+    }
+
+    func testNextWeekdaySkipsToday() {
+        XCTAssertEqual(parse("meeting next fri 2pm").dueDateString, "2026-07-03")
+        XCTAssertEqual(parse("review next wed").dueDateString, "2026-07-08")
+    }
+
+    func testFullWeekdayNames() {
+        let p = parse("birthday party saturday 6pm")
+        XCTAssertEqual(p.title, "Birthday party")
+        XCTAssertEqual(p.dueDateString, "2026-07-04")
+        XCTAssertEqual(p.dueTimeString, "18:00")
+    }
+
+    func testWeekdayAbbreviationsInsideWordsDoNotMatch() {
+        let p = parse("check the monitor")
+        XCTAssertEqual(p.title, "Check the monitor")
+        XCTAssertNil(p.dueTimeString)
+        XCTAssertEqual(p.dueDateString, "2026-07-01") // undated → today
+    }
+
+    // MARK: - Explicit dates
+
+    func testSlashDates() {
+        XCTAssertEqual(parse("rent 2/3").dueDateString, "2027-02-03") // Feb 3 passed
+        XCTAssertEqual(parse("rent 2/3").title, "Rent")
+        XCTAssertEqual(parse("flight 9/12").dueDateString, "2026-09-12")
+        XCTAssertEqual(parse("taxes 4/15/27").dueDateString, "2027-04-15")
+    }
+
+    func testMonthNameDates() {
+        XCTAssertEqual(parse("conference sep 12").dueDateString, "2026-09-12")
+        XCTAssertEqual(parse("gift feb 3rd").dueDateString, "2027-02-03")
+    }
+
+    func testInvalidSlashDateIsIgnored() {
+        let p = parse("score was 15/2")
+        XCTAssertEqual(p.title, "Score was 15/2")
+        XCTAssertEqual(p.dueDateString, "2026-07-01") // undated → today
     }
 
     // MARK: - Times
 
-    func testTimeFormats() {
-        XCTAssertEqual(QuickTaskParser.parseTime("3p"), "15:00")
-        XCTAssertEqual(QuickTaskParser.parseTime("6pm"), "18:00")
-        XCTAssertEqual(QuickTaskParser.parseTime("11a"), "11:00")
-        XCTAssertEqual(QuickTaskParser.parseTime("3:30pm"), "15:30")
-        XCTAssertEqual(QuickTaskParser.parseTime("12a"), "00:00")
-        XCTAssertEqual(QuickTaskParser.parseTime("12p"), "12:00")
-        XCTAssertEqual(QuickTaskParser.parseTime("15:00"), "15:00")
-        XCTAssertEqual(QuickTaskParser.parseTime("9:05"), "09:05")
-        XCTAssertNil(QuickTaskParser.parseTime("6"))
-        XCTAssertNil(QuickTaskParser.parseTime("13pm"))
-        XCTAssertNil(QuickTaskParser.parseTime("25:00"))
-        XCTAssertNil(QuickTaskParser.parseTime("9:75"))
+    func testCompactTimes() {
+        let p = parse("retainer 940p")
+        XCTAssertEqual(p.title, "Retainer")
+        XCTAssertEqual(p.dueDateString, "2026-07-01")
+        XCTAssertEqual(p.dueTimeString, "21:40")
+        XCTAssertEqual(parse("run 630a").dueTimeString, "06:30")
     }
 
-    func testBareNumberStaysInTitle() {
-        let draft = parse("buy 6 eggs tmr")
-        XCTAssertEqual(draft.title, "Buy 6 eggs")
-        XCTAssertNil(draft.dueTimeString)
+    func testMeridiemTimes() {
+        XCTAssertEqual(parse("gym 6a").dueTimeString, "06:00")
+        XCTAssertEqual(parse("call 3:30pm").dueTimeString, "15:30")
+        XCTAssertEqual(parse("flight 12am").dueTimeString, "00:00")
+        XCTAssertEqual(parse("lunch 12pm").dueTimeString, "12:00")
+    }
+
+    func testBareClockTimes() {
+        XCTAssertEqual(parse("call 15:00").dueTimeString, "15:00")
+        // Bare h:mm assumes afternoon for small hours, keeps morning ones.
+        XCTAssertEqual(parse("coffee 5:30").dueTimeString, "17:30")
+        XCTAssertEqual(parse("standup 9:15").dueTimeString, "09:15")
+    }
+
+    func testNoonAndMidnight() {
+        XCTAssertEqual(parse("lunch noon").dueTimeString, "12:00")
+        XCTAssertEqual(parse("deploy midnight").dueTimeString, "00:00")
+    }
+
+    func testDateAndTimeCombine() {
+        let p = parse("buy milk tomorrow 5pm")
+        XCTAssertEqual(p.title, "Buy milk")
+        XCTAssertEqual(p.dueDateString, "2026-07-02")
+        XCTAssertEqual(p.dueTimeString, "17:00")
+    }
+
+    func testBareTimeMeansTodayEvenWhenPassed() {
+        // Now is 10:00; grove keeps a passed bare time on today.
+        XCTAssertEqual(parse("standup 9a").dueDateString, "2026-07-01")
+    }
+
+    // MARK: - Time ranges
+
+    func testRangesKeepTheStartTime() {
+        // Cove divergence: no calendar events, so the end time is dropped
+        // but the whole range span still leaves the title.
+        let p = parse("dinner 7-9pm")
+        XCTAssertEqual(p.title, "Dinner")
+        XCTAssertEqual(p.dueTimeString, "19:00")
+        XCTAssertEqual(parse("meeting 3-4:30pm").dueTimeString, "15:00")
+        XCTAssertEqual(parse("brunch 11am-1pm").dueTimeString, "11:00")
+        XCTAssertEqual(parse("workshop 2 to 4pm").dueTimeString, "14:00")
+    }
+
+    func testPlainRangesWithoutMeridiemAreNotTimes() {
+        let p = parse("read pages 10-20")
+        XCTAssertNil(p.dueTimeString)
+        XCTAssertEqual(p.title, "Read pages 10-20")
     }
 
     // MARK: - Recurrence
 
-    func testRecurrenceForms() {
-        XCTAssertEqual(parse("standup daily 9a").recurrence, .daily)
-        XCTAssertEqual(parse("standup every day 9a").recurrence, .daily)
-        XCTAssertEqual(parse("standup everyday 9a").recurrence, .daily)
-        XCTAssertEqual(parse("standup every weekday 9a").recurrence, .everyWeekday)
-        XCTAssertEqual(parse("standup weekdays 9a").recurrence, .everyWeekday)
-        XCTAssertEqual(parse("laundry every sunday").recurrence, .weekly(weekday: 1))
+    func testEveryWeekdaySet() {
+        let p = parse("gym every mon wed 6a")
+        XCTAssertEqual(p.title, "Gym")
+        XCTAssertEqual(p.recurrence,
+                       RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]))
+        XCTAssertEqual(p.dueTimeString, "06:00")
+        // Now is Wednesday July 1 → first occurrence is today.
+        XCTAssertEqual(p.dueDateString, "2026-07-01")
     }
 
-    func testDailyRecurrenceStartsTodayUnlessTimePassed() {
-        XCTAssertEqual(parse("stretch daily 11a").dueDateString, "2026-07-18")
-        XCTAssertEqual(parse("stretch daily 9a").dueDateString, "2026-07-19")
+    func testEveryNUnits() {
+        let p = parse("doctor every 2 weeks")
+        XCTAssertEqual(p.title, "Doctor")
+        XCTAssertEqual(p.recurrence, RecurrenceRule(frequency: .weekly, interval: 2))
+        XCTAssertEqual(p.dueDateString, "2026-07-01")
     }
 
-    func testEveryWeekdayStartsOnNextWeekday() {
-        // Saturday now → first occurrence is Monday.
-        XCTAssertEqual(parse("standup every weekday 9a").dueDateString, "2026-07-20")
+    func testSimpleRecurrenceForms() {
+        XCTAssertEqual(parse("journal every day").recurrence,
+                       RecurrenceRule(frequency: .daily))
+        XCTAssertEqual(parse("stretch daily").recurrence,
+                       RecurrenceRule(frequency: .daily))
+        XCTAssertEqual(parse("rent every month").recurrence,
+                       RecurrenceRule(frequency: .monthly))
+        XCTAssertEqual(parse("renew domain every year").recurrence,
+                       RecurrenceRule(frequency: .yearly))
+        XCTAssertEqual(parse("standup every weekday").recurrence, .everyWeekday)
     }
 
-    // MARK: - Title handling
-
-    func testSchedulingWordsInsideTitleSurvive() {
-        // "friday" mid-sentence isn't consumed; only trailing tokens are.
-        let draft = parse("plan friday party tmr")
-        XCTAssertEqual(draft.title, "Plan friday party")
-        XCTAssertEqual(draft.dueDateString, "2026-07-19")
+    func testCommaAndSeparatedWeekdayLists() {
+        XCTAssertEqual(parse("gym every mon, wed and fri").recurrence,
+                       RecurrenceRule(frequency: .weekly, byWeekday: [2, 4, 6]))
     }
 
-    func testTokensConsumedInAnyTrailingOrder() {
-        let a = parse("laundry every sun 6p")
-        let b = parse("laundry 6p every sun")
-        XCTAssertEqual(a.title, b.title)
-        XCTAssertEqual(a.recurrence, b.recurrence)
-        XCTAssertEqual(a.dueTimeString, b.dueTimeString)
-        XCTAssertEqual(a.dueDateString, b.dueDateString)
+    func testWeekdayRecurrenceStartsOnNextMatchingDay() {
+        // Now is Wednesday; from {mon, fri} the soonest is Friday.
+        XCTAssertEqual(parse("gym every mon fri").dueDateString, "2026-07-03")
     }
 
-    func testOnlySchedulingTokensYieldEmptyTitle() {
-        XCTAssertEqual(parse("tmr 3p").title, "")
+    // MARK: - Title cleanup
+
+    func testStripsDanglingConnectors() {
+        XCTAssertEqual(parse("dentist appointment on friday").title,
+                       "Dentist appointment")
+        XCTAssertEqual(parse("meeting at 3pm").title, "Meeting")
+    }
+
+    func testConsumedMidSentenceTokensLeaveTheTitle() {
+        // Grove parity: spans anywhere in the sentence are consumed, so a
+        // second date word is removed from the title even though the first
+        // one won the date slot.
+        XCTAssertEqual(parse("plan friday party tmr").title, "Plan party")
+        XCTAssertEqual(parse("plan friday party tmr").dueDateString, "2026-07-02")
+    }
+
+    func testHashtagsAreNotAFeature() {
+        // Cove divergence: no lists, so a hashtag is just title text.
+        XCTAssertEqual(parse("buy eggs #groceries").title, "Buy eggs #groceries")
+    }
+
+    // MARK: - Markdown line
+
+    func testMarkdownLineRoundTrip() {
+        XCTAssertEqual(parse("get bread 3p tmr").markdownLine,
+                       "- [ ] Get bread @due(2026-07-02 15:00)")
+        XCTAssertEqual(parse("laundry every sun 6p").markdownLine,
+                       "- [ ] Laundry @due(2026-07-05 18:00) @repeat(every sunday)")
+        XCTAssertEqual(parse("doctor every 2 weeks").markdownLine,
+                       "- [ ] Doctor @due(2026-07-01) @repeat(every 2 weeks)")
     }
 }

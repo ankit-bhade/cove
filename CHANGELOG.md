@@ -23,3 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Task notifications now fire at the task's due time; tasks with only a
   due date no longer get a 9:00 notification (Phase 8)
+- Quick task entry now uses the grove-app capture grammar: tokens match
+  anywhere in the sentence, with explicit dates ("2/3", "sep 12"),
+  "tonight"/"next week"/"in 3 days", compact times ("940p"), time
+  ranges, and richer recurrences ("every 2 weeks", "every mon wed fri",
+  "monthly"); recurring tasks now get a one-shot notification for their
+  current occurrence instead of repeating triggers (Phase 8)

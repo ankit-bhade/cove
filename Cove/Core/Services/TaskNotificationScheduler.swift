@@ -40,7 +40,7 @@ actor TaskNotificationScheduler {
             content.body = plan.body
             content.sound = .default
             let trigger = UNCalendarNotificationTrigger(
-                dateMatching: plan.fireDateComponents, repeats: plan.repeats)
+                dateMatching: plan.fireDateComponents, repeats: false)
             try? await center.add(UNNotificationRequest(
                 identifier: plan.identifier, content: content, trigger: trigger))
         }

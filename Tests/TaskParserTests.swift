@@ -112,10 +112,15 @@ final class TaskParserTests: XCTestCase {
             - [ ] Laundry @due(2026-07-19 18:00) @repeat(every sunday)
             - [ ] Standup @due(2026-07-20 09:00) @repeat(every weekday)
             - [ ] Stretch @due(2026-07-19) @repeat(daily)
+            - [ ] Doctor @due(2026-07-21 10:00) @repeat(every 2 weeks)
             """
         let tasks = TaskParser.tasks(in: text)
-        XCTAssertEqual(tasks.map(\.recurrence),
-                       [.weekly(weekday: 1), .everyWeekday, .daily])
+        XCTAssertEqual(tasks.map(\.recurrence), [
+            RecurrenceRule(frequency: .weekly, byWeekday: [1]),
+            .everyWeekday,
+            RecurrenceRule(frequency: .daily),
+            RecurrenceRule(frequency: .weekly, interval: 2),
+        ])
     }
 
     func testRejectsUnknownRepeatRuleOrTrailingText() {
@@ -191,7 +196,8 @@ final class TaskParserTests: XCTestCase {
         let text = "- [ ] Laundry @due(2026-07-19 18:00) @repeat(every sunday)\n"
         XCTAssertEqual(
             toggling(text, taskText: "Laundry", due: "2026-07-19", time: "18:00",
-                     recurrence: .weekly(weekday: 1), today: "2026-07-18"),
+                     recurrence: RecurrenceRule(frequency: .weekly, byWeekday: [1]),
+                     today: "2026-07-18"),
             "- [ ] Laundry @due(2026-07-26 18:00) @repeat(every sunday)\n")
     }
 
@@ -201,7 +207,8 @@ final class TaskParserTests: XCTestCase {
         let text = "- [ ] Stretch @due(2026-06-01) @repeat(daily)\n"
         XCTAssertEqual(
             toggling(text, taskText: "Stretch", due: "2026-06-01",
-                     recurrence: .daily, today: "2026-07-18"),
+                     recurrence: RecurrenceRule(frequency: .daily),
+                     today: "2026-07-18"),
             "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n")
     }
 }

@@ -40,12 +40,9 @@ struct TaskDraftSheet: View {
                                    displayedComponents: .hourAndMinute)
                     }
                     Picker("Repeat", selection: $draft.recurrence) {
-                        Text("Never").tag(RecurrenceRule?.none)
-                        Text("Daily").tag(RecurrenceRule?.some(.daily))
-                        Text("Every weekday").tag(RecurrenceRule?.some(.everyWeekday))
-                        ForEach(1...7, id: \.self) { weekday in
-                            Text(RecurrenceRule.weekly(weekday: weekday).displayName)
-                                .tag(RecurrenceRule?.some(.weekly(weekday: weekday)))
+                        ForEach(recurrenceOptions, id: \.self) { rule in
+                            Text(rule?.displayName ?? "Never")
+                                .tag(rule)
                         }
                     }
                 }
@@ -88,6 +85,23 @@ struct TaskDraftSheet: View {
         #if os(macOS)
         .frame(minWidth: 380, minHeight: 440)
         #endif
+    }
+
+    /// Common presets, plus the parsed rule when the sentence produced one
+    /// the presets can't express (e.g. "every mon wed", "every 2 weeks").
+    private var recurrenceOptions: [RecurrenceRule?] {
+        var options: [RecurrenceRule?] = [
+            nil,
+            RecurrenceRule(frequency: .daily),
+            RecurrenceRule(frequency: .weekly),
+            RecurrenceRule(frequency: .monthly),
+            RecurrenceRule(frequency: .yearly),
+            .everyWeekday,
+        ]
+        if let current = draft.recurrence, !options.contains(current) {
+            options.append(current)
+        }
+        return options
     }
 
     // MARK: - Field bindings

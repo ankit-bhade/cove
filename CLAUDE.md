@@ -191,6 +191,13 @@ Before considering any task or PR complete:
 * Update `README.md` when user-facing behavior changes
 * Update `CLAUDE.md` when architecture, decisions, known issues, or the current phase changes
 
+Before every merge to `main`, additionally sweep `CLAUDE.md`, `README.md`,
+and `CHANGELOG.md` end to end for stale statements — not just the sections
+touched by the current change. Phase status lines, "comes in Phase N"
+forward references, known issues, and the "Current state" paragraph in
+`README.md` go stale silently; verify each still matches the code being
+merged.
+
 ---
 
 ## Architecture decisions

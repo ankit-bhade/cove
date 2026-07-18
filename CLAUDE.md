@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 2 — Editor, saving, file and folder creation, rename, move, and delete.**
+**Current phase: Phase 3 — Live Markdown styling.**
 
-Status: Phase 2 implemented. See CHANGELOG.md for merged work.
+Status: Phase 3 implemented. See CHANGELOG.md for merged work.
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -250,7 +250,23 @@ merged.
   platform under `Cove/Platform/`, `#if os(...)`-guarded, distinct file
   basenames — identical basenames in one target collide in the build system).
   Smart quotes/dashes are disabled on both platforms so Markdown syntax
-  survives typing. Phase 3 layers live styling onto these representables.
+  survives typing.
+* **Live Markdown styling.** `MarkdownParser` (pure Foundation, in
+  `Cove/Features/Editor/`) scans for ATX headers, `**bold**` spans, and
+  `- [ ]` checkboxes, returning UTF-16 `NSRange`s that apply directly to the
+  text storage; it is fully unit-tested. `MarkdownStyler` maps a parse to
+  attributes — header fonts sized from the body font, dimmed syntax markers,
+  bold variants of the in-effect font, strikethrough on checked task text —
+  and restyles the whole document after every change. The stored text stays
+  plain Markdown; styling is attribute-only, so selection and the undo stack
+  are unaffected. Restyling is skipped while IME marked text is active.
+  Checkbox toggling: iOS adds a tap recognizer (recognizing simultaneously
+  with the text view's own gestures) that hit-tests the tapped character
+  index against marker ranges; macOS uses a `CheckboxTogglingTextView`
+  subclass (instantiated via `scrollableTextView()`, which honors the
+  subclass) whose `mouseDown` routes the flip through
+  `shouldChangeText`/`didChangeText` so it is undoable and reaches the
+  delegate.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files
@@ -318,5 +334,14 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 * The unit-test bundle runs inside the sandboxed app host on macOS; tests that
   create bookmarks use the app container's temporary directory, which the
   sandbox can bookmark.
-* Phase 3+ features (live Markdown styling, iCloud change detection, search,
-  tasks, notifications) are intentionally absent.
+* Styling reparses and restyles the whole document on every keystroke. Fine
+  for typical notes; very large files would need incremental styling.
+* The iOS checkbox toggle edits the text storage directly, so it does not
+  land on `UITextView`'s undo stack (the macOS toggle is undoable).
+* Clicking anywhere in a `- [ ]` marker toggles it instead of placing the
+  insertion point; edit the marker text by moving the caret in from outside.
+* Header fonts are computed from the current body font at restyle time, so
+  an iOS Dynamic Type change updates header sizes on the next edit, not
+  instantly.
+* Phase 4+ features (iCloud change detection, search, tasks, notifications)
+  are intentionally absent.

@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 4 — iCloud change detection and external-edit refreshing.**
+**Current phase: Phase 5 — full-text search.**
 
-Status: Phase 4 implemented. See CHANGELOG.md for merged work.
+Status: Phase 5 implemented. See CHANGELOG.md for merged work.
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -282,6 +282,20 @@ merged.
   win, and the next autosave writes them out. `RootView` also rescans the
   tree whenever the scene becomes active, as a catch-all for events missed
   while inactive and for non-iCloud vaults.
+* **Search.** `NoteSearcher` (`Sendable`, in `Cove/Features/Search/`) runs
+  one on-demand pass per query: it flattens the already-scanned tree into its
+  files (`allFiles`), reads each with `VaultFileOperations.readNote`
+  (coordinated), and matches title and contents case- and
+  diacritic-insensitively; the pure matching/flattening helpers are
+  unit-tested. `search` is a nonisolated async function, so callers hop off
+  the main actor and cancellation stops the file loop between reads. No index
+  is built or persisted. `VaultBrowserView` gains a `.searchable` field:
+  a non-empty query swaps the tree for `SearchResultsView`, which debounces
+  via `.task(id: query)` + 300 ms sleep (a superseding keystroke cancels the
+  sleeping task) and navigates through the browser's existing
+  `navigationDestination(for: VaultNode.self)` into the editor. Results show
+  the trimmed first matching content line as a snippet (nil for title-only
+  matches) in tree order.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files
@@ -372,4 +386,10 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 * External change detection is untestable in unit tests (no iCloud in the
   test host); only the URL-filtering helper and the editor reload logic are
   covered. Verify live behavior manually with a vault in iCloud Drive.
-* Phase 5+ features (search, tasks, notifications) are intentionally absent.
+* Every debounced query re-reads every Markdown file from disk (per spec:
+  no persisted index). Fine for typical vaults; very large vaults would feel
+  it. Search results don't live-update if files change while the query is
+  showing — edit the query (or reopen search) to re-run it.
+* Search matches are line-based: the snippet is the first matching line, and
+  a query spanning a line break won't match.
+* Phase 6+ features (tasks, notifications) are intentionally absent.

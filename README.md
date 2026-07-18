@@ -5,10 +5,13 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 1): select a vault folder and browse its nested folders
-and Markdown files in a read-only tree. The selection persists across
-launches, and the app recovers gracefully when the saved folder access goes
-stale. Editing, search, tasks, and notifications arrive in later phases (see
+Current state (Phase 2): select a vault folder, browse its nested folders and
+Markdown files, and open any note in a plain-text editor that saves
+automatically as you type. Notes and folders can be created, renamed, moved,
+and deleted from the browser (long-press or right-click a row, or use the +
+toolbar menu). The vault selection persists across launches, and the app
+recovers gracefully when the saved folder access goes stale. Live Markdown
+styling, search, tasks, and notifications arrive in later phases (see
 [CLAUDE.md](CLAUDE.md) for the roadmap).
 
 ## Supported platforms

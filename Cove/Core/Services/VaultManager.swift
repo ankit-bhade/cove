@@ -25,6 +25,7 @@ final class VaultManager {
 
     private let bookmarkStore: VaultBookmarkStore
     private let scanner = VaultTreeScanner()
+    private let fileOperations = VaultFileOperations()
 
     /// Set only when `startAccessingSecurityScopedResource()` returned true,
     /// so every stop is matched to a successful start. `@ObservationIgnored`
@@ -68,6 +69,38 @@ final class VaultManager {
     func refresh() async {
         guard let vaultURL else { return }
         await loadTree(from: vaultURL)
+    }
+
+    // MARK: - File operations
+
+    func createNote(named name: String, in folder: URL) async throws {
+        try await perform { try $0.createNote(named: name, in: folder) }
+    }
+
+    func createFolder(named name: String, in folder: URL) async throws {
+        try await perform { try $0.createFolder(named: name, in: folder) }
+    }
+
+    func rename(itemAt url: URL, to newName: String) async throws {
+        try await perform { try $0.rename(itemAt: url, to: newName) }
+    }
+
+    func move(itemAt url: URL, into folder: URL) async throws {
+        try await perform { try $0.move(itemAt: url, into: folder) }
+    }
+
+    func deleteItem(at url: URL) async throws {
+        try await perform { try $0.delete(itemAt: url) }
+    }
+
+    /// Runs one coordinated mutation off the main actor, then rescans so the
+    /// tree reflects the app-created change.
+    private func perform(_ operation: @escaping @Sendable (VaultFileOperations) throws -> Void) async throws {
+        let ops = fileOperations
+        try await Task.detached(priority: .userInitiated) {
+            try operation(ops)
+        }.value
+        await refresh()
     }
 
     private func loadTree(from url: URL) async {

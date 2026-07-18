@@ -36,11 +36,18 @@ enum MarkdownStyler {
     #endif
 
     static var bodyAttributes: [NSAttributedString.Key: Any] {
-        [.font: bodyFont, .foregroundColor: textColor]
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 4
+        paragraphStyle.paragraphSpacing = 2
+        return [
+            .font: bodyFont,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle,
+        ]
     }
 
     private static func headerFont(level: Int) -> PlatformFont {
-        let multipliers: [CGFloat] = [1.6, 1.4, 1.25, 1.15, 1.05, 1.0]
+        let multipliers: [CGFloat] = [1.8, 1.55, 1.35, 1.2, 1.1, 1.0]
         let size = (bodyFont.pointSize * multipliers[max(0, min(5, level - 1))]).rounded()
         return .systemFont(ofSize: size, weight: .bold)
     }

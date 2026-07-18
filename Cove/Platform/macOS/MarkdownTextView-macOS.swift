@@ -18,11 +18,14 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
+        textView.drawsBackground = false
+        scrollView.drawsBackground = false
         // Smart punctuation rewrites Markdown syntax (straight quotes, "--"),
         // so it stays off.
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.textContainerInset = NSSize(width: 12, height: 16)
+        textView.textContainerInset = NSSize(width: 32, height: 28)
+        textView.textContainer?.lineFragmentPadding = 0
         textView.typingAttributes = MarkdownStyler.bodyAttributes
         textView.string = text
         if let storage = textView.textStorage {

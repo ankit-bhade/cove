@@ -8,8 +8,8 @@ build phases, and current status. Read it fully before making changes.
 
 **Current phase: Phase 9 — appearance polish, app icon, and launch screen.**
 
-Status: Phase 9 implemented. All build phases are complete. See CHANGELOG.md
-for merged work.
+Status: Phase 9 implemented and visually refined. All build phases are
+complete. See CHANGELOG.md for merged work.
 
 ---
 
@@ -435,6 +435,13 @@ merged.
   (kept outside the synchronized `Cove/` folder so it isn't swept up as a
   resource). `AccentColor` is a cove teal with a lighter dark-mode
   variant.
+* **Visual system.** `CoveTheme` (`Cove/App/`) centralizes the icon-derived
+  navy/teal/sea-glass palette, adaptive light/dark canvas and surface colors,
+  brand gradient, card treatment, and compact icon tiles. Setup, loading,
+  Notes, search, Tasks, task confirmation, move, editor, and Settings screens
+  share those primitives. The richer presentation remains standard SwiftUI
+  and platform text views only; it adds no assets beyond the existing
+  `LaunchIcon`, no dependencies, and no persistence or behavior changes.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files

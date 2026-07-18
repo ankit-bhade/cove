@@ -11,6 +11,7 @@ struct TaskDraftSheet: View {
     let onConfirm: (TaskDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     private var canAdd: Bool {
         !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -20,11 +21,39 @@ struct TaskDraftSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Try “get bread 3p tmr”", text: $sentence)
-                        .autocorrectionDisabled()
-                        .onChange(of: sentence) { _, newValue in
-                            draft = QuickTaskParser.parse(newValue, now: .now)
+                    HStack(spacing: 13) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 42, height: 42)
+                            .background(CoveTheme.brandGradient,
+                                        in: RoundedRectangle(cornerRadius: 12,
+                                                             style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Review Cove’s Interpretation")
+                                .font(.headline)
+                            Text("Fine-tune anything before it’s added to Tasks.md.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background { CoveCardBackground() }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                Section {
+                    HStack(spacing: 10) {
+                        CoveIconTile(systemName: "quote.bubble.fill")
+                        TextField("Try “get bread 3p tmr”", text: $sentence)
+                            .autocorrectionDisabled()
+                            .onChange(of: sentence) { _, newValue in
+                                draft = QuickTaskParser.parse(newValue, now: .now)
+                            }
+                    }
                 } header: {
                     Text("Task")
                 } footer: {
@@ -32,18 +61,31 @@ struct TaskDraftSheet: View {
                 }
 
                 Section("Details") {
-                    TextField("Title", text: $draft.title)
-                    DatePicker("Date", selection: dateBinding, displayedComponents: .date)
-                    Toggle("Time", isOn: timeEnabledBinding)
-                    if draft.dueTimeString != nil {
-                        DatePicker("At", selection: timeBinding,
-                                   displayedComponents: .hourAndMinute)
+                    LabeledContent {
+                        TextField("Title", text: $draft.title)
+                            .multilineTextAlignment(.trailing)
+                    } label: {
+                        Label("Title", systemImage: "textformat")
                     }
-                    Picker("Repeat", selection: $draft.recurrence) {
+                    DatePicker(selection: dateBinding, displayedComponents: .date) {
+                        Label("Date", systemImage: "calendar")
+                    }
+                    Toggle(isOn: timeEnabledBinding) {
+                        Label("Time", systemImage: "clock")
+                    }
+                    if draft.dueTimeString != nil {
+                        DatePicker(selection: timeBinding,
+                                   displayedComponents: .hourAndMinute) {
+                            Label("At", systemImage: "bell")
+                        }
+                    }
+                    Picker(selection: $draft.recurrence) {
                         ForEach(recurrenceOptions, id: \.self) { rule in
                             Text(rule?.displayName ?? "Never")
                                 .tag(rule)
                         }
+                    } label: {
+                        Label("Repeat", systemImage: "repeat")
                     }
                 }
 
@@ -62,9 +104,12 @@ struct TaskDraftSheet: View {
                     }
                     .foregroundStyle(.secondary)
                     .font(.callout)
+                    .padding(.vertical, 3)
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(CoveTheme.canvas(for: colorScheme))
             .navigationTitle("New Task")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

@@ -8,6 +8,10 @@ struct CoveApp: App {
         WindowGroup {
             RootView()
                 .environment(vaultManager)
+                .tint(CoveTheme.teal)
         }
+        #if os(macOS)
+        .defaultSize(width: 980, height: 700)
+        #endif
     }
 }

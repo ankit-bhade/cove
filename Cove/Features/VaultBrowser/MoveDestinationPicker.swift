@@ -6,6 +6,7 @@ import SwiftUI
 struct MoveDestinationPicker: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     let node: VaultNode
     let onPick: (URL) -> Void
@@ -43,11 +44,23 @@ struct MoveDestinationPicker: View {
                     onPick(destination.url)
                     dismiss()
                 } label: {
-                    Label(destination.name, systemImage: "folder")
-                        .padding(.leading, CGFloat(destination.depth) * 20)
+                    HStack(spacing: 10) {
+                        CoveIconTile(systemName: "folder.fill", tint: CoveTheme.seaGlass)
+                        Text(destination.name)
+                            .font(.body.weight(.medium))
+                    }
+                    .padding(.vertical, 3)
+                    .padding(.leading, CGFloat(destination.depth) * 20)
                 }
                 .disabled(destination.url.standardizedFileURL.path == currentParentPath)
             }
+            #if os(iOS)
+            .listStyle(.insetGrouped)
+            #else
+            .listStyle(.inset)
+            #endif
+            .scrollContentBackground(.hidden)
+            .background(CoveTheme.canvas(for: colorScheme))
             .navigationTitle("Move “\(node.displayName)”")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

@@ -23,6 +23,10 @@ final class VaultManager {
     private(set) var vaultURL: URL?
     private(set) var lastErrorDescription: String?
 
+    /// Bumped once per detected external change event, after the tree rescan
+    /// has been kicked off. Open editors observe it to reload from disk.
+    private(set) var externalChangeCount = 0
+
     private let bookmarkStore: VaultBookmarkStore
     private let scanner = VaultTreeScanner()
     private let fileOperations = VaultFileOperations()
@@ -31,6 +35,8 @@ final class VaultManager {
     /// so every stop is matched to a successful start. `@ObservationIgnored`
     /// keeps it a plain stored property so `deinit` can release it.
     @ObservationIgnored private var securityScopedURL: URL?
+
+    @ObservationIgnored private var changeObserver: VaultChangeObserver?
 
     init(bookmarkStore: VaultBookmarkStore = VaultBookmarkStore()) {
         self.bookmarkStore = bookmarkStore
@@ -113,6 +119,7 @@ final class VaultManager {
             vaultURL = url
             lastErrorDescription = nil
             state = .open
+            startObservingChanges(at: url)
         } catch {
             endAccess()
             rootNode = nil
@@ -122,6 +129,25 @@ final class VaultManager {
         }
     }
 
+    // MARK: - External change detection
+
+    private func startObservingChanges(at url: URL) {
+        guard changeObserver?.vaultURL != url else { return }
+        changeObserver?.stop()
+        let observer = VaultChangeObserver(vaultURL: url)
+        observer.onChange = { [weak self] _ in
+            guard let self else { return }
+            Task { await self.handleExternalChange() }
+        }
+        observer.start()
+        changeObserver = observer
+    }
+
+    private func handleExternalChange() async {
+        externalChangeCount += 1
+        await refresh()
+    }
+
     private func beginAccess(to url: URL) {
         if url.startAccessingSecurityScopedResource() {
             securityScopedURL = url
@@ -129,6 +155,8 @@ final class VaultManager {
     }
 
     private func endAccess() {
+        changeObserver?.stop()
+        changeObserver = nil
         securityScopedURL?.stopAccessingSecurityScopedResource()
         securityScopedURL = nil
     }

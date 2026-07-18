@@ -13,3 +13,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folder picker, bookmark persistence, stale-bookmark recovery, and read-only vault tree browser (Phase 1)
 - Editor with autosave, and note and folder creation, rename, move, and delete (Phase 2)
 - Live Markdown styling in the editor: headers, bold, and tappable checkboxes (Phase 3)
+- iCloud change detection and external-edit refreshing (Phase 4)

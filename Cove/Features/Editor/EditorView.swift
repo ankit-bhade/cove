@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// Single-pane editor for one Markdown note. Loads the file on appearance,
-/// autosaves while typing, and flushes pending edits when the view goes away
-/// or the app leaves the foreground.
+/// autosaves while typing, flushes pending edits when the view goes away or
+/// the app leaves the foreground, and reloads from disk after external
+/// (iCloud) changes as long as there are no unsaved local edits.
 struct EditorView: View {
     @State private var document: NoteDocument
+    @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
 
     init(fileURL: URL) {
@@ -48,9 +50,14 @@ struct EditorView: View {
             Task { await document.saveNow() }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase != .active {
+            if newPhase == .active {
+                Task { await document.reloadAfterExternalChange() }
+            } else {
                 Task { await document.saveNow() }
             }
+        }
+        .onChange(of: vaultManager.externalChangeCount) { _, _ in
+            Task { await document.reloadAfterExternalChange() }
         }
     }
 }

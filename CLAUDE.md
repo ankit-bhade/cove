@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 3 — Live Markdown styling.**
+**Current phase: Phase 4 — iCloud change detection and external-edit refreshing.**
 
-Status: Phase 3 implemented. See CHANGELOG.md for merged work.
+Status: Phase 4 implemented. See CHANGELOG.md for merged work.
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -267,6 +267,21 @@ merged.
   subclass) whose `mouseDown` routes the flip through
   `shouldChangeText`/`didChangeText` so it is undoable and reaches the
   delegate.
+* **Change detection.** `VaultChangeObserver` (`@MainActor`, in
+  `Cove/Core/Services/`) wraps one `NSMetadataQuery` with
+  `NSMetadataQueryAccessibleUbiquitousExternalDocumentsScope`, which covers
+  security-scoped folders reached through the system picker. Update
+  notifications are filtered to non-hidden items under the vault (a pure,
+  unit-tested static helper) and debounced 600 ms; the initial gathering pass
+  is a baseline and never reported. `VaultManager` starts the observer when a
+  vault opens, stops it in `endAccess()`, and on each event bumps
+  `externalChangeCount` and rescans the tree. `EditorView` observes that
+  count (and scene re-activation) to call
+  `NoteDocument.reloadAfterExternalChange()`, which adopts the disk contents
+  only when there are no unsaved local edits — pending local edits always
+  win, and the next autosave writes them out. `RootView` also rescans the
+  tree whenever the scene becomes active, as a catch-all for events missed
+  while inactive and for non-iCloud vaults.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files
@@ -343,5 +358,18 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 * Header fonts are computed from the current body font at restyle time, so
   an iOS Dynamic Type change updates header sizes on the next edit, not
   instantly.
-* Phase 4+ features (iCloud change detection, search, tasks, notifications)
-  are intentionally absent.
+* `NSMetadataQuery` only reports iCloud-backed items, so external edits to a
+  non-iCloud vault are picked up only by the scene-activation rescan, not
+  live.
+* An external change to a note with unsaved local edits is not adopted: the
+  local text wins and the next autosave overwrites the external version.
+  When both sides really changed, iCloud creates a conflict copy, which
+  appears as a separate file (per spec, never auto-resolved).
+* Every external change event makes each open editor re-read its own file
+  (one coordinated read), even when the changed items don't include it —
+  metadata URLs aren't reliably comparable to picker URLs, so the reload is
+  unconditional and cheap.
+* External change detection is untestable in unit tests (no iCloud in the
+  test host); only the URL-filtering helper and the editor reload logic are
+  covered. Verify live behavior manually with a vault in iCloud Drive.
+* Phase 5+ features (search, tasks, notifications) are intentionally absent.

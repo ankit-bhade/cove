@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(VaultManager.self) private var vaultManager
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -18,6 +19,13 @@ struct RootView: View {
         }
         .task {
             await vaultManager.restore()
+        }
+        // Metadata updates can be missed while the app is inactive, so a
+        // return to the foreground rescans the tree as a catch-all.
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active, vaultManager.state == .open {
+                Task { await vaultManager.refresh() }
+            }
         }
     }
 }

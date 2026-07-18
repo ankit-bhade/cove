@@ -17,3 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full-text search across all Markdown files (Phase 5)
 - Task parsing and Tasks screen with an in-memory vault index (Phase 6)
 - Local task notifications for incomplete due tasks (Phase 7)
+- Natural-language quick task entry with times and recurrence (Phase 8)
+
+### Changed
+
+- Task notifications now fire at the task's due time; tasks with only a
+  due date no longer get a 9:00 notification (Phase 8)

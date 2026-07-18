@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 7 — local task notifications.**
+**Current phase: Phase 8 — natural-language task entry.**
 
-Status: Phase 7 implemented. See CHANGELOG.md for merged work.
+Status: Phase 8 implemented. See CHANGELOG.md for merged work.
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -98,14 +98,32 @@ Collect task lines matching exactly:
 
 ```text
 - [ ] Task text @due(YYYY-MM-DD)
+- [ ] Task text @due(YYYY-MM-DD HH:MM)
+- [ ] Task text @due(YYYY-MM-DD HH:MM) @repeat(<rule>)
 ```
 
 Rules:
 
-* This syntax is fixed
-* Sort incomplete tasks by due date
-* Checking a task updates its original Markdown file
+* This syntax family is fixed; the time and `@repeat` tag are optional,
+  and `@repeat` rules are exactly `daily`, `every weekday`, or
+  `every <weekday name>` (the `@repeat` tag follows the `@due` tag)
+* Sort incomplete tasks by due date, then time (date-only tasks first
+  within a day)
+* Checking a task updates its original Markdown file; checking an
+  incomplete recurring task advances its due date to the rule's next
+  occurrence instead of marking it complete
 * Do not support alternate task syntax
+
+The Tasks screen has a quick-entry field that interprets one sentence —
+"get bread 3p tmr", "laundry every sun 6p", "tennis fri" — into a task.
+Trailing tokens name an optional date (`tdy`/`today`,
+`tmr`/`tmrw`/`tom`/`tomorrow`, weekday names and abbreviations,
+`next <weekday>`), an optional time (`3p`, `6pm`, `3:30pm`, 24-hour
+`15:00`), and an optional recurrence (`daily`, `every day`, `everyday`,
+`every weekday`, `weekdays`, `every <weekday>`); everything before them is
+the title. Before saving, the interpreted title, date, time, recurrence,
+and notification are shown for confirmation and editing. Confirmed tasks
+are appended to `Tasks.md` at the vault root, created on demand.
 
 #### Settings
 
@@ -136,7 +154,10 @@ Do not add tags unless a tag feature is added later.
 
 Use `UNUserNotificationCenter`.
 
-* Schedule notifications only for incomplete tasks with due dates
+* Schedule notifications only for incomplete tasks that have both a due
+  date and a due time; a task with a bare date gets no notification
+* Non-recurring tasks get one notification at their due moment; recurring
+  tasks get repeating calendar triggers covering every occurrence
 * Rebuild task notifications when the app enters the foreground or files change
 * Remove previously generated task notifications before rebuilding
 * Do not use push notifications
@@ -158,7 +179,8 @@ Complete and validate each phase before starting the next.
 5. Full-text search
 6. Task parsing and Tasks screen
 7. Local task notifications
-8. Appearance polish, app icon, and launch screen
+8. Natural-language quick task entry with times and recurrence
+9. Appearance polish, app icon, and launch screen
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -299,40 +321,74 @@ merged.
   search index is built or persisted.
 * **Tasks and the in-memory index.** `TaskParser` (pure Foundation, in
   `Cove/Features/Tasks/`, fully unit-tested) matches the fixed syntax
-  `- [ ] Task text @due(YYYY-MM-DD)` line by line, strictly: no leading
-  indentation, exactly one space after `]` and before `@due`, a validated
-  Gregorian date, and nothing after the closing parenthesis but trailing
-  whitespace. The status char may be ` `/`x`/`X` (matching the editor's
-  checkbox parser); when the text itself contains `@due(...)`, the last one
-  on the line is the tag. `VaultIndexBuilder` (`Cove/Core/Services/`) walks
+  `- [ ] Task text @due(YYYY-MM-DD[ HH:MM])[ @repeat(rule)]` line by line,
+  strictly: no leading indentation, exactly one space after `]` and before
+  `@due`, a validated Gregorian date, a validated zero-padded 24-hour time
+  when present, a recognized `@repeat` tag when present (parsed by
+  `RecurrenceRule` in `Cove/Core/Models/`: `daily`, `every weekday`, or
+  `every <weekday name>`), and nothing after the last closing parenthesis
+  but trailing whitespace. The status char may be ` `/`x`/`X` (matching the
+  editor's checkbox parser); when the text itself contains `@due(...)`, the
+  last one on the line is the tag, and an `@repeat(...)` before the `@due`
+  tag is just text. `VaultIndexBuilder` (`Cove/Core/Services/`) walks
   the scanned tree's files with coordinated reads and produces `VaultIndex`
   (`Cove/Core/Models/`): one entry per file with path, title, and
-  `TaskItem`s. `VaultManager` rebuilds the index inside every tree load —
+  `TaskItem`s (now carrying optional `dueTimeString` and `recurrence`).
+  `VaultManager` rebuilds the index inside every tree load —
   launch, app-created mutations, external changes, and explicit refreshes —
   in the same detached task as the scan. `toggleTask` re-reads the task's
-  file, re-finds the task by content (`text` + due date + state, preferring
-  the remembered line number among duplicates so duplicate task lines toggle
-  correctly), flips the status character, saves coordinated, and rescans;
-  if the task can't be re-found it throws `TaskChangedOnDiskError` after
-  still refreshing, and `TasksView` shows an alert. Due-date sorting
-  compares the zero-padded `YYYY-MM-DD` strings (lexicographic order is
-  chronological). `TasksView` sits in a `TabView` beside the browser
-  (`RootView`): open tasks sorted by due date with overdue dates in red,
-  completed tasks below, checkbox buttons toggle, and rows navigate to the
-  editor through a `URL` navigation destination. The tab refreshes the
+  file, re-finds the task by content (`text` + full schedule + state,
+  preferring the remembered line number among duplicates so duplicate task
+  lines toggle correctly), rewrites the line, saves coordinated, and
+  rescans; completing an incomplete recurring task advances its due date
+  in place to the rule's next occurrence after the later of the stale due
+  date and today (the checkbox stays open — the line is the task's single
+  home), while every other toggle flips the status character. If the task
+  can't be re-found it throws `TaskChangedOnDiskError` after still
+  refreshing, and `TasksView` shows an alert. Sorting compares
+  `(dueDateString, dueTimeString ?? "", fileTitle, lineNumber)` — the
+  zero-padded strings order chronologically, with date-only tasks first
+  within a day. `TasksView` sits in a `TabView` beside the browser
+  (`RootView`): open tasks sorted by due date with overdue moments in red
+  (time-aware for timed tasks), completed tasks below, checkbox buttons
+  toggle, recurrence shown as a `repeat`-icon label, and rows navigate to
+  the editor through a `URL` navigation destination. The tab refreshes the
   vault on each appearance because editor autosaves don't trigger a rescan.
+* **Quick task entry.** `QuickTaskParser` (pure, in
+  `Cove/Features/Tasks/`, fully unit-tested against a fixed `now`)
+  interprets one sentence into a `TaskDraft` (title + resolved
+  `YYYY-MM-DD` + optional `HH:MM` + optional `RecurrenceRule`, plus the
+  `markdownLine` it saves as). Scheduling tokens are consumed greedily
+  from the *end* of the sentence — one date, one time, one recurrence, in
+  any order — so scheduling words inside the title survive. Bare numbers
+  are never times (`buy 6 eggs` keeps its 6); a named time that has
+  already passed pushes an *implicit* today forward (to tomorrow, or the
+  next matching occurrence) while an explicit `today` is literal.
+  `TasksView` hosts the entry field; submitting opens `TaskDraftSheet`,
+  which shows the interpretation for confirmation — editing the sentence
+  re-interprets everything, editing the field controls (title, date, time
+  toggle + picker, recurrence picker) tweaks the draft directly, and a
+  footer row states whether a notification will fire. Confirming calls
+  `VaultManager.captureTask`, which appends `draft.markdownLine` to
+  `Tasks.md` at the vault root via `VaultFileOperations.appendLine` (a
+  single coordinated read-modify-write that creates the note on first
+  use), then rescans.
 * **Task notifications.** Split into a pure, unit-tested planner and a thin
   scheduler (both in `Cove/Core/Services/`). `TaskNotificationPlanner` turns
-  the task list into `TaskNotificationPlan`s: incomplete tasks only, firing
-  at 9:00 local time on the due day, skipping tasks whose fire time has
-  passed, soonest-due first, capped at 60 (the system holds at most 64
-  pending local notifications per app). Identifiers carry the
-  `cove-task:` prefix. `TaskNotificationScheduler` (an actor) wraps
-  `UNUserNotificationCenter`: each rebuild removes every pending request
-  with that prefix, then — only when there is something to schedule —
-  ensures authorization (prompting on first use; a denial silently skips
-  scheduling) and adds one `UNCalendarNotificationTrigger` request per
-  plan. Rebuilds are chained through a stored `Task` so overlapping calls
+  the task list into `TaskNotificationPlan`s for incomplete tasks *with a
+  due time* only (date-only tasks get none): non-recurring tasks get one
+  one-shot plan at their due moment, skipped once it has passed; recurring
+  tasks get repeating plans at their time — hour/minute components for
+  `daily`, plus a weekday for weekly rules, and five plans (Mon–Fri) for
+  `every weekday`. Plans are ordered soonest-due first and capped at 60
+  after expansion (the system holds at most 64 pending local notifications
+  per app). Identifiers carry the `cove-task:` prefix.
+  `TaskNotificationScheduler` (an actor) wraps `UNUserNotificationCenter`:
+  each rebuild removes every pending request with that prefix, then — only
+  when there is something to schedule — ensures authorization (prompting on
+  first use; a denial silently skips scheduling) and adds one
+  `UNCalendarNotificationTrigger` request per plan (`repeats:` from the
+  plan). Rebuilds are chained through a stored `Task` so overlapping calls
   never interleave their remove/add steps. `VaultManager` enqueues a
   rebuild at the end of every successful tree load, which covers launch,
   app-created mutations, external changes, and the scene-activation
@@ -361,7 +417,8 @@ merged.
 * Never hardcode a vault folder name or location.
 * All vault filesystem access goes through `NSFileCoordinator`.
 * Hidden files and symlinks are always ignored.
-* Task syntax `- [ ] Task text @due(YYYY-MM-DD)` is fixed; no alternates.
+* Task syntax `- [ ] Task text @due(YYYY-MM-DD[ HH:MM])[ @repeat(rule)]`
+  is fixed; no alternates.
 * No persisted search index; search is on demand.
 * No push notifications; no custom background sync.
 * iCloud conflict copies are shown as separate files, never auto-resolved.
@@ -443,18 +500,34 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
   on disk shows a "changed on disk" alert and refreshes the list instead of
   writing.
 * The task syntax is enforced strictly (per spec): an indented task line, a
-  double space after the marker, or an invalid calendar date silently keeps
-  the line out of the Tasks screen even though the editor still styles its
-  checkbox.
-* Notifications fire at 9:00 local time on the due day; there is no way to
-  pick a different time, and a task already past that time (overdue, or due
-  today with 9:00 gone) gets no notification.
-* At most 60 notifications are scheduled (soonest due dates win) to stay
-  under the system's 64-pending cap.
+  double space after the marker, an invalid calendar date or time, or an
+  unknown `@repeat` rule silently keeps the line out of the Tasks screen
+  even though the editor still styles its checkbox.
+* Only tasks with a due time get notifications (per design); a date-only
+  task never notifies, and a timed non-recurring task whose moment has
+  passed gets none.
+* At most 60 notification requests are scheduled (soonest due dates win)
+  to stay under the system's 64-pending cap; an `every weekday` task
+  consumes five of them.
+* Repeating triggers have no start or end date: a recurring task due next
+  week still fires this week, and it keeps firing until the task line is
+  completed (which rolls its date forward but keeps the trigger) or
+  removed.
+* Recurrence-aware completion lives only in the Tasks tab. Tapping the
+  same line's checkbox in the editor flips it to `[x]` like any checkbox;
+  the Tasks tab then shows it as completed rather than rolled forward
+  (toggling there flips it back).
+* The quick-entry interpreter is English-only and reads scheduling tokens
+  from the end of the sentence; a date, time, or repeat mentioned
+  mid-sentence stays in the title. Explicit calendar dates ("jul 21",
+  "2026-07-21") aren't recognized — use the sheet's date picker.
+* Quick-added tasks always land in `Tasks.md` at the vault root; the
+  capture note isn't configurable. If iCloud syncs in a folder named
+  `Tasks.md`, capture fails with an error alert.
 * The notification permission prompt appears the first time a rebuild has a
   task to schedule, not at launch. A denial silently disables scheduling;
   re-enabling lives in the system settings until the in-app Settings screen
-  arrives in Phase 8.
+  arrives in Phase 9.
 * A notification is a reminder, not a live view: tapping it opens the app
   but not the specific task, and a task completed on another device keeps
   its scheduled notification here until this device next rebuilds (launch,
@@ -462,5 +535,5 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 * `TaskNotificationScheduler` is untestable in unit tests (scheduling would
   prompt for permission in the test host); only the planner is unit-tested.
   Verify delivery manually.
-* Phase 8 features (appearance polish, app icon, launch screen, and the
+* Phase 9 features (appearance polish, app icon, launch screen, and the
   Settings screen) are intentionally absent.

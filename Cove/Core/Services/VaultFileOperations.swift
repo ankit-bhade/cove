@@ -45,6 +45,23 @@ struct VaultFileOperations: Sendable {
         }
     }
 
+    /// Appends one line to the named note in `folder`, creating the note if
+    /// it doesn't exist yet. The read-modify-write runs inside a single
+    /// coordinated write so a syncing external copy can't be clobbered
+    /// mid-append.
+    @discardableResult
+    func appendLine(_ line: String, toNoteNamed name: String, in folder: URL) throws -> URL {
+        let fileName = try noteFileName(from: name)
+        let destination = folder.appendingPathComponent(fileName, isDirectory: false)
+        try coordinatedWrite(at: destination, options: .forMerging) { url in
+            var text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            if !text.isEmpty, !text.hasSuffix("\n") { text += "\n" }
+            text += line + "\n"
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+        return destination
+    }
+
     @discardableResult
     func createNote(named name: String, in folder: URL) throws -> URL {
         let fileName = try noteFileName(from: name)

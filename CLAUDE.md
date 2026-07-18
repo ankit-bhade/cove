@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 1 — Folder picker, bookmark persistence, stale-bookmark recovery, read-only tree browser.**
+**Current phase: Phase 2 — Editor, saving, file and folder creation, rename, move, and delete.**
 
-Status: Phase 1 implemented. See CHANGELOG.md for merged work.
+Status: Phase 2 implemented. See CHANGELOG.md for merged work.
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -222,6 +222,28 @@ Before considering any task or PR complete:
   is opened/restored and records the URL only when `start` returned `true`;
   it stops access when the vault is replaced, when opening fails, and in
   `deinit`. `VaultBookmarkStore.refreshBookmark` uses a start/defer-stop pair.
+* **File operations.** `VaultFileOperations` (stateless, `Sendable`) performs
+  every vault mutation and note read/save with per-item `NSFileCoordinator`
+  coordination: reads use `coordinate(readingItemAt:)`, saves/creates/deletes
+  use `coordinate(writingItemAt:)` with `.forReplacing`/`.forDeleting`, and
+  rename/move use the two-item `.forMoving` variant plus
+  `item(at:didMoveTo:)`. Name validation rejects empty names, leading dots,
+  `/`, and `:`; note names get `.md` appended case-insensitively. Case-only
+  renames skip the destination-exists check (APFS is case-insensitive by
+  default). `VaultManager` wraps each mutation (`createNote`, `createFolder`,
+  `rename`, `move`, `deleteItem`) in `Task.detached` off the main actor and
+  rescans the tree afterward.
+* **Editor.** `NoteDocument` (`@MainActor @Observable`) owns one open note:
+  coordinated load, dirty tracking against the last saved text, debounced
+  autosave (1 s after typing stops), and `saveNow()` flushes on view
+  disappearance and when the app leaves the foreground. `saveNote` refuses to
+  write if the file is gone, so a pending autosave never resurrects a
+  renamed/moved/deleted note. `MarkdownTextView` is a plain-text
+  `UITextView`/`NSTextView` representable pair (same type name, one per
+  platform under `Cove/Platform/`, `#if os(...)`-guarded, distinct file
+  basenames — identical basenames in one target collide in the build system).
+  Smart quotes/dashes are disabled on both platforms so Markdown syntax
+  survives typing. Phase 3 layers live styling onto these representables.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files
@@ -273,8 +295,12 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 
 ## Known issues and gotchas
 
-* The read-only browser holds one coordinated read for the whole scan; Phase 2
-  must move to per-item coordination for mutations.
+* Tree scans still hold one coordinated read for the whole scan (fine for
+  reads); all mutations use per-item coordination via `VaultFileOperations`.
+* Renaming, moving, or deleting a note while its editor is open on the
+  navigation stack leaves the editor pointing at the old URL. Pending edits
+  are then dropped rather than saved (`saveNote` throws `fileMissing` instead
+  of recreating the file), and the editor shows a save-error banner.
 * `UserDefaults`-stored bookmarks are per-device; each device runs the
   folder-selection flow once (expected — there is no custom sync).
 * On macOS, `NSOpenPanel` URLs are usable without starting scoped access in the
@@ -283,5 +309,5 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 * The unit-test bundle runs inside the sandboxed app host on macOS; tests that
   create bookmarks use the app container's temporary directory, which the
   sandbox can bookmark.
-* Phase 2+ features (editing, creating, renaming, moving, deleting, search,
-  tasks, notifications, iCloud change detection) are intentionally absent.
+* Phase 3+ features (live Markdown styling, iCloud change detection, search,
+  tasks, notifications) are intentionally absent.

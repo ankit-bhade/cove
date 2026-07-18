@@ -18,10 +18,23 @@ final class VaultManager {
         case open
     }
 
+    /// The task couldn't be re-found in its file when toggling (it was
+    /// edited or removed since the index was built).
+    struct TaskChangedOnDiskError: LocalizedError {
+        var errorDescription: String? {
+            "That task has changed on disk, so it wasn’t updated."
+        }
+    }
+
     private(set) var state: State = .restoring
     private(set) var rootNode: VaultNode?
     private(set) var vaultURL: URL?
     private(set) var lastErrorDescription: String?
+
+    /// In-memory index (file path, title, due tasks per note), rebuilt with
+    /// every tree load: launch, app-created mutations, external changes, and
+    /// explicit refreshes.
+    private(set) var index = VaultIndex()
 
     /// Bumped once per detected external change event, after the tree rescan
     /// has been kicked off. Open editors observe it to reload from disk.
@@ -30,6 +43,7 @@ final class VaultManager {
     private let bookmarkStore: VaultBookmarkStore
     private let scanner = VaultTreeScanner()
     private let fileOperations = VaultFileOperations()
+    private let indexBuilder = VaultIndexBuilder()
 
     /// Set only when `startAccessingSecurityScopedResource()` returned true,
     /// so every stop is matched to a successful start. `@ObservationIgnored`
@@ -99,6 +113,35 @@ final class VaultManager {
         try await perform { try $0.delete(itemAt: url) }
     }
 
+    // MARK: - Tasks
+
+    /// Flips one task's checkbox in its original Markdown file: re-reads the
+    /// file, re-finds the task by content, rewrites the line, and rescans so
+    /// the index reflects the change. The tree is refreshed even when the
+    /// toggle fails, so a stale list corrects itself.
+    func toggleTask(_ task: TaskItem) async throws {
+        let ops = fileOperations
+        var toggleError: Error?
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                let text = try ops.readNote(at: task.fileURL)
+                guard let updated = TaskParser.togglingTask(
+                    withText: task.text,
+                    dueDateString: task.dueDateString,
+                    isCompleted: task.isCompleted,
+                    preferredLineNumber: task.lineNumber,
+                    in: text) else {
+                    throw TaskChangedOnDiskError()
+                }
+                try ops.saveNote(updated, to: task.fileURL)
+            }.value
+        } catch {
+            toggleError = error
+        }
+        await refresh()
+        if let toggleError { throw toggleError }
+    }
+
     /// Runs one coordinated mutation off the main actor, then rescans so the
     /// tree reflects the app-created change.
     private func perform(_ operation: @escaping @Sendable (VaultFileOperations) throws -> Void) async throws {
@@ -111,11 +154,14 @@ final class VaultManager {
 
     private func loadTree(from url: URL) async {
         let scanner = self.scanner
+        let builder = indexBuilder
         do {
-            let node = try await Task.detached(priority: .userInitiated) {
-                try scanner.scanTree(at: url)
+            let (node, index) = try await Task.detached(priority: .userInitiated) {
+                let node = try scanner.scanTree(at: url)
+                return (node, builder.buildIndex(from: node))
             }.value
             rootNode = node
+            self.index = index
             vaultURL = url
             lastErrorDescription = nil
             state = .open
@@ -123,6 +169,7 @@ final class VaultManager {
         } catch {
             endAccess()
             rootNode = nil
+            index = VaultIndex()
             vaultURL = nil
             lastErrorDescription = error.localizedDescription
             state = .recoveryNeeded

@@ -17,4 +17,11 @@ struct VaultNode: Identifiable, Hashable, Sendable {
     var displayName: String {
         isDirectory ? name : url.deletingPathExtension().lastPathComponent
     }
+
+    /// The subtree flattened into its files, preserving the scanner's
+    /// folders-first alphabetical order. Used by search and the index.
+    var allFiles: [VaultNode] {
+        guard let children else { return [self] }
+        return children.flatMap(\.allFiles)
+    }
 }

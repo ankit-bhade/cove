@@ -5,7 +5,8 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 8): select a vault folder, browse its nested folders and
+Current state (Phase 9 — all build phases complete): select a vault folder,
+browse its nested folders and
 Markdown files, and open any note in a live-styled Markdown editor that saves
 automatically as you type. Headers and `**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
@@ -43,9 +44,11 @@ recurring task rolls it to the next occurrence, whose notification is
 scheduled in turn; tasks with only a date get none (the app asks for
 notification permission the first time it has something to schedule).
 The vault selection persists across launches, and the app
-recovers gracefully when the saved folder access goes stale. Appearance
-polish, the app icon, and the launch screen arrive in a later phase (see
-[CLAUDE.md](CLAUDE.md) for the roadmap).
+recovers gracefully when the saved folder access goes stale. A Settings tab
+shows the current vault (and can point Cove at a different folder — the same
+flow that recovers a stale selection), switches between system, light, and
+dark appearance, and shows whether notification permission is granted, with
+a shortcut to enable it. The app has its own icon and launch screen.
 
 ## Supported platforms
 

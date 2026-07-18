@@ -6,11 +6,10 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 8 — natural-language task entry.**
+**Current phase: Phase 9 — appearance polish, app icon, and launch screen.**
 
-Status: Phase 8 implemented. See CHANGELOG.md for merged work.
-
-Do not work ahead into a later phase unless explicitly asked.
+Status: Phase 9 implemented. All build phases are complete. See CHANGELOG.md
+for merged work.
 
 ---
 
@@ -413,6 +412,29 @@ merged.
   app-created mutations, external changes, and the scene-activation
   refresh (the spec's "foreground or files change"). No push
   notifications and no background scheduling.
+* **Settings and appearance.** `SettingsView` (`Cove/Features/Settings/`)
+  is a third tab beside Notes and Tasks, shown when a vault is open: the
+  current vault's name and path with the shared `VaultPickerButton`
+  reselect flow (the same recovery path as the welcome/stale screens), a
+  system/light/dark segmented picker, notification permission status
+  (refreshed on appearance and scene re-activation) with an
+  Enable-Notifications request or an Open-System-Settings shortcut, and
+  the app version. `AppearanceSetting` (a `String` enum persisted under
+  the `@AppStorage` key `appearanceSetting`, unit-tested) maps to an
+  optional `ColorScheme`; `RootView` applies `preferredColorScheme`
+  around every vault state, so the preference also covers the welcome and
+  recovery screens, and an unrecognized stored value falls back to
+  `system`.
+* **Icon, accent, and launch screen.** The asset catalog carries generated
+  moon-over-waves artwork (drawn with a one-off CoreGraphics script):
+  a full-bleed 1024 iOS icon, icon-grid rounded-rect PNGs for every mac
+  size, and a `LaunchIcon` imageset plus `LaunchBackground` colorset
+  (white/black) used by the iOS `UILaunchScreen` dictionary. That
+  dictionary lives in a root-level partial `Info.plist` merged into the
+  generated one via `INFOPLIST_FILE` alongside `GENERATE_INFOPLIST_FILE`
+  (kept outside the synchronized `Cove/` folder so it isn't swept up as a
+  resource). `AccentColor` is a cove teal with a lighter dark-mode
+  variant.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files
@@ -557,8 +579,8 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
   `Tasks.md`, capture fails with an error alert.
 * The notification permission prompt appears the first time a rebuild has a
   task to schedule, not at launch. A denial silently disables scheduling;
-  re-enabling lives in the system settings until the in-app Settings screen
-  arrives in Phase 9.
+  the Settings tab then shows the status as Off with an Open System
+  Settings shortcut (permission can only be re-granted there).
 * A notification is a reminder, not a live view: tapping it opens the app
   but not the specific task, and a task completed on another device keeps
   its scheduled notification here until this device next rebuilds (launch,
@@ -566,5 +588,11 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 * `TaskNotificationScheduler` is untestable in unit tests (scheduling would
   prompt for permission in the test host); only the planner is unit-tested.
   Verify delivery manually.
-* Phase 9 features (appearance polish, app icon, launch screen, and the
-  Settings screen) are intentionally absent.
+* The Settings tab's notification status is polled on appearance and scene
+  re-activation, not live; granting permission in the system settings shows
+  up when the app returns to the foreground.
+* The launch screen is iOS-only (`UILaunchScreen` has no macOS equivalent);
+  macOS windows simply open with the app's content.
+* The app icon PNGs are generated artwork checked into the asset catalog;
+  the CoreGraphics script that drew them is not part of the repo, so icon
+  changes mean regenerating the full size set.

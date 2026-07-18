@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
 
     var body: some View {
         Group {
@@ -19,9 +20,12 @@ struct RootView: View {
                         .tabItem { Label("Notes", systemImage: "folder") }
                     TasksView()
                         .tabItem { Label("Tasks", systemImage: "checklist") }
+                    SettingsView()
+                        .tabItem { Label("Settings", systemImage: "gearshape") }
                 }
             }
         }
+        .preferredColorScheme(appearance.colorScheme)
         .task {
             await vaultManager.restore()
         }

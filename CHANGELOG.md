@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Task parsing and Tasks screen with an in-memory vault index (Phase 6)
 - Local task notifications for incomplete due tasks (Phase 7)
 - Natural-language quick task entry with times and recurrence (Phase 8)
+- Appearance polish, app icon, and launch screen: a Settings tab (vault
+  reselect, system/light/dark appearance, notification permission status,
+  app version), a teal accent color, generated app icon artwork for iOS
+  and macOS, and an iOS launch screen (Phase 9)
 
 ### Changed
 

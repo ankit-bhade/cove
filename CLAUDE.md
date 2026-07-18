@@ -250,12 +250,14 @@ Before considering any task or PR complete:
   (dot-prefixed or `isHidden`) and symbolic links, keeping directories and
   case-insensitive `.md` files, sorted folders-first then alphabetically
   (`localizedStandardCompare`). Scans run off the main actor via
-  `Task.detached`. Per-file coordination for writes comes in Phase 2.
+  `Task.detached`. Mutations use per-item coordination via
+  `VaultFileOperations`.
 * **Entitlements.** macOS only (`Cove/Cove.entitlements`, applied via
   `CODE_SIGN_ENTITLEMENTS[sdk=macosx*]`): App Sandbox, user-selected
   read-write, app-scope bookmarks. iOS needs no entitlements for
-  document-picker folder access. Signing is local/ad-hoc (`-`) so the project
-  builds without a team.
+  document-picker folder access. macOS signing stays local/ad-hoc
+  (`CODE_SIGN_IDENTITY[sdk=macosx*] = -`); a `DEVELOPMENT_TEAM` is set on the
+  app target (added via Xcode) for automatic signing on device builds.
 * **Bundle identifiers.** `com.ankitbhade.Cove` / `com.ankitbhade.CoveTests`.
 
 ## Fixed rules

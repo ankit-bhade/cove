@@ -21,6 +21,8 @@ final class TaskNotificationPlannerTests: XCTestCase {
 
     private func task(text: String = "Task",
                       due: String,
+                      time: String? = nil,
+                      recurrence: RecurrenceRule? = nil,
                       file: String = "Note",
                       line: Int = 0,
                       completed: Bool = false) -> TaskItem {
@@ -29,61 +31,110 @@ final class TaskNotificationPlannerTests: XCTestCase {
                  lineNumber: line,
                  text: text,
                  dueDateString: due,
+                 dueTimeString: time,
+                 recurrence: recurrence,
                  isCompleted: completed)
     }
 
     // MARK: - Which tasks get a plan
 
-    func testPlansIncompleteFutureTask() {
+    func testPlansTimedIncompleteFutureTask() {
         let plans = TaskNotificationPlanner.plans(
-            for: [task(text: "Buy milk", due: "2026-07-20", file: "Groceries")],
+            for: [task(text: "Get bread", due: "2026-07-19", time: "15:00", file: "Tasks")],
             now: earlyNow, calendar: calendar)
         XCTAssertEqual(plans.count, 1)
-        XCTAssertEqual(plans.first?.title, "Buy milk")
-        XCTAssertEqual(plans.first?.body, "Due 2026-07-20 · Groceries")
+        XCTAssertEqual(plans.first?.title, "Get bread")
+        XCTAssertEqual(plans.first?.body, "Due 2026-07-19 15:00 · Tasks")
+        XCTAssertEqual(plans.first?.repeats, false)
         XCTAssertEqual(plans.first?.fireDateComponents,
-                       DateComponents(year: 2026, month: 7, day: 20,
-                                      hour: TaskNotificationPlanner.fireHour, minute: 0))
+                       DateComponents(year: 2026, month: 7, day: 19, hour: 15, minute: 0))
+    }
+
+    func testDateOnlyTasksGetNoNotification() {
+        let plans = TaskNotificationPlanner.plans(
+            for: [task(due: "2026-07-20")],
+            now: earlyNow, calendar: calendar)
+        XCTAssertTrue(plans.isEmpty)
     }
 
     func testSkipsCompletedTasks() {
         let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-20", completed: true)],
+            for: [task(due: "2026-07-20", time: "15:00", completed: true)],
             now: earlyNow, calendar: calendar)
         XCTAssertTrue(plans.isEmpty)
     }
 
-    func testSkipsTasksWhoseFireTimeHasPassed() {
-        // Due yesterday, and due today with the fire hour already past.
-        let now = date(2026, 7, 20, hour: TaskNotificationPlanner.fireHour + 1)
+    func testSkipsTasksWhoseDueMomentHasPassed() {
+        let now = date(2026, 7, 20, hour: 16)
         let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-19"), task(due: "2026-07-20")],
+            for: [task(due: "2026-07-19", time: "15:00"),
+                  task(due: "2026-07-20", time: "15:00")],
             now: now, calendar: calendar)
         XCTAssertTrue(plans.isEmpty)
     }
 
-    func testKeepsTaskDueTodayBeforeFireHour() {
-        let now = date(2026, 7, 20, hour: TaskNotificationPlanner.fireHour - 1)
+    func testKeepsTaskDueLaterToday() {
+        let now = date(2026, 7, 20, hour: 14)
         let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-20")],
+            for: [task(due: "2026-07-20", time: "15:00")],
             now: now, calendar: calendar)
         XCTAssertEqual(plans.count, 1)
+    }
+
+    // MARK: - Recurring tasks
+
+    func testWeeklyTaskGetsOneRepeatingPlan() {
+        let plans = TaskNotificationPlanner.plans(
+            for: [task(text: "Laundry", due: "2026-07-19", time: "18:00",
+                       recurrence: .weekly(weekday: 1), file: "Chores")],
+            now: earlyNow, calendar: calendar)
+        XCTAssertEqual(plans.count, 1)
+        XCTAssertEqual(plans.first?.repeats, true)
+        XCTAssertEqual(plans.first?.body, "Every Sunday at 18:00 · Chores")
+        XCTAssertEqual(plans.first?.fireDateComponents,
+                       DateComponents(hour: 18, minute: 0, weekday: 1))
+    }
+
+    func testDailyTaskRepeatsWithoutWeekday() {
+        let plans = TaskNotificationPlanner.plans(
+            for: [task(due: "2026-07-19", time: "08:30", recurrence: .daily)],
+            now: earlyNow, calendar: calendar)
+        XCTAssertEqual(plans.count, 1)
+        XCTAssertEqual(plans.first?.repeats, true)
+        XCTAssertEqual(plans.first?.fireDateComponents,
+                       DateComponents(hour: 8, minute: 30))
+    }
+
+    func testEveryWeekdayExpandsToFivePlans() {
+        let plans = TaskNotificationPlanner.plans(
+            for: [task(due: "2026-07-20", time: "09:00", recurrence: .everyWeekday)],
+            now: earlyNow, calendar: calendar)
+        XCTAssertEqual(plans.count, 5)
+        XCTAssertEqual(plans.map { $0.fireDateComponents.weekday! }, [2, 3, 4, 5, 6])
+        XCTAssertTrue(plans.allSatisfy(\.repeats))
+        XCTAssertEqual(Set(plans.map(\.identifier)).count, 5)
+    }
+
+    func testRecurringTaskWithoutTimeGetsNoNotification() {
+        let plans = TaskNotificationPlanner.plans(
+            for: [task(due: "2026-07-19", recurrence: .daily)],
+            now: earlyNow, calendar: calendar)
+        XCTAssertTrue(plans.isEmpty)
     }
 
     // MARK: - Ordering and cap
 
     func testSoonestTasksWinWhenOverCap() {
-        // 70 tasks on 70 distinct dates, handed over in reverse order.
+        // 70 timed tasks on 70 distinct dates, handed over in reverse order.
         let dates = (0..<(TaskNotificationPlanner.maximumPlans + 10)).map {
             String(format: "2026-%02d-%02d", $0 / 28 + 1, $0 % 28 + 1)
         }
         let tasks = dates.reversed().enumerated().map { line, due in
-            task(text: "T\(due)", due: due, line: line)
+            task(text: "T\(due)", due: due, time: "12:00", line: line)
         }
         let plans = TaskNotificationPlanner.plans(
             for: tasks, now: earlyNow, calendar: calendar)
         XCTAssertEqual(plans.count, TaskNotificationPlanner.maximumPlans)
-        // Sorted soonest-first, keeping exactly the earliest dates.
         XCTAssertEqual(plans.map(\.title),
                        dates.prefix(TaskNotificationPlanner.maximumPlans).map { "T\($0)" })
     }
@@ -92,9 +143,10 @@ final class TaskNotificationPlannerTests: XCTestCase {
 
     func testIdentifiersCarryThePrefixAndAreUnique() {
         let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-20", line: 0),
-                  task(due: "2026-07-21", line: 1)],
+            for: [task(due: "2026-07-20", time: "10:00", line: 0),
+                  task(due: "2026-07-21", time: "10:00", recurrence: .everyWeekday, line: 1)],
             now: earlyNow, calendar: calendar)
+        XCTAssertEqual(plans.count, 6)
         XCTAssertTrue(plans.allSatisfy {
             $0.identifier.hasPrefix(TaskNotificationPlanner.identifierPrefix)
         })

@@ -5,7 +5,7 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 7): select a vault folder, browse its nested folders and
+Current state (Phase 8): select a vault folder, browse its nested folders and
 Markdown files, and open any note in a live-styled Markdown editor that saves
 automatically as you type. Headers and `**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
@@ -24,13 +24,24 @@ the editor. A Tasks tab collects every line of the exact form
 `- [ ] Task text @due(YYYY-MM-DD)` from across the vault: open tasks are
 sorted by due date (overdue dates shown in red), completed ones listed below,
 and checking a task off rewrites that line in its original Markdown file.
-Tapping a task opens its note. Cove also schedules a local notification for
-each open task, delivered at 9:00 on its due day (the app asks for
-notification permission the first time it has a task to schedule; tasks
-already past that time get none). The vault selection persists across
-launches, and the app recovers gracefully when the saved folder access goes
-stale. Appearance polish, the app icon, and the launch screen arrive in a
-later phase (see [CLAUDE.md](CLAUDE.md) for the roadmap).
+Tapping a task opens its note. New tasks can be typed as one sentence in
+the field at the top of the Tasks tab — "get bread 3p tmr", "laundry every
+sun 6p", "tennis fri" — with common abbreviations for dates ("tdy", "tmr",
+"fri", "next fri"), times ("3p", "6pm", "15:00"), and repeats ("daily",
+"every weekday", "every sun") understood at the end of the sentence. A
+confirmation sheet shows how the sentence was interpreted so you can adjust
+the title, date, time, and repeat before saving; confirmed tasks are
+appended to a `Tasks.md` note at the vault root (created on demand), and a
+line like `- [ ] Get bread @due(2026-07-19 15:00) @repeat(daily)` can
+equally be typed by hand in any note. Tasks with a time get a local
+notification at that moment — recurring tasks on every occurrence — while
+tasks with only a date get none (the app asks for notification permission
+the first time it has something to schedule). Checking off a recurring
+task rolls its due date forward to the next occurrence instead of
+completing it. The vault selection persists across launches, and the app
+recovers gracefully when the saved folder access goes stale. Appearance
+polish, the app icon, and the launch screen arrive in a later phase (see
+[CLAUDE.md](CLAUDE.md) for the roadmap).
 
 ## Supported platforms
 

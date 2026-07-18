@@ -24,6 +24,29 @@ final class VaultFileOperationsTests: XCTestCase {
         fileManager.fileExists(atPath: url(path).path)
     }
 
+    // MARK: - Append
+
+    func testAppendLineCreatesTheNoteOnFirstUse() throws {
+        let destination = try ops.appendLine("- [ ] Get bread @due(2026-07-19 15:00)",
+                                             toNoteNamed: "Tasks.md", in: root)
+        XCTAssertEqual(destination.lastPathComponent, "Tasks.md")
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8),
+                       "- [ ] Get bread @due(2026-07-19 15:00)\n")
+    }
+
+    func testAppendLineAppendsToExistingContentAddingMissingNewline() throws {
+        let file = url("Tasks.md")
+        try "# Tasks\n- [ ] Old @due(2026-07-19)".write(to: file, atomically: true,
+                                                        encoding: .utf8)
+        try ops.appendLine("- [ ] New @due(2026-07-20)", toNoteNamed: "Tasks", in: root)
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), """
+            # Tasks
+            - [ ] Old @due(2026-07-19)
+            - [ ] New @due(2026-07-20)
+
+            """)
+    }
+
     // MARK: - Create
 
     func testCreateNoteAppendsMarkdownExtension() throws {

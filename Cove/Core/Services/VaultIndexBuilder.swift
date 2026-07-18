@@ -16,6 +16,8 @@ struct VaultIndexBuilder: Sendable {
                              lineNumber: parsed.lineNumber,
                              text: parsed.text,
                              dueDateString: parsed.dueDateString,
+                             dueTimeString: parsed.dueTimeString,
+                             recurrence: parsed.recurrence,
                              isCompleted: parsed.isCompleted)
                 }
             return NoteIndexEntry(url: node.url, title: node.displayName, tasks: tasks)

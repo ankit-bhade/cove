@@ -116,12 +116,18 @@ final class VaultManager {
 
     // MARK: - Tasks
 
-    /// Flips one task's checkbox in its original Markdown file: re-reads the
-    /// file, re-finds the task by content, rewrites the line, and rescans so
-    /// the index reflects the change. The tree is refreshed even when the
-    /// toggle fails, so a stale list corrects itself.
+    /// The note at the vault root that quick-added tasks are appended to.
+    /// Created on demand; any existing note with this name is appended to.
+    nonisolated static let quickTaskNoteName = "Tasks.md"
+
+    /// Toggles one task in its original Markdown file: re-reads the file,
+    /// re-finds the task by content, rewrites the line (flipping the status,
+    /// or advancing a recurring task's due date to its next occurrence), and
+    /// rescans so the index reflects the change. The tree is refreshed even
+    /// when the toggle fails, so a stale list corrects itself.
     func toggleTask(_ task: TaskItem) async throws {
         let ops = fileOperations
+        let today = QuickTaskParser.ymdString(from: Date())
         var toggleError: Error?
         do {
             try await Task.detached(priority: .userInitiated) {
@@ -129,8 +135,11 @@ final class VaultManager {
                 guard let updated = TaskParser.togglingTask(
                     withText: task.text,
                     dueDateString: task.dueDateString,
+                    dueTimeString: task.dueTimeString,
+                    recurrence: task.recurrence,
                     isCompleted: task.isCompleted,
                     preferredLineNumber: task.lineNumber,
+                    todayDateString: today,
                     in: text) else {
                     throw TaskChangedOnDiskError()
                 }
@@ -141,6 +150,15 @@ final class VaultManager {
         }
         await refresh()
         if let toggleError { throw toggleError }
+    }
+
+    /// Appends a quick-added task's Markdown line to the capture note at the
+    /// vault root, then rescans (which also reschedules notifications).
+    func captureTask(_ draft: TaskDraft) async throws {
+        guard let vaultURL else { return }
+        let line = draft.markdownLine
+        try await perform { try $0.appendLine(line, toNoteNamed: Self.quickTaskNoteName,
+                                              in: vaultURL) }
     }
 
     /// Runs one coordinated mutation off the main actor, then rescans so the

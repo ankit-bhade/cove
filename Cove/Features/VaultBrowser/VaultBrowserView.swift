@@ -4,6 +4,7 @@ import SwiftUI
 /// navigation into the editor. Folders sort first, then files, alphabetically.
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var namePrompt: NamePrompt?
     @State private var nameInput = ""
@@ -29,7 +30,7 @@ struct VaultBrowserView: View {
                 EditorView(fileURL: node.url)
             }
             .searchable(text: $searchText, prompt: "Search all notes")
-            .navigationTitle(vaultManager.rootNode?.name ?? "Vault")
+            .navigationTitle("Notes")
             .toolbar { toolbarContent }
             .alert(
                 namePrompt?.title ?? "",
@@ -73,32 +74,141 @@ struct VaultBrowserView: View {
     // MARK: - Tree
 
     private var treeList: some View {
-        List(nodes, children: \.children) { node in
-            row(for: node)
-        }
-        .overlay {
+        List {
+            Section {
+                vaultOverview
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+
             if nodes.isEmpty {
-                ContentUnavailableView(
-                    "No Notes",
-                    systemImage: "doc.text",
-                    description: Text("This folder has no Markdown files yet.")
-                )
+                Section {
+                    ContentUnavailableView {
+                        Label("Your Vault Is Ready", systemImage: "doc.badge.plus")
+                    } description: {
+                        Text("Create your first Markdown note with the + button above.")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 34)
+                    .listRowBackground(Color.clear)
+                }
+            } else {
+                Section {
+                    OutlineGroup(nodes, children: \.children) { node in
+                        row(for: node)
+                    }
+                } header: {
+                    Text("Library")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+        #if os(iOS)
+        .listStyle(.insetGrouped)
+        #else
+        .listStyle(.inset)
+        #endif
+        .scrollContentBackground(.hidden)
+        .background(CoveTheme.canvas(for: colorScheme))
+    }
+
+    private var vaultOverview: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 14) {
+                Image("LaunchIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 54, height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: CoveTheme.navy.opacity(0.18), radius: 10, y: 5)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(vaultManager.rootNode?.name ?? "Your Vault")
+                        .font(.title3.weight(.bold))
+                        .lineLimit(1)
+                    Text("Your Markdown workspace")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "checkmark.icloud.fill")
+                    .foregroundStyle(CoveTheme.teal)
+                    .accessibilityLabel("Vault connected")
+            }
+
+            Divider().opacity(0.6)
+
+            HStack(spacing: 24) {
+                overviewStat(value: noteCount, label: noteCount == 1 ? "Note" : "Notes",
+                             systemImage: "doc.text.fill")
+                overviewStat(value: folderCount, label: folderCount == 1 ? "Folder" : "Folders",
+                             systemImage: "folder.fill")
+                Spacer()
+                Text("Auto-saved")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .background { CoveCardBackground() }
+    }
+
+    private func overviewStat(value: Int, label: String, systemImage: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CoveTheme.teal)
+            Text("\(value) \(label)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var noteCount: Int {
+        vaultManager.rootNode?.allFiles.count ?? 0
+    }
+
+    private var folderCount: Int {
+        func count(in nodes: [VaultNode]) -> Int {
+            nodes.reduce(0) { result, node in
+                result + (node.isDirectory ? 1 : 0) + count(in: node.children ?? [])
+            }
+        }
+        return count(in: nodes)
     }
 
     @ViewBuilder
     private func row(for node: VaultNode) -> some View {
         Group {
             if node.isDirectory {
-                Label(node.displayName, systemImage: "folder")
+                nodeLabel(node)
             } else {
                 NavigationLink(value: node) {
-                    Label(node.displayName, systemImage: "doc.text")
+                    nodeLabel(node)
                 }
             }
         }
+        .padding(.vertical, 4)
         .contextMenu { contextMenu(for: node) }
+    }
+
+    private func nodeLabel(_ node: VaultNode) -> some View {
+        HStack(spacing: 11) {
+            CoveIconTile(systemName: node.isDirectory ? "folder.fill" : "doc.text.fill",
+                         tint: node.isDirectory ? CoveTheme.seaGlass : CoveTheme.teal)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(node.displayName)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                if node.isDirectory {
+                    let itemCount = node.children?.count ?? 0
+                    Text("\(itemCount) \(itemCount == 1 ? "item" : "items")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     @ViewBuilder

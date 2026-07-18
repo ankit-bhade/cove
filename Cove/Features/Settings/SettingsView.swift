@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
 
     /// Loaded on appearance and whenever the scene re-activates, so a trip
@@ -17,12 +18,15 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                settingsHeader
                 vaultSection
                 appearanceSection
                 notificationsSection
                 aboutSection
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(CoveTheme.canvas(for: colorScheme))
             .navigationTitle("Settings")
         }
         .task { await refreshNotificationStatus() }
@@ -35,17 +39,49 @@ struct SettingsView: View {
 
     // MARK: - Vault
 
+    private var settingsHeader: some View {
+        Section {
+            HStack(spacing: 15) {
+                Image("LaunchIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 58, height: 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Make Cove Yours")
+                        .font(.title3.weight(.bold))
+                    Text("A focused, private space for your notes.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background { CoveCardBackground() }
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
+
     private var vaultSection: some View {
         Section {
             if let vaultURL = vaultManager.vaultURL {
-                LabeledContent("Vault", value: vaultURL.lastPathComponent)
-                Text(vaultURL.path(percentEncoded: false))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                HStack(alignment: .top, spacing: 12) {
+                    CoveIconTile(systemName: "folder.fill", tint: CoveTheme.seaGlass)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(vaultURL.lastPathComponent)
+                            .font(.body.weight(.semibold))
+                        Text(vaultURL.path(percentEncoded: false))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    }
+                }
             }
             VaultPickerButton(title: "Choose a Different Vault…")
-                .buttonStyle(.borderless)
+                .controlSize(.regular)
         } header: {
             Text("Vault")
         } footer: {
@@ -56,14 +92,24 @@ struct SettingsView: View {
     // MARK: - Appearance
 
     private var appearanceSection: some View {
-        Section("Appearance") {
-            Picker("Appearance", selection: $appearance) {
-                ForEach(AppearanceSetting.allCases) { setting in
-                    Text(setting.label).tag(setting)
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                Label {
+                    Text("Color Theme")
+                        .font(.body.weight(.medium))
+                } icon: {
+                    CoveIconTile(systemName: "circle.lefthalf.filled")
                 }
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppearanceSetting.allCases) { setting in
+                        Text(setting.label).tag(setting)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+        } header: {
+            Text("Appearance")
         }
     }
 
@@ -71,14 +117,31 @@ struct SettingsView: View {
 
     private var notificationsSection: some View {
         Section {
-            LabeledContent("Task Reminders", value: notificationStatusLabel)
+            HStack(spacing: 12) {
+                CoveIconTile(systemName: notificationStatusIcon,
+                             tint: notificationsEnabled ? CoveTheme.teal : .secondary)
+                Text("Task Reminders")
+                    .font(.body.weight(.medium))
+                Spacer()
+                Text(notificationStatusLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(notificationsEnabled ? CoveTheme.teal : .secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background((notificationsEnabled ? CoveTheme.teal : Color.secondary)
+                        .opacity(0.10), in: Capsule())
+            }
             switch notificationStatus {
             case .notDetermined:
-                Button("Enable Notifications") {
+                Button {
                     Task { await requestNotificationPermission() }
+                } label: {
+                    Label("Enable Notifications", systemImage: "bell.badge")
                 }
             case .denied:
-                Button("Open System Settings") { openNotificationSettings() }
+                Button(action: openNotificationSettings) {
+                    Label("Open System Settings", systemImage: "arrow.up.forward.app")
+                }
             default:
                 EmptyView()
             }
@@ -97,6 +160,17 @@ struct SettingsView: View {
         case nil: "…"
         @unknown default: "Unknown"
         }
+    }
+
+    private var notificationsEnabled: Bool {
+        switch notificationStatus {
+        case .authorized, .provisional, .ephemeral: true
+        default: false
+        }
+    }
+
+    private var notificationStatusIcon: String {
+        notificationsEnabled ? "bell.fill" : "bell.slash.fill"
     }
 
     private func refreshNotificationStatus() async {
@@ -127,8 +201,18 @@ struct SettingsView: View {
     // MARK: - About
 
     private var aboutSection: some View {
-        Section("About") {
-            LabeledContent("Version", value: appVersion)
+        Section {
+            HStack(spacing: 12) {
+                CoveIconTile(systemName: "info.circle.fill", tint: CoveTheme.seaGlass)
+                Text("Cove for Markdown")
+                    .font(.body.weight(.medium))
+                Spacer()
+                Text(appVersion)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("About")
         }
     }
 

@@ -9,7 +9,7 @@ struct RootView: View {
         Group {
             switch vaultManager.state {
             case .restoring:
-                ProgressView()
+                CoveLoadingView()
             case .needsVault:
                 WelcomeView()
             case .recoveryNeeded:
@@ -17,12 +17,13 @@ struct RootView: View {
             case .open:
                 TabView {
                     VaultBrowserView()
-                        .tabItem { Label("Notes", systemImage: "folder") }
+                        .tabItem { Label("Notes", systemImage: "folder.fill") }
                     TasksView()
-                        .tabItem { Label("Tasks", systemImage: "checklist") }
+                        .tabItem { Label("Tasks", systemImage: "checkmark.circle.fill") }
                     SettingsView()
-                        .tabItem { Label("Settings", systemImage: "gearshape") }
+                        .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 }
+                .tint(CoveTheme.teal)
             }
         }
         .preferredColorScheme(appearance.colorScheme)
@@ -34,6 +35,31 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, vaultManager.state == .open {
                 Task { await vaultManager.refresh() }
+            }
+        }
+    }
+}
+
+private struct CoveLoadingView: View {
+    var body: some View {
+        ZStack {
+            CoveBrandBackground()
+            VStack(spacing: 18) {
+                Image("LaunchIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 88, height: 88)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .shadow(color: CoveTheme.navy.opacity(0.20), radius: 20, y: 10)
+                VStack(spacing: 6) {
+                    Text("Cove")
+                        .font(.title2.weight(.bold))
+                    Text("Opening your notes…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView()
+                    .tint(CoveTheme.teal)
             }
         }
     }

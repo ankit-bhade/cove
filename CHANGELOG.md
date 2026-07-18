@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refined the interface with a cohesive coastal visual system, branded
+  loading and vault-setup states, dashboard cards for Notes and Tasks,
+  richer file, search, task, settings, and move rows, improved empty states,
+  and a more spacious live Markdown editor (Phase 9)
 - Task notifications now fire at the task's due time; tasks with only a
   due date no longer get a 9:00 notification (Phase 8)
 - Quick task entry now uses the grove-app capture grammar: tokens match

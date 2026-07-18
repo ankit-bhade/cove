@@ -12,10 +12,11 @@ struct MarkdownTextView: UIViewRepresentable {
         let textView = UITextView()
         textView.delegate = context.coordinator
         textView.adjustsFontForContentSizeCategory = true
-        textView.backgroundColor = .systemBackground
+        textView.backgroundColor = .clear
         textView.alwaysBounceVertical = true
         textView.keyboardDismissMode = .interactive
-        textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
+        textView.textContainerInset = UIEdgeInsets(top: 28, left: 24, bottom: 40, right: 24)
+        textView.textContainer.lineFragmentPadding = 0
         // Smart punctuation rewrites Markdown syntax (straight quotes, "--"),
         // so it stays off.
         textView.smartQuotesType = .no

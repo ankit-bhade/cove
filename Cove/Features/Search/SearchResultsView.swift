@@ -7,28 +7,55 @@ struct SearchResultsView: View {
     let query: String
 
     @Environment(VaultManager.self) private var vaultManager
+    @Environment(\.colorScheme) private var colorScheme
     @State private var results: [SearchResult] = []
     @State private var hasSearched = false
 
     private let searcher = NoteSearcher()
 
     var body: some View {
-        List(results) { result in
-            NavigationLink(value: result.node) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Label(result.node.displayName, systemImage: "doc.text")
-                    if let snippet = result.snippet {
-                        Text(snippet)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+        List {
+            if hasSearched, !results.isEmpty {
+                Section {
+                    ForEach(results) { result in
+                        NavigationLink(value: result.node) {
+                            HStack(alignment: .top, spacing: 12) {
+                                CoveIconTile(systemName: "doc.text.fill")
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(result.node.displayName)
+                                        .font(.body.weight(.semibold))
+                                    if let snippet = result.snippet {
+                                        Text(snippet)
+                                            .font(.callout)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                            .lineSpacing(2)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 5)
+                        }
                     }
+                } header: {
+                    Text("\(results.count) \(results.count == 1 ? "result" : "results")")
+                        .font(.caption.weight(.semibold))
                 }
             }
         }
+        #if os(iOS)
+        .listStyle(.insetGrouped)
+        #else
+        .listStyle(.inset)
+        #endif
+        .scrollContentBackground(.hidden)
+        .background(CoveTheme.canvas(for: colorScheme))
         .overlay {
             if hasSearched, results.isEmpty {
-                ContentUnavailableView.search(text: query)
+                ContentUnavailableView {
+                    Label("No Notes Found", systemImage: "magnifyingglass")
+                } description: {
+                    Text("Try a different title or phrase.")
+                }
             }
         }
         .task(id: query) {

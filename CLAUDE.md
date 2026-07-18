@@ -105,8 +105,9 @@ Collect task lines matching exactly:
 Rules:
 
 * This syntax family is fixed; the time and `@repeat` tag are optional,
-  and `@repeat` rules are exactly `daily`, `every weekday`, or
-  `every <weekday name>` (the `@repeat` tag follows the `@due` tag)
+  and `@repeat` rules are `daily`/`weekly`/`monthly`/`yearly`,
+  `every N <days|weeks|months|years>`, `every weekday`, or
+  `every <weekday names>` (the `@repeat` tag follows the `@due` tag)
 * Sort incomplete tasks by due date, then time (date-only tasks first
   within a day)
 * Checking a task updates its original Markdown file; checking an
@@ -114,16 +115,22 @@ Rules:
   occurrence instead of marking it complete
 * Do not support alternate task syntax
 
-The Tasks screen has a quick-entry field that interprets one sentence —
-"get bread 3p tmr", "laundry every sun 6p", "tennis fri" — into a task.
-Trailing tokens name an optional date (`tdy`/`today`,
-`tmr`/`tmrw`/`tom`/`tomorrow`, weekday names and abbreviations,
-`next <weekday>`), an optional time (`3p`, `6pm`, `3:30pm`, 24-hour
-`15:00`), and an optional recurrence (`daily`, `every day`, `everyday`,
-`every weekday`, `weekdays`, `every <weekday>`); everything before them is
-the title. Before saving, the interpreted title, date, time, recurrence,
-and notification are shown for confirmation and editing. Confirmed tasks
-are appended to `Tasks.md` at the vault root, created on demand.
+The Tasks screen has a quick-entry field whose interpreter is a port of
+the grove-app capture parser: tokens are recognized anywhere in the
+sentence and the title is what remains. It understands relative dates
+(`tdy`/`today`, `tmr`/`tmrw`/`tom`/`tomorrow`, `day after tomorrow`,
+`tonight` — 8 PM default, `next week`, weekday names and abbreviations,
+`next <weekday>`, `in 3 days`/`in 2w`/`in 1 month`), explicit dates
+(`sep 12`, `feb 3rd`, `2/3`, `4/15/27`), times (`3p`, `6pm`, `3:30pm`,
+`940p`, `noon`, `midnight`, 24-hour `15:00`, bare `5:30` reading small
+hours as afternoon, ranges like `7-9pm` keeping the start), and
+recurrences (`daily`/`weekly`/`monthly`/`yearly`/`annually`,
+`every day`/`week`/`month`/`year`, `every N <units>`, `every weekday`,
+`every mon wed fri` with comma/`and` lists). A bare time means today,
+even when that moment has passed. Before saving, the interpreted title,
+date, time, recurrence, and notification are shown for confirmation and
+editing. Confirmed tasks are appended to `Tasks.md` at the vault root,
+created on demand.
 
 #### Settings
 
@@ -156,8 +163,9 @@ Use `UNUserNotificationCenter`.
 
 * Schedule notifications only for incomplete tasks that have both a due
   date and a due time; a task with a bare date gets no notification
-* Non-recurring tasks get one notification at their due moment; recurring
-  tasks get repeating calendar triggers covering every occurrence
+* Every notification is a one-shot at the task's due moment; recurring
+  tasks are never scheduled ahead — completing an occurrence rolls the
+  line to the next date, and the rebuild schedules that occurrence
 * Rebuild task notifications when the app enters the foreground or files change
 * Remove previously generated task notifications before rebuilding
 * Do not use push notifications
@@ -325,9 +333,11 @@ merged.
   strictly: no leading indentation, exactly one space after `]` and before
   `@due`, a validated Gregorian date, a validated zero-padded 24-hour time
   when present, a recognized `@repeat` tag when present (parsed by
-  `RecurrenceRule` in `Cove/Core/Models/`: `daily`, `every weekday`, or
-  `every <weekday name>`), and nothing after the last closing parenthesis
-  but trailing whitespace. The status char may be ` `/`x`/`X` (matching the
+  `RecurrenceRule` in `Cove/Core/Models/` — grove-app's recurrence model:
+  a frequency `daily`/`weekly`/`monthly`/`yearly`, an interval, and an
+  optional weekday set for weekly rules, with normalized tags like
+  `daily`, `every 2 weeks`, `every weekday`, `every monday wednesday`),
+  and nothing after the last closing parenthesis but trailing whitespace. The status char may be ` `/`x`/`X` (matching the
   editor's checkbox parser); when the text itself contains `@due(...)`, the
   last one on the line is the tag, and an `@repeat(...)` before the `@due`
   tag is just text. `VaultIndexBuilder` (`Cove/Core/Services/`) walks
@@ -355,19 +365,29 @@ merged.
   the editor through a `URL` navigation destination. The tab refreshes the
   vault on each appearance because editor autosaves don't trigger a rescan.
 * **Quick task entry.** `QuickTaskParser` (pure, in
-  `Cove/Features/Tasks/`, fully unit-tested against a fixed `now`)
+  `Cove/Features/Tasks/`, fully unit-tested against a fixed `now`) is a
+  Swift port of the grove-app capture parser
+  (`grove-app/src/lib/parser/parse.ts`), matching its grammar and
+  resolution rules; its test suite ports grove's `parse.test.ts`. It
   interprets one sentence into a `TaskDraft` (title + resolved
   `YYYY-MM-DD` + optional `HH:MM` + optional `RecurrenceRule`, plus the
-  `markdownLine` it saves as). Scheduling tokens are consumed greedily
-  from the *end* of the sentence — one date, one time, one recurrence, in
-  any order — so scheduling words inside the title survive. Bare numbers
-  are never times (`buy 6 eggs` keeps its 6); a named time that has
-  already passed pushes an *implicit* today forward (to tomorrow, or the
-  next matching occurrence) while an explicit `today` is literal.
-  `TasksView` hosts the entry field; submitting opens `TaskDraftSheet`,
+  `markdownLine` it saves as). Each extractor regex claims the character
+  span it consumed (overlaps lose); the title is the input minus claimed
+  spans, with dangling connectors ("at"/"on"/"due"/"by"/"from") tidied
+  and the first letter capitalized. Grove semantics: tokens match
+  anywhere in the sentence, plain weekdays include today, `next
+  <weekday>` is strictly future, a bare time means today even if the
+  moment has passed, `tonight` defaults to 20:00, and a weekday-set
+  recurrence starts on the soonest listed day. Bare numbers are never
+  times (`buy 6 eggs` keeps its 6; `hw4` is not 4:00). Documented
+  divergences, forced by Cove's fixed rules: no hashtag lists (tags stay
+  in the title), undated input resolves to today (`@due` is mandatory),
+  and a time range (`7-9pm`) keeps only its start time (no calendar
+  events). `TasksView` hosts the entry field; submitting opens `TaskDraftSheet`,
   which shows the interpretation for confirmation — editing the sentence
   re-interprets everything, editing the field controls (title, date, time
-  toggle + picker, recurrence picker) tweaks the draft directly, and a
+  toggle + picker, recurrence picker — presets plus the parsed rule when
+  it isn't one) tweaks the draft directly, and a
   footer row states whether a notification will fire. Confirming calls
   `VaultManager.captureTask`, which appends `draft.markdownLine` to
   `Tasks.md` at the vault root via `VaultFileOperations.appendLine` (a
@@ -376,19 +396,18 @@ merged.
 * **Task notifications.** Split into a pure, unit-tested planner and a thin
   scheduler (both in `Cove/Core/Services/`). `TaskNotificationPlanner` turns
   the task list into `TaskNotificationPlan`s for incomplete tasks *with a
-  due time* only (date-only tasks get none): non-recurring tasks get one
-  one-shot plan at their due moment, skipped once it has passed; recurring
-  tasks get repeating plans at their time — hour/minute components for
-  `daily`, plus a weekday for weekly rules, and five plans (Mon–Fri) for
-  `every weekday`. Plans are ordered soonest-due first and capped at 60
-  after expansion (the system holds at most 64 pending local notifications
+  due time* only (date-only tasks get none): every plan is a one-shot at
+  the task's due moment, skipped once it has passed. Recurring tasks are
+  not scheduled ahead — mirroring grove-app, completing an occurrence
+  rolls the line to the next date and the rebuild that follows schedules
+  that occurrence's notification. Plans are ordered soonest-due first and
+  capped at 60 (the system holds at most 64 pending local notifications
   per app). Identifiers carry the `cove-task:` prefix.
   `TaskNotificationScheduler` (an actor) wraps `UNUserNotificationCenter`:
   each rebuild removes every pending request with that prefix, then — only
   when there is something to schedule — ensures authorization (prompting on
-  first use; a denial silently skips scheduling) and adds one
-  `UNCalendarNotificationTrigger` request per plan (`repeats:` from the
-  plan). Rebuilds are chained through a stored `Task` so overlapping calls
+  first use; a denial silently skips scheduling) and adds one one-shot
+  `UNCalendarNotificationTrigger` request per plan. Rebuilds are chained through a stored `Task` so overlapping calls
   never interleave their remove/add steps. `VaultManager` enqueues a
   rebuild at the end of every successful tree load, which covers launch,
   app-created mutations, external changes, and the scene-activation
@@ -507,20 +526,32 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
   task never notifies, and a timed non-recurring task whose moment has
   passed gets none.
 * At most 60 notification requests are scheduled (soonest due dates win)
-  to stay under the system's 64-pending cap; an `every weekday` task
-  consumes five of them.
-* Repeating triggers have no start or end date: a recurring task due next
-  week still fires this week, and it keeps firing until the task line is
-  completed (which rolls its date forward but keeps the trigger) or
-  removed.
+  to stay under the system's 64-pending cap.
+* Recurring tasks are never scheduled ahead (grove-app semantics): only
+  the current occurrence has a pending notification, and the next one is
+  scheduled only after this device rebuilds following the completion that
+  rolled the line forward. Ignore a recurring task's notification without
+  completing it and no further reminders arrive; the overdue occurrence
+  itself also gets nothing once its moment passes.
+* Advancing an overdue recurring task on completion anchors on the later
+  of the due date and today — a deliberate divergence from grove, which
+  anchors strictly on the completed occurrence's date; Cove's single-line
+  model has no occurrence history to catch up through.
 * Recurrence-aware completion lives only in the Tasks tab. Tapping the
   same line's checkbox in the editor flips it to `[x]` like any checkbox;
   the Tasks tab then shows it as completed rather than rolled forward
   (toggling there flips it back).
-* The quick-entry interpreter is English-only and reads scheduling tokens
-  from the end of the sentence; a date, time, or repeat mentioned
-  mid-sentence stays in the title. Explicit calendar dates ("jul 21",
-  "2026-07-21") aren't recognized — use the sheet's date picker.
+* The quick-entry interpreter is English-only. Grove parity means tokens
+  are consumed anywhere in the sentence: "plan friday party tmr" is due
+  tomorrow and titled "Plan party" — the losing date word still leaves
+  the title. Hashtags are not lists (Cove has no tag feature) and stay in
+  the title; ISO dates ("2026-07-21") aren't in grove's grammar — use
+  slash or month-name dates, or the sheet's date picker.
+* A bare time stays on today even when that moment has passed (grove
+  parity): "standup 9a" typed at 10:00 lands today, already overdue, and
+  gets no notification. Add a date word if tomorrow was meant.
+* Time ranges ("dinner 7-9pm") keep only the start time; Cove has no
+  calendar events, so the end time is dropped.
 * Quick-added tasks always land in `Tasks.md` at the vault root; the
   capture note isn't configurable. If iCloud syncs in a folder named
   `Tasks.md`, capture fails with an error alert.

@@ -45,14 +45,14 @@ final class TaskNotificationPlannerTests: XCTestCase {
         XCTAssertEqual(plans.count, 1)
         XCTAssertEqual(plans.first?.title, "Get bread")
         XCTAssertEqual(plans.first?.body, "Due 2026-07-19 15:00 · Tasks")
-        XCTAssertEqual(plans.first?.repeats, false)
         XCTAssertEqual(plans.first?.fireDateComponents,
                        DateComponents(year: 2026, month: 7, day: 19, hour: 15, minute: 0))
     }
 
     func testDateOnlyTasksGetNoNotification() {
         let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-20")],
+            for: [task(due: "2026-07-20"),
+                  task(due: "2026-07-21", recurrence: RecurrenceRule(frequency: .daily))],
             now: earlyNow, calendar: calendar)
         XCTAssertTrue(plans.isEmpty)
     }
@@ -81,44 +81,28 @@ final class TaskNotificationPlannerTests: XCTestCase {
         XCTAssertEqual(plans.count, 1)
     }
 
-    // MARK: - Recurring tasks
+    // MARK: - Recurring tasks (one-shot at the next occurrence, grove-style)
 
-    func testWeeklyTaskGetsOneRepeatingPlan() {
+    func testRecurringTaskGetsOneShotAtItsDueMoment() {
         let plans = TaskNotificationPlanner.plans(
             for: [task(text: "Laundry", due: "2026-07-19", time: "18:00",
-                       recurrence: .weekly(weekday: 1), file: "Chores")],
+                       recurrence: RecurrenceRule(frequency: .weekly, byWeekday: [1]),
+                       file: "Chores")],
             now: earlyNow, calendar: calendar)
         XCTAssertEqual(plans.count, 1)
-        XCTAssertEqual(plans.first?.repeats, true)
-        XCTAssertEqual(plans.first?.body, "Every Sunday at 18:00 · Chores")
+        XCTAssertEqual(plans.first?.body, "Due 2026-07-19 18:00 · Every Sunday · Chores")
         XCTAssertEqual(plans.first?.fireDateComponents,
-                       DateComponents(hour: 18, minute: 0, weekday: 1))
+                       DateComponents(year: 2026, month: 7, day: 19, hour: 18, minute: 0))
     }
 
-    func testDailyTaskRepeatsWithoutWeekday() {
+    func testOverdueRecurringTaskIsNotScheduled() {
+        // Grove never schedules ahead: a stale occurrence gets nothing; the
+        // rebuild after completing it schedules the next one.
+        let now = date(2026, 7, 20, hour: 16)
         let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-19", time: "08:30", recurrence: .daily)],
-            now: earlyNow, calendar: calendar)
-        XCTAssertEqual(plans.count, 1)
-        XCTAssertEqual(plans.first?.repeats, true)
-        XCTAssertEqual(plans.first?.fireDateComponents,
-                       DateComponents(hour: 8, minute: 30))
-    }
-
-    func testEveryWeekdayExpandsToFivePlans() {
-        let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-20", time: "09:00", recurrence: .everyWeekday)],
-            now: earlyNow, calendar: calendar)
-        XCTAssertEqual(plans.count, 5)
-        XCTAssertEqual(plans.map { $0.fireDateComponents.weekday! }, [2, 3, 4, 5, 6])
-        XCTAssertTrue(plans.allSatisfy(\.repeats))
-        XCTAssertEqual(Set(plans.map(\.identifier)).count, 5)
-    }
-
-    func testRecurringTaskWithoutTimeGetsNoNotification() {
-        let plans = TaskNotificationPlanner.plans(
-            for: [task(due: "2026-07-19", recurrence: .daily)],
-            now: earlyNow, calendar: calendar)
+            for: [task(due: "2026-07-19", time: "18:00",
+                       recurrence: RecurrenceRule(frequency: .daily))],
+            now: now, calendar: calendar)
         XCTAssertTrue(plans.isEmpty)
     }
 
@@ -144,9 +128,10 @@ final class TaskNotificationPlannerTests: XCTestCase {
     func testIdentifiersCarryThePrefixAndAreUnique() {
         let plans = TaskNotificationPlanner.plans(
             for: [task(due: "2026-07-20", time: "10:00", line: 0),
-                  task(due: "2026-07-21", time: "10:00", recurrence: .everyWeekday, line: 1)],
+                  task(due: "2026-07-21", time: "10:00",
+                       recurrence: .everyWeekday, line: 1)],
             now: earlyNow, calendar: calendar)
-        XCTAssertEqual(plans.count, 6)
+        XCTAssertEqual(plans.count, 2)
         XCTAssertTrue(plans.allSatisfy {
             $0.identifier.hasPrefix(TaskNotificationPlanner.identifierPrefix)
         })

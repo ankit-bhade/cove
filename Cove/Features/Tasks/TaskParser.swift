@@ -33,7 +33,7 @@ enum TaskParser {
     }
 
     private static let taskLineRegex = try! NSRegularExpression(
-        pattern: #"^- \[([ xX])\] (\S(?:.*\S)?) @due\(((\d{4})-(\d{2})-(\d{2}))( (\d{2}):(\d{2}))?\)( @repeat\(([a-z ]+)\))?[ \t]*$"#)
+        pattern: #"^- \[([ xX])\] (\S(?:.*\S)?) @due\(((\d{4})-(\d{2})-(\d{2}))( (\d{2}):(\d{2}))?\)( @repeat\(([a-z0-9 ]+)\))?[ \t]*$"#)
 
     private static let gregorian = Calendar(identifier: .gregorian)
 

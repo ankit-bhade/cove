@@ -25,20 +25,24 @@ the editor. A Tasks tab collects every line of the exact form
 sorted by due date (overdue dates shown in red), completed ones listed below,
 and checking a task off rewrites that line in its original Markdown file.
 Tapping a task opens its note. New tasks can be typed as one sentence in
-the field at the top of the Tasks tab — "get bread 3p tmr", "laundry every
-sun 6p", "tennis fri" — with common abbreviations for dates ("tdy", "tmr",
-"fri", "next fri"), times ("3p", "6pm", "15:00"), and repeats ("daily",
-"every weekday", "every sun") understood at the end of the sentence. A
-confirmation sheet shows how the sentence was interpreted so you can adjust
-the title, date, time, and repeat before saving; confirmed tasks are
-appended to a `Tasks.md` note at the vault root (created on demand), and a
-line like `- [ ] Get bread @due(2026-07-19 15:00) @repeat(daily)` can
-equally be typed by hand in any note. Tasks with a time get a local
-notification at that moment — recurring tasks on every occurrence — while
-tasks with only a date get none (the app asks for notification permission
-the first time it has something to schedule). Checking off a recurring
-task rolls its due date forward to the next occurrence instead of
-completing it. The vault selection persists across launches, and the app
+the field at the top of the Tasks tab — "get bread 3p tmr", "gym every mon
+wed 6a", "rent 2/3", "meeting next fri 2pm". The interpreter (a port of
+the grove-app capture parser) understands relative dates ("tdy", "tmr",
+"day after tomorrow", "tonight", "next week", "next fri", "in 3 days"),
+explicit dates ("sep 12", "feb 3rd", "2/3", "4/15/27"), times ("3p",
+"6pm", "3:30pm", "940p", "noon", "midnight", "15:00", ranges like
+"7-9pm"), and repeats ("daily", "every 2 weeks", "every weekday", "every
+mon wed fri", "monthly") anywhere in the sentence; what's left over is the
+title. A confirmation sheet shows how the sentence was interpreted so you
+can adjust the title, date, time, and repeat before saving; confirmed
+tasks are appended to a `Tasks.md` note at the vault root (created on
+demand), and a line like `- [ ] Get bread @due(2026-07-19 15:00)
+@repeat(every 2 weeks)` can equally be typed by hand in any note. Tasks
+with a time get one local notification at that moment, and completing a
+recurring task rolls it to the next occurrence, whose notification is
+scheduled in turn; tasks with only a date get none (the app asks for
+notification permission the first time it has something to schedule).
+The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. Appearance
 polish, the app icon, and the launch screen arrive in a later phase (see
 [CLAUDE.md](CLAUDE.md) for the roadmap).

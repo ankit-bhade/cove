@@ -14,7 +14,12 @@ struct RootView: View {
             case .recoveryNeeded:
                 VaultRecoveryView()
             case .open:
-                VaultBrowserView()
+                TabView {
+                    VaultBrowserView()
+                        .tabItem { Label("Notes", systemImage: "folder") }
+                    TasksView()
+                        .tabItem { Label("Tasks", systemImage: "checklist") }
+                }
             }
         }
         .task {

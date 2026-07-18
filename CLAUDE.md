@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 5 — full-text search.**
+**Current phase: Phase 6 — task parsing and Tasks screen.**
 
-Status: Phase 5 implemented. See CHANGELOG.md for merged work.
+Status: Phase 6 implemented. See CHANGELOG.md for merged work.
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -284,18 +284,43 @@ merged.
   while inactive and for non-iCloud vaults.
 * **Search.** `NoteSearcher` (`Sendable`, in `Cove/Features/Search/`) runs
   one on-demand pass per query: it flattens the already-scanned tree into its
-  files (`allFiles`), reads each with `VaultFileOperations.readNote`
+  files (`VaultNode.allFiles`), reads each with `VaultFileOperations.readNote`
   (coordinated), and matches title and contents case- and
   diacritic-insensitively; the pure matching/flattening helpers are
   unit-tested. `search` is a nonisolated async function, so callers hop off
-  the main actor and cancellation stops the file loop between reads. No index
-  is built or persisted. `VaultBrowserView` gains a `.searchable` field:
+  the main actor and cancellation stops the file loop between reads.
+  `VaultBrowserView` gains a `.searchable` field:
   a non-empty query swaps the tree for `SearchResultsView`, which debounces
   via `.task(id: query)` + 300 ms sleep (a superseding keystroke cancels the
   sleeping task) and navigates through the browser's existing
   `navigationDestination(for: VaultNode.self)` into the editor. Results show
   the trimmed first matching content line as a snippet (nil for title-only
-  matches) in tree order.
+  matches) in tree order. Search does not use the in-memory task index; no
+  search index is built or persisted.
+* **Tasks and the in-memory index.** `TaskParser` (pure Foundation, in
+  `Cove/Features/Tasks/`, fully unit-tested) matches the fixed syntax
+  `- [ ] Task text @due(YYYY-MM-DD)` line by line, strictly: no leading
+  indentation, exactly one space after `]` and before `@due`, a validated
+  Gregorian date, and nothing after the closing parenthesis but trailing
+  whitespace. The status char may be ` `/`x`/`X` (matching the editor's
+  checkbox parser); when the text itself contains `@due(...)`, the last one
+  on the line is the tag. `VaultIndexBuilder` (`Cove/Core/Services/`) walks
+  the scanned tree's files with coordinated reads and produces `VaultIndex`
+  (`Cove/Core/Models/`): one entry per file with path, title, and
+  `TaskItem`s. `VaultManager` rebuilds the index inside every tree load —
+  launch, app-created mutations, external changes, and explicit refreshes —
+  in the same detached task as the scan. `toggleTask` re-reads the task's
+  file, re-finds the task by content (`text` + due date + state, preferring
+  the remembered line number among duplicates so duplicate task lines toggle
+  correctly), flips the status character, saves coordinated, and rescans;
+  if the task can't be re-found it throws `TaskChangedOnDiskError` after
+  still refreshing, and `TasksView` shows an alert. Due-date sorting
+  compares the zero-padded `YYYY-MM-DD` strings (lexicographic order is
+  chronological). `TasksView` sits in a `TabView` beside the browser
+  (`RootView`): open tasks sorted by due date with overdue dates in red,
+  completed tasks below, checkbox buttons toggle, and rows navigate to the
+  editor through a `URL` navigation destination. The tab refreshes the
+  vault on each appearance because editor autosaves don't trigger a rescan.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files
@@ -392,4 +417,16 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
   showing — edit the query (or reopen search) to re-run it.
 * Search matches are line-based: the snippet is the first matching line, and
   a query spanning a line break won't match.
-* Phase 6+ features (tasks, notifications) are intentionally absent.
+* Every index rebuild reads every Markdown file (launch, each mutation, each
+  external change event, each Tasks-tab appearance). Fine for typical
+  vaults; very large vaults would want incremental indexing.
+* The Tasks tab can lag reality between rebuilds: a task typed in the editor
+  appears only after the tab is revisited (its appearance triggers a
+  refresh) or another rescan fires. Toggling a task that meanwhile changed
+  on disk shows a "changed on disk" alert and refreshes the list instead of
+  writing.
+* The task syntax is enforced strictly (per spec): an indented task line, a
+  double space after the marker, or an invalid calendar date silently keeps
+  the line out of the Tasks screen even though the editor still styles its
+  checkbox.
+* Phase 7+ features (notifications) are intentionally absent.

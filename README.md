@@ -5,7 +5,7 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 5): select a vault folder, browse its nested folders and
+Current state (Phase 6): select a vault folder, browse its nested folders and
 Markdown files, and open any note in a live-styled Markdown editor that saves
 automatically as you type. Headers and `**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
@@ -20,10 +20,14 @@ separate conflict copy). Vaults outside iCloud Drive refresh whenever the
 app returns to the foreground. The search field in the browser searches every
 note's title and contents as you type (case-insensitively, with no stored
 index — files are read on demand), and selecting a result opens that note in
-the editor. The vault selection persists across launches, and the app
-recovers gracefully when the saved folder access goes stale. Tasks and
-notifications arrive in later phases (see [CLAUDE.md](CLAUDE.md) for the
-roadmap).
+the editor. A Tasks tab collects every line of the exact form
+`- [ ] Task text @due(YYYY-MM-DD)` from across the vault: open tasks are
+sorted by due date (overdue dates shown in red), completed ones listed below,
+and checking a task off rewrites that line in its original Markdown file.
+Tapping a task opens its note. The vault selection persists across launches,
+and the app recovers gracefully when the saved folder access goes stale.
+Task notifications arrive in a later phase (see [CLAUDE.md](CLAUDE.md) for
+the roadmap).
 
 ## Supported platforms
 

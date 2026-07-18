@@ -23,7 +23,7 @@ struct NoteSearcher: Sendable {
         guard !query.isEmpty else { return [] }
 
         var results: [SearchResult] = []
-        for node in Self.allFiles(under: root) {
+        for node in root.allFiles {
             try Task.checkCancellation()
             let titleMatches = Self.matches(query, in: node.displayName)
             let snippet = (try? fileOperations.readNote(at: node.url))
@@ -33,13 +33,6 @@ struct NoteSearcher: Sendable {
             }
         }
         return results
-    }
-
-    /// Flattens the tree into its files, preserving the scanner's
-    /// folders-first alphabetical order.
-    static func allFiles(under node: VaultNode) -> [VaultNode] {
-        guard let children = node.children else { return [node] }
-        return children.flatMap { allFiles(under: $0) }
     }
 
     /// Trimmed first line containing the query, or nil if no line matches.

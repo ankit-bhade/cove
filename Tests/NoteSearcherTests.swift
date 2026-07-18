@@ -59,7 +59,7 @@ final class NoteSearcherTests: XCTestCase {
     // MARK: - Tree flattening
 
     func testAllFilesFlattensTreeInDisplayOrder() throws {
-        let files = NoteSearcher.allFiles(under: try scannedTree())
+        let files = try scannedTree().allFiles
         XCTAssertEqual(files.map(\.name), ["Plan.md", "Groceries.md", "Journal.md"])
         XCTAssertTrue(files.allSatisfy { !$0.isDirectory })
     }

@@ -15,3 +15,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live Markdown styling in the editor: headers, bold, and tappable checkboxes (Phase 3)
 - iCloud change detection and external-edit refreshing (Phase 4)
 - Full-text search across all Markdown files (Phase 5)
+- Task parsing and Tasks screen with an in-memory vault index (Phase 6)

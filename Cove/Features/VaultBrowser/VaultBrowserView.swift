@@ -10,6 +10,7 @@ struct VaultBrowserView: View {
     @State private var nodeToMove: VaultNode?
     @State private var nodeToDelete: VaultNode?
     @State private var errorMessage: String?
+    @State private var searchText = ""
 
     private var nodes: [VaultNode] {
         vaultManager.rootNode?.children ?? []
@@ -17,21 +18,17 @@ struct VaultBrowserView: View {
 
     var body: some View {
         NavigationStack {
-            List(nodes, children: \.children) { node in
-                row(for: node)
+            Group {
+                if searchText.isEmpty {
+                    treeList
+                } else {
+                    SearchResultsView(query: searchText)
+                }
             }
             .navigationDestination(for: VaultNode.self) { node in
                 EditorView(fileURL: node.url)
             }
-            .overlay {
-                if nodes.isEmpty {
-                    ContentUnavailableView(
-                        "No Notes",
-                        systemImage: "doc.text",
-                        description: Text("This folder has no Markdown files yet.")
-                    )
-                }
-            }
+            .searchable(text: $searchText, prompt: "Search all notes")
             .navigationTitle(vaultManager.rootNode?.name ?? "Vault")
             .toolbar { toolbarContent }
             .alert(
@@ -73,7 +70,22 @@ struct VaultBrowserView: View {
         }
     }
 
-    // MARK: - Rows
+    // MARK: - Tree
+
+    private var treeList: some View {
+        List(nodes, children: \.children) { node in
+            row(for: node)
+        }
+        .overlay {
+            if nodes.isEmpty {
+                ContentUnavailableView(
+                    "No Notes",
+                    systemImage: "doc.text",
+                    description: Text("This folder has no Markdown files yet.")
+                )
+            }
+        }
+    }
 
     @ViewBuilder
     private func row(for node: VaultNode) -> some View {

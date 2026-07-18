@@ -49,6 +49,27 @@ final class NoteDocument {
         }
     }
 
+    /// Re-reads the file after an external change signal and adopts the disk
+    /// contents — but only when there are no unsaved local edits. With edits
+    /// pending, the local text wins and the next autosave writes it out;
+    /// iCloud surfaces a true both-sides conflict as a separate conflict
+    /// copy, which is never auto-resolved. A vanished file is left to the
+    /// existing missing-file handling in `saveNote`.
+    func reloadAfterExternalChange() async {
+        guard loadState == .loaded else { return }
+        let ops = fileOperations
+        let url = fileURL
+        let diskContents = try? await Task.detached(priority: .userInitiated) {
+            try ops.readNote(at: url)
+        }.value
+        guard let contents = diskContents,
+              contents != lastSavedText, text == lastSavedText else { return }
+        // lastSavedText first, so the `text` didSet sees no difference and
+        // does not schedule an autosave for content already on disk.
+        lastSavedText = contents
+        text = contents
+    }
+
     /// Cancels any pending autosave and writes immediately. Called when the
     /// editor disappears or the app leaves the foreground.
     func saveNow() async {

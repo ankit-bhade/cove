@@ -152,6 +152,35 @@ final class VaultManager {
         if let toggleError { throw toggleError }
     }
 
+    /// Deletes one task's line from its original Markdown file: re-reads the
+    /// file, re-finds the task by content, drops the whole line, and rescans.
+    /// The tree is refreshed even when the delete fails, so a stale list
+    /// corrects itself rather than offering the same phantom row again.
+    func deleteTask(_ task: TaskItem) async throws {
+        let ops = fileOperations
+        var deleteError: Error?
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                let text = try ops.readNote(at: task.fileURL)
+                guard let updated = TaskParser.removingTask(
+                    withText: task.text,
+                    dueDateString: task.dueDateString,
+                    dueTimeString: task.dueTimeString,
+                    recurrence: task.recurrence,
+                    isCompleted: task.isCompleted,
+                    preferredLineNumber: task.lineNumber,
+                    in: text) else {
+                    throw TaskChangedOnDiskError()
+                }
+                try ops.saveNote(updated, to: task.fileURL)
+            }.value
+        } catch {
+            deleteError = error
+        }
+        await refresh()
+        if let deleteError { throw deleteError }
+    }
+
     /// Removes all completed Cove task lines from their original Markdown
     /// notes, then rebuilds the index even if one of the file writes fails.
     func clearCompletedTasks() async throws {

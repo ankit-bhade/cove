@@ -13,6 +13,9 @@ struct TasksView: View {
     @State private var pendingDraft: PendingDraft?
     @State private var isClearingCompleted = false
     @State private var showsClearCompletedConfirmation = false
+    /// Ticks each minute so "Overdue" and "Today" stay accurate while the
+    /// tab sits open across a due moment or across midnight.
+    @State private var now = Date()
 
     /// The sentence and its interpretation, handed to the confirmation
     /// sheet together so reopening the sheet always matches the field.
@@ -77,6 +80,12 @@ struct TasksView: View {
                 .task {
                     await vaultManager.refresh()
                 }
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(60))
+                        now = Date()
+                    }
+                }
         }
     }
 
@@ -85,25 +94,26 @@ struct TasksView: View {
         let completed = vaultManager.index.completedTasks
         return List {
             Section {
-                quickCaptureCard(openCount: incomplete.count, completedCount: completed.count)
+                quickCaptureCard(openCount: incomplete.count)
                     .listRowInsets(CoveTheme.dashboardRowInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
-            if !incomplete.isEmpty {
+            ForEach(TaskGroup.grouping(incomplete, now: now)) { group in
                 Section {
-                    ForEach(incomplete) { task in
-                        row(for: task)
+                    ForEach(group.tasks) { task in
+                        row(for: task, now: now)
                     }
                 } header: {
-                    Text("Open · \(incomplete.count)")
+                    Label(group.title, systemImage: group.symbol)
                         .font(.caption.weight(.semibold))
+                        .foregroundStyle(group.isOverdue ? Color.red : .secondary)
                 }
             }
             if !completed.isEmpty {
                 Section {
                     ForEach(completed) { task in
-                        row(for: task)
+                        row(for: task, now: now)
                     }
                 } header: {
                     HStack {
@@ -131,25 +141,14 @@ struct TasksView: View {
                 }
             }
         }
-        #if os(iOS)
-        .listStyle(.insetGrouped)
-        #else
-        .listStyle(.inset)
-        #endif
-        .scrollContentBackground(.hidden)
-        .background(CoveTheme.canvas(for: colorScheme))
+        .coveListStyle()
     }
 
-    private func quickCaptureCard(openCount: Int, completedCount: Int) -> some View {
+    private func quickCaptureCard(openCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Quick Capture")
-                        .font(.headline)
-                    Text("Write naturally. Cove will find the date and time.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Quick Capture")
+                    .font(.headline)
                 Spacer()
                 HStack(spacing: 5) {
                     Image(systemName: "circle")
@@ -160,16 +159,27 @@ struct TasksView: View {
             }
 
             HStack(spacing: 10) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(CoveTheme.brandGradient, in: Circle())
                 TextField("e.g. Get bread tomorrow at 3pm", text: $quickEntry)
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                     .onSubmit(presentDraft)
                     .submitLabel(.done)
+                // Previously a decorative glyph that looked tappable and did
+                // nothing. It is now the actual submit action, and it leads
+                // the trailing edge so the field reads left-to-right.
+                Button(action: presentDraft) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(canCapture ? AnyShapeStyle(CoveTheme.brandGradient)
+                                    : AnyShapeStyle(Color.secondary.opacity(0.4)),
+                                    in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canCapture)
+                .animation(.easeInOut(duration: 0.15), value: canCapture)
+                .accessibilityLabel("Interpret and add task")
             }
             .padding(11)
             .background(CoveTheme.canvas(for: colorScheme),
@@ -179,15 +189,13 @@ struct TasksView: View {
                     .stroke(CoveTheme.border(for: colorScheme), lineWidth: 1)
             }
 
-            if completedCount > 0 {
-                Label("\(completedCount) completed across your vault",
-                      systemImage: "checkmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .padding(18)
         .background { CoveCardBackground() }
+    }
+
+    private var canCapture: Bool {
+        !quickEntry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Interprets the quick-entry sentence and opens the confirmation sheet.
@@ -198,73 +206,91 @@ struct TasksView: View {
                                     draft: QuickTaskParser.parse(sentence, now: .now))
     }
 
-    private func row(for task: TaskItem) -> some View {
-        HStack(alignment: .top, spacing: 11) {
+    private func row(for task: TaskItem, now: Date) -> some View {
+        let overdue = task.isOverdue(at: now)
+        return HStack(alignment: .top, spacing: 11) {
             Button {
                 toggle(task)
             } label: {
                 Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 21, weight: .medium))
                     .foregroundStyle(task.isCompleted ? Color.secondary : CoveTheme.teal)
+                    // The glyph alone is a small target; padding brings the
+                    // hit area up to the 44pt minimum without moving it.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.top, 2)
+            .offset(x: -10)
+            .padding(.trailing, -10)
             .accessibilityLabel(task.isCompleted ? "Mark incomplete"
                                 : task.recurrence == nil ? "Mark complete"
                                 : "Complete and reschedule")
 
             NavigationLink(value: task.fileURL) {
-                VStack(alignment: .leading, spacing: 7) {
+                // The source note is deliberately not shown: tasks nearly
+                // always live in the capture note, so the row read as a
+                // repeated "Tasks" caption under every task.
+                VStack(alignment: .leading, spacing: 5) {
                     Text(task.text)
                         .font(.body.weight(.medium))
                         .strikethrough(task.isCompleted)
                         .foregroundStyle(task.isCompleted ? .secondary : .primary)
                     HStack(spacing: 7) {
-                        dueLabel(for: task)
+                        dueLabel(for: task, overdue: overdue, now: now)
                         if let rule = task.recurrence {
                             Label(rule.displayName, systemImage: "repeat")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    Label(task.fileTitle, systemImage: "doc.text")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
+                .padding(.vertical, 2)
             }
         }
-        .padding(.vertical, 5)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                delete(task)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .contextMenu {
+            Button(role: .destructive) {
+                delete(task)
+            } label: {
+                Label("Delete Task", systemImage: "trash")
+            }
+        }
     }
 
-    private func dueLabel(for task: TaskItem) -> some View {
-        let overdue = isOverdue(task)
+    private func dueLabel(for task: TaskItem, overdue: Bool, now: Date) -> some View {
+        let tint: Color = overdue ? .red
+            : task.isDue(onSameDayAs: now) ? CoveTheme.teal
+            : .secondary
         return HStack(spacing: 5) {
-            Image(systemName: overdue ? "exclamationmark.circle.fill" : "calendar")
-            Group {
-                if let moment = task.dueDateTime {
-                    Text(moment,
-                         format: .dateTime.day().month(.abbreviated).year().hour().minute())
-                } else if let date = task.dueDate {
-                    Text(date, format: .dateTime.day().month(.abbreviated).year())
-                } else {
-                    Text(task.dueDateString)
-                }
-            }
+            Image(systemName: overdue ? "exclamationmark.circle.fill"
+                  : task.dueTimeString != nil ? "clock" : "calendar")
+            Text(task.relativeDueDescription(at: now))
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(overdue ? Color.red : CoveTheme.teal)
+        .foregroundStyle(tint)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background((overdue ? Color.red : CoveTheme.teal).opacity(0.10), in: Capsule())
+        .background(tint.opacity(0.10), in: Capsule())
     }
 
-    /// Overdue when the due day is past, or the due moment today is past.
-    private func isOverdue(_ task: TaskItem) -> Bool {
-        guard !task.isCompleted else { return false }
-        if let moment = task.dueDateTime {
-            return moment < .now
+    /// Removes the task's line from its note. Deliberately not confirmed —
+    /// a swipe (or a context-menu pick) is already a deliberate gesture, and
+    /// the bulk Clear All is the destructive action worth a dialog.
+    private func delete(_ task: TaskItem) {
+        Task {
+            do {
+                try await vaultManager.deleteTask(task)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
-        return task.dueDateString < QuickTaskParser.ymdString(from: .now)
     }
 
     private func toggle(_ task: TaskItem) {

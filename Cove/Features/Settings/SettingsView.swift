@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
+    @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
 
     /// Loaded on appearance and whenever the scene re-activates, so a trip
     /// to the system settings is reflected on return.
@@ -18,15 +19,12 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                settingsHeader
                 vaultSection
+                nameSection
                 appearanceSection
                 notificationsSection
-                aboutSection
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(CoveTheme.canvas(for: colorScheme))
+            .coveFormStyle()
             .navigationTitle("Settings")
         }
         .task { await refreshNotificationStatus() }
@@ -38,31 +36,6 @@ struct SettingsView: View {
     }
 
     // MARK: - Vault
-
-    private var settingsHeader: some View {
-        Section {
-            HStack(spacing: 15) {
-                Image("LaunchIcon")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 58, height: 58)
-                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Make Cove Yours")
-                        .font(.title3.weight(.bold))
-                    Text("A focused, private space for your notes.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background { CoveCardBackground() }
-            .listRowInsets(CoveTheme.dashboardRowInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-        }
-    }
 
     private var vaultSection: some View {
         Section {
@@ -86,6 +59,26 @@ struct SettingsView: View {
             Text("Vault")
         } footer: {
             Text("Selecting a new folder replaces the current vault. Your files are never moved or deleted.")
+        }
+    }
+
+    // MARK: - Name
+
+    private var nameSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                CoveIconTile(systemName: "hand.wave.fill", tint: CoveTheme.seaGlass)
+                TextField("Your name", text: $greetingName)
+                    .textFieldStyle(.plain)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.words)
+                    #endif
+                    .autocorrectionDisabled()
+            }
+        } header: {
+            Text("Greeting")
+        } footer: {
+            Text("Used in the greeting on the Notes screen. Leave it blank to keep greetings impersonal.")
         }
     }
 
@@ -198,28 +191,4 @@ struct SettingsView: View {
         #endif
     }
 
-    // MARK: - About
-
-    private var aboutSection: some View {
-        Section {
-            HStack(spacing: 12) {
-                CoveIconTile(systemName: "info.circle.fill", tint: CoveTheme.seaGlass)
-                Text("Cove for Markdown")
-                    .font(.body.weight(.medium))
-                Spacer()
-                Text(appVersion)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("About")
-        }
-    }
-
-    private var appVersion: String {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "—"
-        let build = info?["CFBundleVersion"] as? String ?? "—"
-        return "\(version) (\(build))"
-    }
 }

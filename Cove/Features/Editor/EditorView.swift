@@ -49,11 +49,17 @@ struct EditorView: View {
         #endif
         .toolbar {
             ToolbarItem {
-                Label("Auto-save", systemImage: "checkmark.icloud.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Changes save automatically")
+                saveStatusIndicator
             }
+            #if os(iOS)
+            // A UITextView has no return key to dismiss with, so without an
+            // explicit action the keyboard covers the note with no way out.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { dismissKeyboard() }
+                    .fontWeight(.semibold)
+            }
+            #endif
         }
         .task {
             await document.load()
@@ -71,6 +77,60 @@ struct EditorView: View {
         }
         .onChange(of: vaultManager.externalChangeCount) { _, _ in
             Task { await document.reloadAfterExternalChange() }
+        }
+    }
+
+    /// Reflects the document's real state rather than asserting that saving
+    /// happens. Silent once everything is on disk: a permanent "Saved" chip
+    /// is chrome that also reads as a button it isn't, and the failure case
+    /// already has the banner above.
+    @ViewBuilder
+    private var saveStatusIndicator: some View {
+        let status = document.saveStatus
+        if document.loadState == .loaded, status != .saved, status != .failed {
+            Label(status.label, systemImage: status.symbol)
+                // The toolbar collapses a Label to its icon by default,
+                // which loses the only part that carries the meaning.
+                .labelStyle(.titleAndIcon)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(status.accessibilityLabel)
+        }
+    }
+
+    #if os(iOS)
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
+    }
+    #endif
+}
+
+private extension NoteDocument.SaveStatus {
+    var label: String {
+        switch self {
+        case .saved: "Saved"
+        case .pending: "Editing…"
+        case .saving: "Saving…"
+        case .failed: "Not Saved"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .saved: "checkmark.circle.fill"
+        case .pending: "pencil.circle"
+        case .saving: "arrow.triangle.2.circlepath"
+        case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .saved: "All changes saved"
+        case .pending: "Unsaved changes, saving shortly"
+        case .saving: "Saving"
+        case .failed: "Save failed"
         }
     }
 }

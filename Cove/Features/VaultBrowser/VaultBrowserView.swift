@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// In-place, level-by-level vault browser with mutations and editor
-/// navigation. Each folder shows a scoped overview of the content beneath it.
+/// Level-by-level vault browser with mutations and editor navigation. Each
+/// folder is pushed onto the navigation stack and shows a scoped overview of
+/// the content beneath it.
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
-    @Environment(\.colorScheme) private var colorScheme
+    /// Set in Settings; empty means the greetings stay impersonal.
+    @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
 
     @State private var namePrompt: NamePrompt?
     @State private var nameInput = ""
@@ -12,14 +14,17 @@ struct VaultBrowserView: View {
     @State private var nodeToDelete: VaultNode?
     @State private var errorMessage: String?
     @State private var searchText = ""
-    /// Folder browsing stays within this screen. Only notes are pushed onto
-    /// the NavigationStack, which keeps folder changes immediate and lets the
-    /// overview and rows update in place.
+    /// Drives the navigation stack directly: each folder is a real push, so
+    /// the system back button, its parent-folder title, and the iOS
+    /// swipe-back gesture all work the way they do everywhere else.
     @State private var folderPath: [URL] = []
 
     var body: some View {
-        NavigationStack {
-            browserLevel(folderURL: folderPath.last)
+        NavigationStack(path: $folderPath) {
+            browserLevel(folderURL: nil)
+                .navigationDestination(for: URL.self) { folderURL in
+                    browserLevel(folderURL: folderURL)
+                }
                 .navigationDestination(for: VaultNode.self) { node in
                     EditorView(fileURL: node.url)
                 }
@@ -41,9 +46,16 @@ struct VaultBrowserView: View {
             isPresented: dismissBinding($namePrompt),
             presenting: namePrompt
         ) { prompt in
-            TextField("Name", text: $nameInput)
+            TextField(prompt.placeholder, text: $nameInput)
+                #if os(iOS)
+                .textInputAutocapitalization(.words)
+                #endif
+                .autocorrectionDisabled()
             Button("Cancel", role: .cancel) {}
+            // An empty name always fails validation downstream, so the
+            // confirm button stays inert rather than opening an error alert.
             Button(prompt.confirmTitle) { submit(prompt) }
+                .disabled(trimmedName.isEmpty)
         }
         .sheet(item: $nodeToMove) { node in
             MoveDestinationPicker(node: node) { destination in
@@ -90,16 +102,6 @@ struct VaultBrowserView: View {
         .searchable(text: $searchText, prompt: "Search all notes")
         .navigationTitle(folderURL == nil ? "Notes" : folder?.displayName ?? "Folder")
         .toolbar {
-            if !folderPath.isEmpty {
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        folderPath.removeLast()
-                    } label: {
-                        Label("Back", systemImage: "chevron.left")
-                    }
-                    .accessibilityHint("Returns to the parent folder")
-                }
-            }
             if let destinationURL {
                 toolbarContent(in: destinationURL)
             }
@@ -142,13 +144,7 @@ struct VaultBrowserView: View {
                 }
             }
         }
-        #if os(iOS)
-        .listStyle(.insetGrouped)
-        #else
-        .listStyle(.inset)
-        #endif
-        .scrollContentBackground(.hidden)
-        .background(CoveTheme.canvas(for: colorScheme))
+        .coveListStyle()
     }
 
     private func folderNode(at folderURL: URL?) -> VaultNode? {
@@ -170,7 +166,7 @@ struct VaultBrowserView: View {
 
         return TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: 18) {
-                Text(greeting(for: context.date))
+                Text(Greeting.text(for: context.date, name: greetingName))
                     .font(.title3.weight(.semibold))
 
                 HStack(spacing: 0) {
@@ -224,33 +220,15 @@ struct VaultBrowserView: View {
         }
     }
 
-    private func greeting(for date: Date) -> String {
-        switch Calendar.current.component(.hour, from: date) {
-        case 0..<12: "Good morning"
-        case 12..<17: "Good afternoon"
-        default: "Good evening"
-        }
-    }
-
     // MARK: - Rows
 
     @ViewBuilder
     private func row(for node: VaultNode) -> some View {
         Group {
             if node.isDirectory {
-                Button {
-                    folderPath.append(node.url)
-                } label: {
-                    HStack {
-                        nodeLabel(node)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .contentShape(Rectangle())
+                NavigationLink(value: node.url) {
+                    nodeLabel(node)
                 }
-                .buttonStyle(.plain)
             } else {
                 NavigationLink(value: node) {
                     nodeLabel(node)
@@ -345,13 +323,18 @@ struct VaultBrowserView: View {
 
     // MARK: - Actions
 
+    private var trimmedName: String {
+        nameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func present(_ prompt: NamePrompt) {
         nameInput = prompt.initialText
         namePrompt = prompt
     }
 
     private func submit(_ prompt: NamePrompt) {
-        let name = nameInput
+        let name = trimmedName
+        guard !name.isEmpty else { return }
         run {
             switch prompt.kind {
             case .newNote(let folder):
@@ -400,6 +383,16 @@ struct NamePrompt: Identifiable {
         case .newNote: "New Note"
         case .newFolder: "New Folder"
         case .rename(let node): node.isDirectory ? "Rename Folder" : "Rename Note"
+        }
+    }
+
+    /// Names the thing being created or renamed, so the field isn't a bare
+    /// "Name" with no hint of what it belongs to.
+    var placeholder: String {
+        switch kind {
+        case .newNote: "Note name"
+        case .newFolder: "Folder name"
+        case .rename(let node): node.isDirectory ? "Folder name" : "Note name"
         }
     }
 

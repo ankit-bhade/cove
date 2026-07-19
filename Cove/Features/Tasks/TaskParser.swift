@@ -111,15 +111,13 @@ enum TaskParser {
                              preferredLineNumber: Int,
                              todayDateString: String,
                              in fileText: String) -> String? {
-        let candidates = tasks(in: fileText).filter {
-            $0.text == taskText
-                && $0.dueDateString == dueDateString
-                && $0.dueTimeString == dueTimeString
-                && $0.recurrence == recurrence
-                && $0.isCompleted == isCompleted
-        }
-        guard let match = candidates.first(where: { $0.lineNumber == preferredLineNumber })
-                ?? candidates.first else { return nil }
+        guard let match = matchingTask(withText: taskText,
+                                       dueDateString: dueDateString,
+                                       dueTimeString: dueTimeString,
+                                       recurrence: recurrence,
+                                       isCompleted: isCompleted,
+                                       preferredLineNumber: preferredLineNumber,
+                                       in: fileText) else { return nil }
 
         if let rule = match.recurrence, !match.isCompleted {
             let base = max(match.dueDateString, todayDateString)
@@ -129,6 +127,48 @@ enum TaskParser {
         }
         return (fileText as NSString)
             .replacingCharacters(in: match.statusRange, with: isCompleted ? " " : "x")
+    }
+
+    /// Returns `fileText` with the matching task's whole line removed, or nil
+    /// if no task in the text matches. Re-finds the task the same way
+    /// `togglingTask` does, so a line that changed on disk is left alone and
+    /// the caller can report it instead of deleting the wrong task.
+    static func removingTask(withText taskText: String,
+                             dueDateString: String,
+                             dueTimeString: String?,
+                             recurrence: RecurrenceRule?,
+                             isCompleted: Bool,
+                             preferredLineNumber: Int,
+                             in fileText: String) -> String? {
+        guard let match = matchingTask(withText: taskText,
+                                       dueDateString: dueDateString,
+                                       dueTimeString: dueTimeString,
+                                       recurrence: recurrence,
+                                       isCompleted: isCompleted,
+                                       preferredLineNumber: preferredLineNumber,
+                                       in: fileText) else { return nil }
+        return (fileText as NSString).replacingCharacters(in: match.lineRange, with: "")
+    }
+
+    /// Re-finds one indexed task in a fresh read of its file: among tasks with
+    /// the same text, schedule, and state, the one on the remembered line wins
+    /// (in case of duplicates), falling back to the first if lines shifted.
+    private static func matchingTask(withText taskText: String,
+                                     dueDateString: String,
+                                     dueTimeString: String?,
+                                     recurrence: RecurrenceRule?,
+                                     isCompleted: Bool,
+                                     preferredLineNumber: Int,
+                                     in fileText: String) -> ParsedTask? {
+        let candidates = tasks(in: fileText).filter {
+            $0.text == taskText
+                && $0.dueDateString == dueDateString
+                && $0.dueTimeString == dueTimeString
+                && $0.recurrence == recurrence
+                && $0.isCompleted == isCompleted
+        }
+        return candidates.first(where: { $0.lineNumber == preferredLineNumber })
+            ?? candidates.first
     }
 
     /// Removes every completed line matching Cove's strict task syntax while

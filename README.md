@@ -6,10 +6,12 @@ folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
 Current state (Phase 9 — all build phases complete): select a vault folder,
-browse its nested folders in place, and open any note in a live-styled
-Markdown editor that saves automatically as you type. Each folder level opens
-instantly in the existing Notes screen, updating its time-aware greeting and
-compact count of direct folders, deeper subfolders, and notes. Headers and
+browse its nested folders, and open any note in a live-styled
+Markdown editor that saves automatically as you type. Opening a folder pushes
+it onto the Notes screen, so the system back button and the iOS swipe-back
+gesture return you to its parent; each level shows a time-aware greeting —
+which varies through the day and can address you by name, set in Settings —
+and a compact count of direct folders, deeper subfolders, and notes. Headers and
 `**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
 click. Notes and folders can be created, renamed, moved, and deleted from the
@@ -25,11 +27,15 @@ note's title and contents as you type (case-insensitively, with no stored
 index — files are read on demand), and selecting a result opens that note in
 the editor. A Tasks tab collects every line of the exact form
 `- [ ] Task text @due(YYYY-MM-DD)` from across the vault: open tasks are
-sorted by due date (overdue dates shown in red), completed ones listed below,
+sorted by due date and grouped into Overdue, Today, Tomorrow, and Upcoming
+sections, with due dates written the way you'd say them ("Today, 3:00 PM",
+"Tomorrow", "Friday", "Jul 24") and overdue ones shown in red. Completed
+tasks are listed below,
 and checking a task off rewrites that line in its original Markdown file.
 The completed section has a Clear All action that, after confirmation,
-removes every completed Cove task line from its original note. Tapping a task
-opens its note. New tasks can be typed as one sentence in
+removes every completed Cove task line from its original note. A single task
+can be deleted by swiping its row (or right-clicking it), which removes that
+line from its note. Tapping a task opens its note. New tasks can be typed as one sentence in
 the field at the top of the Tasks tab — "get bread 3p tmr", "gym every mon
 wed 6a", "rent 2/3", "meeting next fri 2pm". The interpreter (a port of
 the grove-app capture parser) understands relative dates ("tdy", "tmr",
@@ -51,9 +57,9 @@ details use a compact friendly date such as `Jul 18, 8:00pm.`
 The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same
-flow that recovers a stale selection), switches between system, light, and
-dark appearance, and shows whether notification permission is granted, with
-a shortcut to enable it. The app has its own icon and launch screen — the
+flow that recovers a stale selection), takes the name used in the Notes
+greeting, switches between system, light, and dark appearance, and shows
+whether notification permission is granted, with a shortcut to enable it. The app has its own icon and launch screen — the
 `cove` wordmark over layered waves, its `o` a sun in light appearance and a
 full moon in dark. The
 interface uses a cohesive coastal navy-and-teal visual system derived from

@@ -6,7 +6,6 @@ import SwiftUI
 struct MoveDestinationPicker: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
 
     let node: VaultNode
     let onPick: (URL) -> Void
@@ -40,6 +39,7 @@ struct MoveDestinationPicker: View {
     var body: some View {
         NavigationStack {
             List(destinations) { destination in
+                let isCurrent = destination.url.standardizedFileURL.path == currentParentPath
                 Button {
                     onPick(destination.url)
                     dismiss()
@@ -48,19 +48,24 @@ struct MoveDestinationPicker: View {
                         CoveIconTile(systemName: "folder.fill", tint: CoveTheme.seaGlass)
                         Text(destination.name)
                             .font(.body.weight(.medium))
+                        Spacer()
+                        // Without this the row is simply inert, which reads
+                        // as a bug rather than as "it is already here".
+                        if isCurrent {
+                            Text("Current")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(.secondary.opacity(0.12), in: Capsule())
+                        }
                     }
                     .padding(.vertical, 3)
                     .padding(.leading, CGFloat(destination.depth) * 20)
                 }
-                .disabled(destination.url.standardizedFileURL.path == currentParentPath)
+                .disabled(isCurrent)
             }
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
-            .scrollContentBackground(.hidden)
-            .background(CoveTheme.canvas(for: colorScheme))
+            .coveListStyle()
             .navigationTitle("Move “\(node.displayName)”")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

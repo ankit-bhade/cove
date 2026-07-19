@@ -38,6 +38,35 @@ enum CoveTheme {
     }
 }
 
+/// The shared list/form chrome: platform-appropriate grouped style over
+/// Cove's own canvas. Every scrolling screen uses this so backgrounds,
+/// insets, and separators stay identical across the app.
+private struct CoveScrollBackground: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .background(CoveTheme.canvas(for: colorScheme))
+    }
+}
+
+extension View {
+    /// Applies Cove's grouped list styling and canvas background.
+    func coveListStyle() -> some View {
+        #if os(iOS)
+        self.listStyle(.insetGrouped).modifier(CoveScrollBackground())
+        #else
+        self.listStyle(.inset).modifier(CoveScrollBackground())
+        #endif
+    }
+
+    /// Applies Cove's grouped form styling and canvas background.
+    func coveFormStyle() -> some View {
+        formStyle(.grouped).modifier(CoveScrollBackground())
+    }
+}
+
 /// A reusable raised surface used for dashboard-style cards.
 struct CoveCardBackground: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -57,17 +86,25 @@ struct CoveCardBackground: View {
 }
 
 /// Compact branded icon treatment shared by rows and settings sections.
+/// Purely decorative: the surrounding row always carries the real label, so
+/// the tile is hidden from VoiceOver rather than read out as its symbol name.
+/// The tile scales with Dynamic Type so large text sizes stay balanced.
 struct CoveIconTile: View {
     let systemName: String
     var tint: Color = CoveTheme.teal
 
+    @ScaledMetric(relativeTo: .body) private var side: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var glyph: CGFloat = 14
+
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: glyph, weight: .semibold))
             .foregroundStyle(tint)
-            .frame(width: 30, height: 30)
-            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 9,
-                                                                 style: .continuous))
+            .frame(width: side, height: side)
+            .background(tint.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: side * 0.3,
+                                             style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 

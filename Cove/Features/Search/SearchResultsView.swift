@@ -7,9 +7,9 @@ struct SearchResultsView: View {
     let query: String
 
     @Environment(VaultManager.self) private var vaultManager
-    @Environment(\.colorScheme) private var colorScheme
     @State private var results: [SearchResult] = []
     @State private var hasSearched = false
+    @State private var isSearching = false
 
     private let searcher = NoteSearcher()
 
@@ -42,15 +42,18 @@ struct SearchResultsView: View {
                 }
             }
         }
-        #if os(iOS)
-        .listStyle(.insetGrouped)
-        #else
-        .listStyle(.inset)
-        #endif
-        .scrollContentBackground(.hidden)
-        .background(CoveTheme.canvas(for: colorScheme))
+        .coveListStyle()
         .overlay {
-            if hasSearched, results.isEmpty {
+            if isSearching {
+                // The debounce plus a full-vault read is long enough that a
+                // blank list reads as "no matches" instead of "working".
+                VStack(spacing: 12) {
+                    ProgressView().tint(CoveTheme.teal)
+                    Text("Searching your notes…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } else if hasSearched, results.isEmpty {
                 ContentUnavailableView {
                     Label("No Notes Found", systemImage: "magnifyingglass")
                 } description: {
@@ -58,6 +61,7 @@ struct SearchResultsView: View {
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.15), value: isSearching)
         .task(id: query) {
             await runSearch()
         }
@@ -70,15 +74,19 @@ struct SearchResultsView: View {
         guard !query.isEmpty, let root = vaultManager.rootNode else {
             results = []
             hasSearched = false
+            isSearching = false
             return
         }
+        isSearching = true
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
         do {
             results = try await searcher.search(for: query, in: root)
             hasSearched = true
+            isSearching = false
         } catch {
-            // Cancelled by a newer query; its task will publish results.
+            // Cancelled by a newer query; its task will publish results and
+            // owns the spinner from here, so leave `isSearching` alone.
         }
     }
 }

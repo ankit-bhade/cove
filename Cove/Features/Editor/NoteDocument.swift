@@ -12,11 +12,28 @@ final class NoteDocument {
         case failed(String)
     }
 
+    /// What the editor should tell the reader about unwritten edits.
+    enum SaveStatus: Equatable {
+        case saved
+        case pending
+        case saving
+        case failed
+    }
+
     static let autosaveDelay: Duration = .seconds(1)
 
     let fileURL: URL
     private(set) var loadState: LoadState = .loading
     private(set) var saveErrorDescription: String?
+    private(set) var isSaving = false
+
+    /// Derived from the live text versus what actually reached disk, so the
+    /// editor's indicator can never disagree with the document's real state.
+    var saveStatus: SaveStatus {
+        if saveErrorDescription != nil { return .failed }
+        if isSaving { return .saving }
+        return text == lastSavedText ? .saved : .pending
+    }
 
     var text: String = "" {
         didSet {
@@ -92,6 +109,8 @@ final class NoteDocument {
         let ops = fileOperations
         let url = fileURL
         let contents = text
+        isSaving = true
+        defer { isSaving = false }
         do {
             try await Task.detached(priority: .userInitiated) {
                 try ops.saveNote(contents, to: url)

@@ -274,7 +274,15 @@ merged.
   autosave (1 s after typing stops), and `saveNow()` flushes on view
   disappearance and when the app leaves the foreground. `saveNote` refuses to
   write if the file is gone, so a pending autosave never resurrects a
-  renamed/moved/deleted note. `MarkdownTextView` is a plain-text
+  renamed/moved/deleted note. `saveStatus` derives
+  `saved`/`pending`/`saving`/`failed` from the live text versus what reached
+  disk, so the editor's toolbar indicator cannot disagree with reality; it
+  renders only while `pending`/`saving` (a permanent "Saved" chip is chrome
+  that also reads as a button it isn't, and the failure case already has the
+  banner), and forces `.labelStyle(.titleAndIcon)` because the toolbar
+  otherwise collapses the label to its icon and drops the meaning. On iOS a
+  `.keyboard`-placement Done button dismisses the keyboard, which a
+  `UITextView` has no return key to do. `MarkdownTextView` is a plain-text
   `UITextView`/`NSTextView` representable pair (same type name, one per
   platform under `Cove/Platform/`, `#if os(...)`-guarded, distinct file
   basenames — identical basenames in one target collide in the build system).
@@ -324,7 +332,10 @@ merged.
   sleeping task) and navigates through the browser's existing
   `navigationDestination(for: VaultNode.self)` into the editor. Results show
   the trimmed first matching content line as a snippet (nil for title-only
-  matches) in tree order. Search does not use the in-memory task index; no
+  matches) in tree order. A spinner covers the debounce and the full-vault
+  read, since a blank list otherwise reads as "no matches" rather than
+  "working"; a cancelled run leaves the flag to the newer query that
+  superseded it. Search does not use the in-memory task index; no
   search index is built or persisted.
 * **Tasks and the in-memory index.** `TaskParser` (pure Foundation, in
   `Cove/Features/Tasks/`, fully unit-tested) matches the fixed syntax
@@ -354,7 +365,14 @@ merged.
   date and today (the checkbox stays open — the line is the task's single
   home), while every other toggle flips the status character. If the task
   can't be re-found it throws `TaskChangedOnDiskError` after still
-  refreshing, and `TasksView` shows an alert. `clearCompletedTasks` groups
+  refreshing, and `TasksView` shows an alert. `deleteTask` follows the same
+  re-find-then-rewrite path (`TaskParser.removingTask`, sharing the private
+  `matchingTask` matcher with `togglingTask`) but drops the whole
+  `lineRange`, so a line that changed on disk raises
+  `TaskChangedOnDiskError` instead of deleting the wrong task; it is
+  reachable from a row's trailing swipe action and its context menu, and is
+  deliberately unconfirmed (the gesture is already deliberate; the bulk
+  Clear All is the action that warrants a dialog). `clearCompletedTasks` groups
   the indexed completed tasks by source note, re-reads each note, removes
   every currently completed strict task line while preserving all other
   Markdown and line endings, saves through `VaultFileOperations`, and
@@ -362,10 +380,22 @@ merged.
   `(dueDateString, dueTimeString ?? "", fileTitle, lineNumber)` — the
   zero-padded strings order chronologically, with date-only tasks first
   within a day. `TasksView` sits in a `TabView` beside the browser
-  (`RootView`): open tasks sorted by due date with overdue moments in red
-  (time-aware for timed tasks), completed tasks below, checkbox buttons
+  (`RootView`): open tasks sorted by due date, completed tasks below,
+  checkbox buttons
   toggle, recurrence shown as a `repeat`-icon label, and rows navigate to
-  the editor through a `URL` navigation destination. The completed-section
+  the editor through a `URL` navigation destination. A row shows only its
+  text and schedule: the source note's title is deliberately omitted, since
+  tasks nearly all live in the capture note and the caption repeated
+  "Tasks" under every row. Display logic lives in
+  `TaskPresentation.swift` (pure, unit-tested against a fixed `now`):
+  `TaskGroup.grouping` partitions the already-sorted open tasks into
+  Overdue/Today/Tomorrow/Upcoming — partitioning only, so the spec's
+  ordering is untouched and empty sections vanish — and
+  `relativeDueDescription` writes dates as "Today, 3:00 PM", "Tomorrow",
+  a weekday name inside the coming week, then "Jul 24", adding the year
+  only when it differs from the current one. `TasksView` holds a `now`
+  that a `.task` loop ticks each minute, so overdue and Today stay true
+  while the tab sits open across a due moment or midnight. The completed-section
   header includes a destructive Clear All button with a confirmation dialog.
   The tab refreshes the
   vault on each appearance because editor autosaves don't trigger a rescan.
@@ -425,10 +455,13 @@ merged.
   is a third tab beside Notes and Tasks, shown when a vault is open: the
   current vault's name and path with the shared `VaultPickerButton`
   reselect flow (the same recovery path as the welcome/stale screens), a
-  system/light/dark segmented picker, notification permission status
+  greeting-name field, a
+  system/light/dark segmented picker, and notification permission status
   (refreshed on appearance and scene re-activation) with an
-  Enable-Notifications request or an Open-System-Settings shortcut, and
-  the app version. `AppearanceSetting` (a `String` enum persisted under
+  Enable-Notifications request or an Open-System-Settings shortcut. There
+  is no About section: the app's identity and version are visible from the
+  system, and a personal-use app doesn't need the row.
+  `AppearanceSetting` (a `String` enum persisted under
   the `@AppStorage` key `appearanceSetting`, unit-tested) maps to an
   optional `ColorScheme`; `RootView` applies `preferredColorScheme`
   around every vault state, so the preference also covers the welcome and
@@ -453,19 +486,36 @@ merged.
 * **Visual system.** `CoveTheme` (`Cove/App/`) centralizes the icon-derived
   navy/teal/sea-glass palette, adaptive light/dark canvas and surface colors,
   brand gradient, card treatment, grouped-row card insets, and compact icon
-  tiles. Setup, loading,
+  tiles. `.coveListStyle()` / `.coveFormStyle()` carry the platform-grouped
+  style plus the canvas background, so every scrolling screen shares one
+  definition instead of repeating the `#if os(iOS)` block. `CoveIconTile` is
+  decorative: it is `accessibilityHidden` (the surrounding row carries the
+  label) and sized with `@ScaledMetric` so it tracks Dynamic Type. Setup,
+  loading,
   Notes, search, Tasks, task confirmation, move, editor, and Settings screens
   share those primitives. The richer presentation remains standard SwiftUI
   and platform text views only; it adds no assets beyond the existing
   `LaunchIcon`, no dependencies, and no persistence changes.
 * **Level-aware Notes browser.** `VaultBrowserView` presents one folder level
-  at a time rather than an inline recursive outline. Folder rows update an
-  internal URL path so the title, overview, and rows change within the same
-  browser screen; the leading back action removes one path component. File
+  at a time rather than an inline recursive outline. `folderPath` is bound
+  directly to `NavigationStack(path:)`, so a folder row is a real push
+  (`navigationDestination(for: URL.self)` re-entering `browserLevel`) and the
+  system back button, its parent-folder title, and the iOS swipe-back gesture
+  all work — the earlier in-place swap had none of those and needed a custom
+  back button. File
   rows push the editor, and global search still resolves through the shared
   `VaultNode` navigation destination. Every level has the same
-  create/refresh tools and a compact card with a morning/afternoon/evening
-  greeting set in a restrained title-3 semibold style. Its counts are scoped
+  create/refresh tools and a compact card with a time-of-day greeting set in
+  a restrained title-3 semibold style. `Greeting`
+  (`Cove/Features/VaultBrowser/Greeting.swift`, pure and unit-tested) owns
+  the text: seven stretches of the day (late night, early morning, morning,
+  midday, afternoon, evening, night), each with several phrases in a named
+  (`%@`) and a plain form, so an unset name never leaves a dangling comma.
+  The pick is seeded by the day ordinal plus the stretch index, so the
+  browser's once-a-minute `TimelineView` tick can't reshuffle the phrase
+  mid-read while a new day or stretch still changes it. The name is an
+  `@AppStorage` string under `greetingName`, set in Settings and
+  whitespace-trimmed. Its counts are scoped
   to that folder: direct child folders,
   deeper descendant folders, and all Markdown notes in the subtree. The card
   intentionally omits the app icon and the old “Your Markdown workspace”
@@ -594,7 +644,14 @@ problems as build warnings, not errors.
   appears only after the tab is revisited (its appearance triggers a
   refresh) or another rescan fires. Toggling a task that meanwhile changed
   on disk shows a "changed on disk" alert and refreshes the list instead of
-  writing.
+  writing (deleting one behaves the same way).
+* Deleting a task is immediate and unconfirmed, and there is no undo — the
+  line is gone from the note as soon as the swipe completes. Deliberate
+  (a swipe is already an intentional gesture), but worth knowing.
+* A task row no longer names its source note, so tasks kept in notes other
+  than `Tasks.md` are indistinguishable in the list until opened. Fine for
+  the intended single-capture-note workflow; a vault that scatters tasks
+  across many notes would want the caption back.
 * The task syntax is enforced strictly (per spec): an indented task line, a
   double space after the marker, an invalid calendar date or time, or an
   unknown `@repeat` rule silently keeps the line out of the Tasks screen
@@ -646,6 +703,21 @@ problems as build warnings, not errors.
 * The Settings tab's notification status is polled on appearance and scene
   re-activation, not live; granting permission in the system settings shows
   up when the app returns to the foreground.
+* The editor's save indicator is present only while edits are unwritten, so
+  it appears on the first keystroke and disappears about a second after
+  typing stops. That is intentional (a permanent "Saved" chip is noise), but
+  it does mean the toolbar's trailing item comes and goes while typing.
+* The Tasks tab's minute tick re-evaluates the list body, which re-groups and
+  re-formats every row. Cheap at typical task counts; a very large task list
+  would want the tick narrowed to the rows that can actually change.
+* `TaskItem.dueDate` resolves through `Calendar.current`, so
+  `TaskPresentation`'s day arithmetic is local-calendar bound.
+  `TaskPresentationTests` therefore builds its fixed `now` values with
+  `Calendar.current` rather than the UTC calendar the notification-planner
+  tests use.
+* On iOS 26 a pushed folder level collapses the `.searchable` field into the
+  toolbar rather than showing it under the title as the root level does.
+  That is the system's own behavior for pushed levels, not a Cove layout bug.
 * The launch screen is iOS-only (`UILaunchScreen` has no macOS equivalent);
   macOS windows simply open with the app's content.
 * The app icon PNGs are generated artwork checked into the asset catalog.

@@ -8,7 +8,7 @@ struct SettingsView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
     @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
 
@@ -25,6 +25,7 @@ struct SettingsView: View {
                 notificationsSection
             }
             .coveFormStyle()
+            .coveReadableWidth(680)
             .navigationTitle("Settings")
         }
         .task { await refreshNotificationStatus() }
@@ -53,7 +54,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            VaultPickerButton(title: "Choose a Different Vault…")
+            VaultPickerButton(title: "Choose a Different Vault…", prominent: false)
                 .controlSize(.regular)
         } header: {
             Text("Vault")
@@ -110,19 +111,17 @@ struct SettingsView: View {
 
     private var notificationsSection: some View {
         Section {
-            HStack(spacing: 12) {
-                CoveIconTile(systemName: notificationStatusIcon,
-                             tint: notificationsEnabled ? CoveTheme.teal : .secondary)
-                Text("Task Reminders")
-                    .font(.body.weight(.medium))
-                Spacer()
-                Text(notificationStatusLabel)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(notificationsEnabled ? CoveTheme.teal : .secondary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background((notificationsEnabled ? CoveTheme.teal : Color.secondary)
-                        .opacity(0.10), in: Capsule())
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    notificationLabel
+                    notificationBadge
+                }
+            } else {
+                HStack(spacing: 12) {
+                    notificationLabel
+                    Spacer()
+                    notificationBadge
+                }
             }
             switch notificationStatus {
             case .notDetermined:
@@ -143,6 +142,26 @@ struct SettingsView: View {
         } footer: {
             Text("Tasks with a due time get a reminder at that moment. Tasks with only a date don’t notify.")
         }
+    }
+
+    private var notificationLabel: some View {
+        Label {
+            Text("Task Reminders")
+                .font(.body.weight(.medium))
+        } icon: {
+            CoveIconTile(systemName: notificationStatusIcon,
+                         tint: notificationsEnabled ? CoveTheme.teal : .secondary)
+        }
+    }
+
+    private var notificationBadge: some View {
+        Text(notificationStatusLabel)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(notificationsEnabled ? CoveTheme.teal : .secondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background((notificationsEnabled ? CoveTheme.teal : Color.secondary)
+                .opacity(0.10), in: Capsule())
     }
 
     private var notificationStatusLabel: String {

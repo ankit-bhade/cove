@@ -61,11 +61,16 @@ struct MoveDestinationPicker: View {
                         }
                     }
                     .padding(.vertical, 3)
-                    .padding(.leading, CGFloat(destination.depth) * 20)
+                    // Deep vaults should still leave room for the folder
+                    // name; cap visual indentation while preserving order.
+                    .padding(.leading, CGFloat(min(destination.depth, 4)) * 16)
                 }
                 .disabled(isCurrent)
+                .accessibilityHint(isCurrent ? "Already contains this item"
+                                   : "Moves the item into this folder")
             }
             .coveListStyle()
+            .coveReadableWidth(620)
             .navigationTitle("Move “\(node.displayName)”")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

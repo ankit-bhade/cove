@@ -65,7 +65,13 @@ full moon in dark. The
 interface uses a cohesive coastal navy-and-teal visual system derived from
 that artwork, with branded setup and loading states, vault and task overview
 cards, richer file and task rows, polished empty and search states, and a more
-spacious writing canvas.
+spacious writing canvas. On Mac, Notes, Tasks, and Settings live in a native
+branded sidebar; iPhone and iPad keep the familiar tab bar. Wide screens use
+comfortable readable content widths, the editor keeps long lines under
+control, refresh actions show their progress, and compact layouts adapt for
+large text and short windows without hiding primary controls. Command-R
+refreshes the current screen, and Command-N creates a note from the Notes
+screen.
 
 ## Supported platforms
 

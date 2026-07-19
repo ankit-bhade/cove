@@ -4,6 +4,7 @@ struct RootView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
+    @State private var selectedSection: AppSection = .notes
 
     var body: some View {
         Group {
@@ -15,15 +16,7 @@ struct RootView: View {
             case .recoveryNeeded:
                 VaultRecoveryView()
             case .open:
-                TabView {
-                    VaultBrowserView()
-                        .tabItem { Label("Notes", systemImage: "folder.fill") }
-                    TasksView()
-                        .tabItem { Label("Tasks", systemImage: "checkmark.circle.fill") }
-                    SettingsView()
-                        .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                }
-                .tint(CoveTheme.teal)
+                appNavigation
             }
         }
         .preferredColorScheme(appearance.colorScheme)
@@ -36,6 +29,84 @@ struct RootView: View {
             if newPhase == .active, vaultManager.state == .open {
                 Task { await vaultManager.refresh() }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var appNavigation: some View {
+        #if os(macOS)
+        NavigationSplitView {
+            List(AppSection.allCases, selection: $selectedSection) { section in
+                Label(section.title, systemImage: section.symbol)
+                    .tag(section)
+                    .padding(.vertical, 3)
+            }
+            .safeAreaInset(edge: .top) {
+                HStack(spacing: 10) {
+                    Image("LaunchIcon")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 34, height: 34)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Cove")
+                            .font(.headline)
+                        Text("Markdown, at home")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .accessibilityElement(children: .combine)
+            }
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
+        } detail: {
+            sectionView(selectedSection)
+        }
+        .navigationSplitViewStyle(.balanced)
+        #else
+        TabView(selection: $selectedSection) {
+            ForEach(AppSection.allCases) { section in
+                sectionView(section)
+                    .tabItem { Label(section.title, systemImage: section.symbol) }
+                    .tag(section)
+            }
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func sectionView(_ section: AppSection) -> some View {
+        switch section {
+        case .notes: VaultBrowserView()
+        case .tasks: TasksView()
+        case .settings: SettingsView()
+        }
+    }
+}
+
+private enum AppSection: String, CaseIterable, Identifiable {
+    case notes
+    case tasks
+    case settings
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .notes: "Notes"
+        case .tasks: "Tasks"
+        case .settings: "Settings"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .notes: "folder.fill"
+        case .tasks: "checkmark.circle.fill"
+        case .settings: "gearshape.fill"
         }
     }
 }
@@ -61,6 +132,8 @@ private struct CoveLoadingView: View {
                 ProgressView()
                     .tint(CoveTheme.teal)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Opening your notes")
         }
     }
 }

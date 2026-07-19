@@ -60,11 +60,11 @@ struct TaskDraftSheet: View {
                 }
 
                 Section("Details") {
-                    LabeledContent {
-                        TextField("Title", text: $draft.title)
-                            .multilineTextAlignment(.trailing)
-                    } label: {
+                    VStack(alignment: .leading, spacing: 8) {
                         Label("Title", systemImage: "textformat")
+                            .font(.subheadline.weight(.medium))
+                        TextField("Task title", text: $draft.title, axis: .vertical)
+                            .lineLimit(1...3)
                     }
                     DatePicker(selection: dateBinding, displayedComponents: .date) {
                         Label("Date", systemImage: "calendar")
@@ -107,6 +107,7 @@ struct TaskDraftSheet: View {
                 }
             }
             .coveFormStyle()
+            .coveReadableWidth(680)
             .navigationTitle("New Task")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

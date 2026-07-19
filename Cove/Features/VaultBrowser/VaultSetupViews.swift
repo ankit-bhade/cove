@@ -5,12 +5,18 @@ struct WelcomeView: View {
     var body: some View {
         ZStack {
             CoveBrandBackground()
-            setupCard(
-                title: "Welcome to Cove",
-                message: "A quiet home for the Markdown notes you already own.",
-                detail: "Choose any folder to begin. Cove keeps your files local and saves every edit automatically."
-            ) {
-                VaultPickerButton(title: "Choose a Notes Folder")
+            GeometryReader { proxy in
+                ScrollView {
+                    setupCard(
+                        title: "Welcome to Cove",
+                        message: "A quiet home for the Markdown notes you already own.",
+                        detail: "Choose any folder to begin. Cove keeps your files local and saves every edit automatically."
+                    ) {
+                        VaultPickerButton(title: "Choose a Notes Folder")
+                    }
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                }
+                .scrollIndicators(.hidden)
             }
         }
     }
@@ -28,6 +34,7 @@ struct WelcomeView: View {
                 .frame(width: 112, height: 112)
                 .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .shadow(color: CoveTheme.navy.opacity(0.22), radius: 24, y: 12)
+                .accessibilityHidden(true)
             VStack(spacing: 10) {
                 Text(title)
                     .font(.largeTitle.weight(.bold))
@@ -44,7 +51,8 @@ struct WelcomeView: View {
                 .controlSize(.large)
         }
         .frame(maxWidth: 440)
-        .padding(40)
+        .padding(.horizontal, 28)
+        .padding(.vertical, 34)
         .background { CoveCardBackground(cornerRadius: 28) }
         .padding(24)
     }
@@ -57,40 +65,49 @@ struct VaultRecoveryView: View {
     var body: some View {
         ZStack {
             CoveBrandBackground()
-            VStack(spacing: 22) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(.orange.opacity(0.12))
-                    Image(systemName: "folder.badge.questionmark")
-                        .font(.system(size: 38, weight: .medium))
-                        .foregroundStyle(.orange)
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(spacing: 22) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(.orange.opacity(0.12))
+                            Image(systemName: "folder.badge.questionmark")
+                                .font(.system(size: 38, weight: .medium))
+                                .foregroundStyle(.orange)
+                        }
+                        .frame(width: 88, height: 88)
+                        .accessibilityHidden(true)
+                        VStack(spacing: 10) {
+                            Text("Let’s Reconnect Your Vault")
+                                .font(.title.weight(.bold))
+                            Text("The folder may have moved, been renamed, or no longer be available on this device.")
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(3)
+                        }
+                        if let message = vaultManager.lastErrorDescription {
+                            Text(message)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(12)
+                                .frame(maxWidth: .infinity)
+                                .background(.secondary.opacity(0.08),
+                                            in: RoundedRectangle(cornerRadius: 12,
+                                                                 style: .continuous))
+                        }
+                        VaultPickerButton(title: "Choose Vault Folder")
+                            .controlSize(.large)
+                    }
+                    .frame(maxWidth: 440)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 34)
+                    .background { CoveCardBackground(cornerRadius: 28) }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 }
-                .frame(width: 88, height: 88)
-                VStack(spacing: 10) {
-                    Text("Let’s Reconnect Your Vault")
-                        .font(.title.weight(.bold))
-                    Text("The folder may have moved, been renamed, or no longer be available on this device.")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(3)
-                }
-                if let message = vaultManager.lastErrorDescription {
-                    Text(message)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(12)
-                        .frame(maxWidth: .infinity)
-                        .background(.secondary.opacity(0.08),
-                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                VaultPickerButton(title: "Choose Vault Folder")
-                    .controlSize(.large)
+                .scrollIndicators(.hidden)
             }
-            .frame(maxWidth: 440)
-            .padding(40)
-            .background { CoveCardBackground(cornerRadius: 28) }
-            .padding(24)
         }
     }
 }
@@ -100,20 +117,15 @@ struct VaultRecoveryView: View {
 struct VaultPickerButton: View {
     @Environment(VaultManager.self) private var vaultManager
     let title: String
+    var prominent = true
 
     #if os(iOS)
     @State private var isPickerPresented = false
 
     var body: some View {
-        Button {
+        pickerButton {
             isPickerPresented = true
-        } label: {
-            Label(title, systemImage: "folder.badge.plus")
-                .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.roundedRectangle(radius: 12))
         .sheet(isPresented: $isPickerPresented) {
             FolderPickerView { url in
                 Task { await vaultManager.openVault(at: url) }
@@ -122,17 +134,29 @@ struct VaultPickerButton: View {
     }
     #else
     var body: some View {
-        Button {
+        pickerButton {
             if let url = FolderPicker.chooseFolder() {
                 Task { await vaultManager.openVault(at: url) }
             }
-        } label: {
-            Label(title, systemImage: "folder.badge.plus")
-                .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.roundedRectangle(radius: 12))
     }
     #endif
+
+    @ViewBuilder
+    private func pickerButton(action: @escaping () -> Void) -> some View {
+        if prominent {
+            Button(action: action) {
+                Label(title, systemImage: "folder.badge.plus")
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.roundedRectangle(radius: 12))
+        } else {
+            Button(action: action) {
+                Label(title, systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(.borderless)
+        }
+    }
 }

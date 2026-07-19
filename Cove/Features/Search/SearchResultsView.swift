@@ -10,6 +10,7 @@ struct SearchResultsView: View {
     @State private var results: [SearchResult] = []
     @State private var hasSearched = false
     @State private var isSearching = false
+    @State private var searchError: String?
 
     private let searcher = NoteSearcher()
 
@@ -43,6 +44,7 @@ struct SearchResultsView: View {
             }
         }
         .coveListStyle()
+        .coveReadableWidth()
         .overlay {
             if isSearching {
                 // The debounce plus a full-vault read is long enough that a
@@ -58,6 +60,12 @@ struct SearchResultsView: View {
                     Label("No Notes Found", systemImage: "magnifyingglass")
                 } description: {
                     Text("Try a different title or phrase.")
+                }
+            } else if let searchError {
+                ContentUnavailableView {
+                    Label("Search Unavailable", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(searchError)
                 }
             }
         }
@@ -75,9 +83,11 @@ struct SearchResultsView: View {
             results = []
             hasSearched = false
             isSearching = false
+            searchError = nil
             return
         }
         isSearching = true
+        searchError = nil
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
         do {
@@ -85,8 +95,11 @@ struct SearchResultsView: View {
             hasSearched = true
             isSearching = false
         } catch {
-            // Cancelled by a newer query; its task will publish results and
-            // owns the spinner from here, so leave `isSearching` alone.
+            guard !Task.isCancelled else { return }
+            results = []
+            hasSearched = false
+            isSearching = false
+            searchError = error.localizedDescription
         }
     }
 }

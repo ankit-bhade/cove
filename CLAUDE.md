@@ -488,7 +488,11 @@ merged.
   brand gradient, card treatment, grouped-row card insets, and compact icon
   tiles. `.coveListStyle()` / `.coveFormStyle()` carry the platform-grouped
   style plus the canvas background, so every scrolling screen shares one
-  definition instead of repeating the `#if os(iOS)` block. `CoveIconTile` is
+  definition instead of repeating the `#if os(iOS)` block.
+  `.coveReadableWidth()` centers scrolling content at a comfortable measure
+  on iPad and wide Mac windows while keeping the canvas edge to edge.
+  `CoveRefreshButton` owns refresh progress, duplicate-scan prevention,
+  accessibility state, and the Command-R shortcut. `CoveIconTile` is
   decorative: it is `accessibilityHidden` (the surrounding row carries the
   label) and sized with `@ScaledMetric` so it tracks Dynamic Type. Setup,
   loading,
@@ -496,6 +500,11 @@ merged.
   share those primitives. The richer presentation remains standard SwiftUI
   and platform text views only; it adds no assets beyond the existing
   `LaunchIcon`, no dependencies, and no persistence changes.
+* **Adaptive app navigation.** `RootView` keeps the three-section tab bar on
+  iOS, where it is the expected compact navigation, and presents the same
+  Notes/Tasks/Settings destinations in a branded `NavigationSplitView`
+  sidebar on macOS. `AppSection` is the shared selection model, so both
+  platforms route to the same feature views and no core behavior diverges.
 * **Level-aware Notes browser.** `VaultBrowserView` presents one folder level
   at a time rather than an inline recursive outline. `folderPath` is bound
   directly to `NavigationStack(path:)`, so a folder row is a real push

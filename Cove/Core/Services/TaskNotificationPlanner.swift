@@ -36,8 +36,11 @@ enum TaskNotificationPlanner {
             .filter { !$0.isCompleted && $0.dueTimeString != nil }
             .sorted(by: VaultIndex.byDueDate)
             .compactMap { task -> TaskNotificationPlan? in
-                guard let time = task.timeComponents else { return nil }
-                let parts = task.dueDateString.split(separator: "-").compactMap { Int($0) }
+                // A time can only exist alongside a date, so the undated
+                // list items never reach here — but the model allows nil.
+                guard let time = task.timeComponents,
+                      let dueDateString = task.dueDateString else { return nil }
+                let parts = dueDateString.split(separator: "-").compactMap { Int($0) }
                 guard parts.count == 3 else { return nil }
                 let components = DateComponents(
                     year: parts[0], month: parts[1], day: parts[2],

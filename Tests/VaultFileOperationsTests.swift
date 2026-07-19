@@ -34,6 +34,31 @@ final class VaultFileOperationsTests: XCTestCase {
                        "- [ ] Get bread @due(2026-07-19 15:00)\n")
     }
 
+    func testUpdateNoteCreatesTheNoteOnFirstUse() throws {
+        let destination = try ops.updateNote(named: "Tasks.md", in: root) { text in
+            TaskListDocument.addingSection(named: "Groceries", to: text)
+        }
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8),
+                       "## Groceries\n")
+    }
+
+    func testUpdateNoteRewritesExistingContent() throws {
+        let file = url("Tasks.md")
+        try "## Groceries\n- [ ] Milk\n".write(to: file, atomically: true, encoding: .utf8)
+        try ops.updateNote(named: "Tasks", in: root) { text in
+            TaskListDocument.insertingLine("- [ ] Eggs", inSection: "Groceries", in: text)
+        }
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8),
+                       "## Groceries\n- [ ] Milk\n- [ ] Eggs\n")
+    }
+
+    func testUpdateNoteLeavesTheFileAloneWhenTheTransformReturnsNil() throws {
+        let file = url("Tasks.md")
+        try "## Groceries\n".write(to: file, atomically: true, encoding: .utf8)
+        try ops.updateNote(named: "Tasks", in: root) { _ in nil }
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "## Groceries\n")
+    }
+
     func testAppendLineAppendsToExistingContentAddingMissingNewline() throws {
         let file = url("Tasks.md")
         try "# Tasks\n- [ ] Old @due(2026-07-19)".write(to: file, atomically: true,

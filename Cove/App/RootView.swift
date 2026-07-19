@@ -82,6 +82,7 @@ struct RootView: View {
         switch section {
         case .notes: VaultBrowserView()
         case .tasks: TasksView()
+        case .lists: ListsView()
         case .settings: SettingsView()
         }
     }
@@ -90,6 +91,7 @@ struct RootView: View {
 private enum AppSection: String, CaseIterable, Identifiable {
     case notes
     case tasks
+    case lists
     case settings
 
     var id: Self { self }
@@ -98,6 +100,7 @@ private enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .notes: "Notes"
         case .tasks: "Tasks"
+        case .lists: "Lists"
         case .settings: "Settings"
         }
     }
@@ -106,6 +109,7 @@ private enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .notes: "folder.fill"
         case .tasks: "checkmark.circle.fill"
+        case .lists: "list.bullet.rectangle.fill"
         case .settings: "gearshape.fill"
         }
     }

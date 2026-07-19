@@ -268,4 +268,49 @@ final class QuickTaskParserTests: XCTestCase {
         XCTAssertEqual(parse("doctor every 2 weeks").markdownLine,
                        "- [ ] Doctor @due(2026-07-01) @repeat(every 2 weeks)")
     }
+
+    // MARK: - Undated capture (list items)
+
+    /// The Lists screen passes `defaultingToToday: false`, so an item with
+    /// no date word stays undated instead of landing on today.
+    private func parseUndated(_ input: String) -> TaskDraft {
+        QuickTaskParser.parse(input, now: now, calendar: calendar,
+                              defaultingToToday: false)
+    }
+
+    func testUndatedListItemStaysUndated() {
+        let draft = parseUndated("milk")
+        XCTAssertEqual(draft.title, "Milk")
+        XCTAssertNil(draft.dueDateString)
+        XCTAssertNil(draft.dueTimeString)
+    }
+
+    func testUndatedListItemMarkdownLineHasNoDueTag() {
+        XCTAssertEqual(parseUndated("milk").markdownLine, "- [ ] Milk")
+    }
+
+    func testAListItemThatNamesADateKeepsIt() {
+        let draft = parseUndated("order cake fri 3pm")
+        XCTAssertEqual(draft.title, "Order cake")
+        XCTAssertEqual(draft.dueDateString, "2026-07-03")
+        XCTAssertEqual(draft.dueTimeString, "15:00")
+        XCTAssertEqual(draft.markdownLine,
+                       "- [ ] Order cake @due(2026-07-03 15:00)")
+    }
+
+    func testARecurringListItemStillResolvesADate() {
+        // A repeat rule implies its first occurrence, so the item is dated.
+        XCTAssertEqual(parseUndated("rent monthly").markdownLine,
+                       "- [ ] Rent @due(2026-07-01) @repeat(monthly)")
+    }
+
+    func testDroppingTheDateFromADraftDropsTimeAndRepeat() {
+        // What the sheet's date toggle does: the tags live inside and after
+        // `@due`, so they can't outlive it.
+        var draft = parse("laundry every sun 6p")
+        draft.dueDateString = nil
+        draft.dueTimeString = nil
+        draft.recurrence = nil
+        XCTAssertEqual(draft.markdownLine, "- [ ] Laundry")
+    }
 }

@@ -142,15 +142,16 @@ final class TaskParserTests: XCTestCase {
 
     private func toggling(_ text: String,
                           taskText: String = "Buy milk",
-                          due: String = "2026-07-20",
+                          due: String? = "2026-07-20",
                           time: String? = nil,
                           recurrence: RecurrenceRule? = nil,
                           isCompleted: Bool = false,
+                          list: String? = nil,
                           line: Int = 0,
                           today: String = "2026-07-18") -> String? {
         TaskParser.togglingTask(
             withText: taskText, dueDateString: due, dueTimeString: time,
-            recurrence: recurrence, isCompleted: isCompleted,
+            recurrence: recurrence, isCompleted: isCompleted, listName: list,
             preferredLineNumber: line, todayDateString: today, in: text)
     }
 
@@ -216,14 +217,15 @@ final class TaskParserTests: XCTestCase {
 
     private func removing(_ text: String,
                           taskText: String = "Buy milk",
-                          due: String = "2026-07-20",
+                          due: String? = "2026-07-20",
                           time: String? = nil,
                           recurrence: RecurrenceRule? = nil,
                           isCompleted: Bool = false,
+                          list: String? = nil,
                           line: Int = 0) -> String? {
         TaskParser.removingTask(
             withText: taskText, dueDateString: due, dueTimeString: time,
-            recurrence: recurrence, isCompleted: isCompleted,
+            recurrence: recurrence, isCompleted: isCompleted, listName: list,
             preferredLineNumber: line, in: text)
     }
 

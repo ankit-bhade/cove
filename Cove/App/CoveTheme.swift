@@ -71,6 +71,20 @@ extension View {
     func coveReadableWidth(_ width: CGFloat = 760) -> some View {
         modifier(CoveReadableWidth(maxWidth: width))
     }
+
+    /// The standard failure alert: bound to an optional message, dismissed
+    /// by clearing it. Shared so every screen reports errors identically.
+    func coveErrorAlert(_ message: Binding<String?>) -> some View {
+        alert(
+            "Something Went Wrong",
+            isPresented: Binding(get: { message.wrappedValue != nil },
+                                 set: { if !$0 { message.wrappedValue = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(message.wrappedValue ?? "")
+        }
+    }
 }
 
 private struct CoveReadableWidth: ViewModifier {

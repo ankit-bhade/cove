@@ -33,7 +33,8 @@ final class TaskNotificationPlannerTests: XCTestCase {
                  dueDateString: due,
                  dueTimeString: time,
                  recurrence: recurrence,
-                 isCompleted: completed)
+                 isCompleted: completed,
+                 listName: nil)
     }
 
     // MARK: - Which tasks get a plan

@@ -27,9 +27,11 @@ struct EditorView: View {
                 )
             case .loaded:
                 MarkdownTextView(text: $document.text)
-                    .background(CoveTheme.canvas(for: colorScheme))
+                    .frame(maxWidth: 880)
+                    .frame(maxWidth: .infinity)
             }
         }
+        .background(CoveTheme.canvas(for: colorScheme).ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) {
             if let message = document.saveErrorDescription {
                 Label(message, systemImage: "exclamationmark.triangle")

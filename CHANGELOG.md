@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Welcome and vault-recovery screens now scroll at large Dynamic Type sizes
+  and in short windows, preventing their primary folder action from clipping.
 - Tapping a note in the Notes browser, or a search result, did nothing and
   never opened the editor. The browser's navigation path is typed as
   `[URL]`, so the links carrying a `VaultNode` were silently inert; notes
@@ -36,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refined the app-wide UI for faster, more predictable navigation: macOS now
+  uses a branded Notes/Tasks/Settings sidebar while iPhone and iPad retain
+  their native tab bar; refresh actions show progress, reject duplicate
+  scans, and support Command-R, and New Note supports Command-N.
+- Added readable-width layouts for wide windows and iPad, a narrower writing
+  measure in the editor, adaptive dashboard/task/status layouts for Dynamic
+  Type, multiline note names and task titles, capped deep-folder indentation,
+  and more descriptive accessibility labels and hints.
+- Reduced visual weight in Settings by making vault reselection a standard
+  row action, and made task review titles multiline-editable.
 - Refined the interface for clarity and consistency: folders now open as
   real navigation pushes (system back button and iOS swipe-back), open
   tasks are grouped into Overdue/Today/Tomorrow/Upcoming with plain-language

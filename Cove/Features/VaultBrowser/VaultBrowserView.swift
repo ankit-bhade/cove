@@ -5,6 +5,7 @@ import SwiftUI
 /// the content beneath it.
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Set in Settings; empty means the greetings stay impersonal.
     @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
 
@@ -164,6 +165,7 @@ struct VaultBrowserView: View {
             }
         }
         .coveListStyle()
+        .coveReadableWidth()
     }
 
     private func folderNode(at folderURL: URL?) -> VaultNode? {
@@ -195,19 +197,28 @@ struct VaultBrowserView: View {
                 Text(Greeting.text(for: context.date, name: greetingName))
                     .font(.title3.weight(.semibold))
 
-                HStack(spacing: 0) {
-                    overviewStat(value: counts.folders,
-                                 label: counts.folders == 1 ? "Folder" : "Folders")
-                    Divider()
-                        .padding(.vertical, 2)
-                    overviewStat(value: counts.subfolders,
-                                 label: counts.subfolders == 1 ? "Subfolder" : "Subfolders")
-                    Divider()
-                        .padding(.vertical, 2)
-                    overviewStat(value: counts.notes,
-                                 label: counts.notes == 1 ? "Note" : "Notes")
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 12) {
+                        overviewStat(value: counts.folders,
+                                     label: counts.folders == 1 ? "Folder" : "Folders")
+                        overviewStat(value: counts.subfolders,
+                                     label: counts.subfolders == 1 ? "Subfolder" : "Subfolders")
+                        overviewStat(value: counts.notes,
+                                     label: counts.notes == 1 ? "Note" : "Notes")
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        overviewStat(value: counts.folders,
+                                     label: counts.folders == 1 ? "Folder" : "Folders")
+                        Divider().padding(.vertical, 2)
+                        overviewStat(value: counts.subfolders,
+                                     label: counts.subfolders == 1 ? "Subfolder" : "Subfolders")
+                        Divider().padding(.vertical, 2)
+                        overviewStat(value: counts.notes,
+                                     label: counts.notes == 1 ? "Note" : "Notes")
+                    }
+                    .frame(height: 42)
                 }
-                .frame(height: 42)
             }
             .padding(18)
             .background { CoveCardBackground() }
@@ -223,7 +234,6 @@ struct VaultBrowserView: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
@@ -268,7 +278,7 @@ struct VaultBrowserView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(node.displayName)
                     .font(.body.weight(.medium))
-                    .lineLimit(1)
+                    .lineLimit(2)
                 if node.isDirectory {
                     let itemCount = node.children?.count ?? 0
                     Text("\(itemCount) \(itemCount == 1 ? "item" : "items")")
@@ -277,6 +287,7 @@ struct VaultBrowserView: View {
                 }
             }
         }
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -323,6 +334,7 @@ struct VaultBrowserView: View {
                 } label: {
                     Label("New Note", systemImage: "square.and.pencil")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     present(NamePrompt(kind: .newFolder(in: folder)))
                 } label: {
@@ -333,10 +345,8 @@ struct VaultBrowserView: View {
             }
         }
         ToolbarItem {
-            Button {
-                Task { await vaultManager.refresh() }
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+            CoveRefreshButton {
+                await vaultManager.refresh()
             }
         }
     }

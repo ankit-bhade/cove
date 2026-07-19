@@ -65,6 +65,24 @@ extension View {
     func coveFormStyle() -> some View {
         formStyle(.grouped).modifier(CoveScrollBackground())
     }
+
+    /// Keeps dashboard content comfortable on large windows while preserving
+    /// the native edge-to-edge layout on phones.
+    func coveReadableWidth(_ width: CGFloat = 760) -> some View {
+        modifier(CoveReadableWidth(maxWidth: width))
+    }
+}
+
+private struct CoveReadableWidth: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let maxWidth: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: maxWidth, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .background(CoveTheme.canvas(for: colorScheme))
+    }
 }
 
 /// A reusable raised surface used for dashboard-style cards.
@@ -105,6 +123,37 @@ struct CoveIconTile: View {
                         in: RoundedRectangle(cornerRadius: side * 0.3,
                                              style: .continuous))
             .accessibilityHidden(true)
+    }
+}
+
+/// A refresh action with real progress feedback. It prevents accidental
+/// duplicate scans and gives VoiceOver an accurate state while work runs.
+struct CoveRefreshButton: View {
+    let action: () async -> Void
+
+    @State private var isRefreshing = false
+
+    var body: some View {
+        Button {
+            guard !isRefreshing else { return }
+            isRefreshing = true
+            Task {
+                await action()
+                isRefreshing = false
+            }
+        } label: {
+            if isRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+            } else {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+        }
+        .disabled(isRefreshing)
+        .keyboardShortcut("r", modifiers: .command)
+        .accessibilityLabel(isRefreshing ? "Refreshing" : "Refresh")
+        .help(isRefreshing ? "Refreshing…" : "Refresh")
     }
 }
 

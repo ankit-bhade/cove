@@ -8,6 +8,7 @@ import SwiftUI
 struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var errorMessage: String?
     @State private var quickEntry = ""
     @State private var pendingDraft: PendingDraft?
@@ -34,10 +35,8 @@ struct TasksView: View {
                 }
                 .toolbar {
                     ToolbarItem {
-                        Button {
-                            Task { await vaultManager.refresh() }
-                        } label: {
-                            Label("Refresh", systemImage: "arrow.clockwise")
+                        CoveRefreshButton {
+                            await vaultManager.refresh()
                         }
                     }
                 }
@@ -142,20 +141,24 @@ struct TasksView: View {
             }
         }
         .coveListStyle()
+        .coveReadableWidth()
     }
 
     private func quickCaptureCard(openCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Quick Capture")
-                    .font(.headline)
-                Spacer()
-                HStack(spacing: 5) {
-                    Image(systemName: "circle")
-                    Text("\(openCount) open")
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Quick Capture")
+                        .font(.headline)
+                    openTaskCount(openCount)
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(CoveTheme.teal)
+            } else {
+                HStack {
+                    Text("Quick Capture")
+                        .font(.headline)
+                    Spacer()
+                    openTaskCount(openCount)
+                }
             }
 
             HStack(spacing: 10) {
@@ -164,6 +167,7 @@ struct TasksView: View {
                     .autocorrectionDisabled()
                     .onSubmit(presentDraft)
                     .submitLabel(.done)
+                    .accessibilityHint("Enter a task with an optional date, time, or repeat rule")
                 // Previously a decorative glyph that looked tappable and did
                 // nothing. It is now the actual submit action, and it leads
                 // the trailing edge so the field reads left-to-right.
@@ -192,6 +196,12 @@ struct TasksView: View {
         }
         .padding(18)
         .background { CoveCardBackground() }
+    }
+
+    private func openTaskCount(_ count: Int) -> some View {
+        Label("\(count) open", systemImage: "circle")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(CoveTheme.teal)
     }
 
     private var canCapture: Bool {
@@ -236,14 +246,7 @@ struct TasksView: View {
                         .font(.body.weight(.medium))
                         .strikethrough(task.isCompleted)
                         .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                    HStack(spacing: 7) {
-                        dueLabel(for: task, overdue: overdue, now: now)
-                        if let rule = task.recurrence {
-                            Label(rule.displayName, systemImage: "repeat")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    taskMetadata(for: task, overdue: overdue, now: now)
                 }
                 .padding(.vertical, 2)
             }
@@ -262,6 +265,35 @@ struct TasksView: View {
                 Label("Delete Task", systemImage: "trash")
             }
         }
+    }
+
+    @ViewBuilder
+    private func taskMetadata(for task: TaskItem, overdue: Bool, now: Date) -> some View {
+        if let rule = task.recurrence, !dynamicTypeSize.isAccessibilitySize {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 7) {
+                    dueLabel(for: task, overdue: overdue, now: now)
+                    recurrenceLabel(rule)
+                }
+                VStack(alignment: .leading, spacing: 5) {
+                    dueLabel(for: task, overdue: overdue, now: now)
+                    recurrenceLabel(rule)
+                }
+            }
+        } else if let rule = task.recurrence {
+            VStack(alignment: .leading, spacing: 5) {
+                dueLabel(for: task, overdue: overdue, now: now)
+                recurrenceLabel(rule)
+            }
+        } else {
+            dueLabel(for: task, overdue: overdue, now: now)
+        }
+    }
+
+    private func recurrenceLabel(_ rule: RecurrenceRule) -> some View {
+        Label(rule.displayName, systemImage: "repeat")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
     }
 
     private func dueLabel(for task: TaskItem, overdue: Bool, now: Date) -> some View {

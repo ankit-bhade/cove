@@ -503,8 +503,16 @@ merged.
   system back button, its parent-folder title, and the iOS swipe-back gesture
   all work — the earlier in-place swap had none of those and needed a custom
   back button. File
-  rows push the editor, and global search still resolves through the shared
-  `VaultNode` navigation destination. Every level has the same
+  rows and search results push the *note's URL* onto that same typed path,
+  and one `destination(for:)` branches on whether the URL is a note
+  (tree lookup, falling back to the `.md` extension when a rescan has the
+  node briefly missing) to show `EditorView` or the next `browserLevel`.
+  Folders and notes must share the one value type: a typed `[URL]` path
+  silently ignores a `NavigationLink` carrying anything else, which is
+  exactly how note rows and search results were once dead. Because notes sit
+  on the path too, the stale-path pruning in `onChange(of: rootNode)` looks
+  up files as well as folders, so an open editor survives rescans and pops
+  only when its file really is gone. Every level has the same
   create/refresh tools and a compact card with a time-of-day greeting set in
   a restrained title-3 semibold style. `Greeting`
   (`Cove/Features/VaultBrowser/Greeting.swift`, pure and unit-tested) owns
@@ -599,7 +607,10 @@ problems as build warnings, not errors.
 * Renaming, moving, or deleting a note while its editor is open on the
   navigation stack leaves the editor pointing at the old URL. Pending edits
   are then dropped rather than saved (`saveNote` throws `fileMissing` instead
-  of recreating the file), and the editor shows a save-error banner.
+  of recreating the file), and the editor shows a save-error banner. In the
+  Notes tab the next rescan additionally pops that editor off the path (its
+  URL no longer resolves to a node); the Tasks tab's stack has no such
+  pruning, so an editor opened from there stays put on the dead URL.
 * `UserDefaults`-stored bookmarks are per-device; each device runs the
   folder-selection flow once (expected — there is no custom sync).
 * On macOS, `NSOpenPanel` URLs are usable without starting scoped access in the

@@ -22,11 +22,8 @@ struct VaultBrowserView: View {
     var body: some View {
         NavigationStack(path: $folderPath) {
             browserLevel(folderURL: nil)
-                .navigationDestination(for: URL.self) { folderURL in
-                    browserLevel(folderURL: folderURL)
-                }
-                .navigationDestination(for: VaultNode.self) { node in
-                    EditorView(fileURL: node.url)
+                .navigationDestination(for: URL.self) { url in
+                    destination(for: url)
                 }
         }
         .onChange(of: vaultManager.vaultURL) { _, _ in
@@ -35,9 +32,10 @@ struct VaultBrowserView: View {
         }
         .onChange(of: vaultManager.rootNode) { _, _ in
             // External moves or deletes can invalidate the current URL.
-            // Return to the closest parent that still exists.
+            // Return to the closest ancestor that still exists. Notes are on
+            // this path too, so an open editor whose file is gone pops as well.
             while let currentURL = folderPath.last,
-                  folderNode(at: currentURL) == nil {
+                  node(at: currentURL) == nil {
                 folderPath.removeLast()
             }
         }
@@ -87,6 +85,27 @@ struct VaultBrowserView: View {
     }
 
     // MARK: - Folder levels
+
+    /// Folders and notes share one `[URL]` navigation path. The stack's path
+    /// is typed, so a link carrying any other value type would silently do
+    /// nothing — pushing URLs for both and branching here is what keeps note
+    /// rows (and search results) working.
+    @ViewBuilder
+    private func destination(for url: URL) -> some View {
+        if isNote(at: url) {
+            EditorView(fileURL: url)
+        } else {
+            browserLevel(folderURL: url)
+        }
+    }
+
+    /// Prefers the scanned tree, falling back to the extension when the URL
+    /// isn't in it — during a rescan a note can briefly go missing, and
+    /// re-routing it to an empty folder level would flicker the editor away.
+    private func isNote(at url: URL) -> Bool {
+        if let node = node(at: url) { return !node.isDirectory }
+        return url.pathExtension.lowercased() == "md"
+    }
 
     private func browserLevel(folderURL: URL?) -> some View {
         let folder = folderNode(at: folderURL)
@@ -148,14 +167,21 @@ struct VaultBrowserView: View {
     }
 
     private func folderNode(at folderURL: URL?) -> VaultNode? {
+        guard let folderURL else { return vaultManager.rootNode }
+        return node(at: folderURL)
+    }
+
+    /// Any node in the scanned tree — folder or note — at this URL.
+    private func node(at url: URL) -> VaultNode? {
         guard let root = vaultManager.rootNode else { return nil }
-        guard let folderURL else { return root }
-        return node(at: folderURL.standardizedFileURL, in: root)
+        return node(at: url.standardizedFileURL, in: root)
     }
 
     private func node(at targetURL: URL, in node: VaultNode) -> VaultNode? {
         if node.url.standardizedFileURL == targetURL { return node }
-        for child in node.children ?? [] where child.isDirectory {
+        // Notes are searched too: they sit on the navigation path alongside
+        // folders, so the path-pruning check has to be able to find them.
+        for child in node.children ?? [] {
             if let match = self.node(at: targetURL, in: child) { return match }
         }
         return nil
@@ -224,16 +250,10 @@ struct VaultBrowserView: View {
 
     @ViewBuilder
     private func row(for node: VaultNode) -> some View {
-        Group {
-            if node.isDirectory {
-                NavigationLink(value: node.url) {
-                    nodeLabel(node)
-                }
-            } else {
-                NavigationLink(value: node) {
-                    nodeLabel(node)
-                }
-            }
+        // Folders and notes both push their URL; `destination(for:)` decides
+        // which screen that URL opens.
+        NavigationLink(value: node.url) {
+            nodeLabel(node)
         }
         .padding(.vertical, 4)
         .contextMenu {

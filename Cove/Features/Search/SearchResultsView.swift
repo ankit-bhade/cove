@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Results list for the browser's search field. Debounces the query while
 /// typing, runs one on-demand search over every Markdown file, and navigates
-/// to the editor through the browser's existing `VaultNode` destination.
+/// to the editor by pushing the note's URL onto the browser's `[URL]` path.
 struct SearchResultsView: View {
     let query: String
 
@@ -18,7 +18,7 @@ struct SearchResultsView: View {
             if hasSearched, !results.isEmpty {
                 Section {
                     ForEach(results) { result in
-                        NavigationLink(value: result.node) {
+                        NavigationLink(value: result.node.url) {
                             HStack(alignment: .top, spacing: 12) {
                                 CoveIconTile(systemName: "doc.text.fill")
                                 VStack(alignment: .leading, spacing: 5) {

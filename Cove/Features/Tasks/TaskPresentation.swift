@@ -7,8 +7,10 @@ import Foundation
 extension TaskItem {
     /// Overdue when the due day is past, or when today's due moment is past.
     /// A date-only task is never overdue on its own due day.
+    /// An undated list item is never overdue — it has no moment to be late
+    /// for.
     func isOverdue(at now: Date, calendar: Calendar = .current) -> Bool {
-        guard !isCompleted else { return false }
+        guard !isCompleted, let dueDateString else { return false }
         if let moment = dueDateTime {
             return moment < now
         }
@@ -30,9 +32,10 @@ extension TaskItem {
 
     /// "Today, 3:00 PM", "Tomorrow", "Friday", "Jul 24", "Jul 24, 2027".
     /// Relative wording for the days a reader thinks in, absolute beyond
-    /// that, and the year only when it isn't the current one.
+    /// that, and the year only when it isn't the current one. Empty for an
+    /// undated list item, whose row shows no due label at all.
     func relativeDueDescription(at now: Date, calendar: Calendar = .current) -> String {
-        guard let dueDate else { return dueDateString }
+        guard let dueDate else { return dueDateString ?? "" }
         let day = dayDescription(dueDate, at: now, calendar: calendar)
         guard let moment = dueDateTime else { return day }
         return "\(day), \(moment.formatted(.dateTime.hour().minute()))"

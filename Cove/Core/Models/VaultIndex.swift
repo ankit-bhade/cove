@@ -12,14 +12,21 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     /// The task text between the marker and the `@due` tag.
     let text: String
     /// Validated `YYYY-MM-DD`; lexicographic order is chronological order.
-    let dueDateString: String
+    /// Nil only for an undated item in a list, where `@due` is optional.
+    let dueDateString: String?
     /// Validated 24-hour `HH:MM` when the task carries a time; only timed
     /// tasks get notifications.
     let dueTimeString: String?
     let recurrence: RecurrenceRule?
     let isCompleted: Bool
+    /// The list this task belongs to, for tasks under a `##` heading in the
+    /// capture note. Nil for an ordinary task, which is what the Tasks
+    /// screen shows.
+    let listName: String?
 
     var id: String { "\(fileURL.path)#\(lineNumber)" }
+
+    var hasDueDate: Bool { dueDateString != nil }
 
     /// Start of the due day in the current calendar, for display formatting.
     var dueDate: Date? {
@@ -34,6 +41,7 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     }
 
     private var dateComponents: DateComponents? {
+        guard let dueDateString else { return nil }
         let parts = dueDateString.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
         return DateComponents(year: parts[0], month: parts[1], day: parts[2])
@@ -55,26 +63,62 @@ struct NoteIndexEntry: Hashable, Sendable {
     let tasks: [TaskItem]
 }
 
+/// One named list from the capture note: its `##` heading and the tasks
+/// under it. A list with no items still exists, so it is built from the
+/// note's headings rather than inferred from the tasks.
+struct TaskList: Identifiable, Hashable, Sendable {
+    let name: String
+    /// Incomplete items, dated ones first in due order, undated after in
+    /// the order they were added.
+    let openTasks: [TaskItem]
+    let completedTasks: [TaskItem]
+
+    var id: String { name }
+    var isEmpty: Bool { openTasks.isEmpty && completedTasks.isEmpty }
+}
+
 /// The in-memory index of the vault, rebuilt from disk on launch and after
 /// detected or app-created file changes. Never persisted.
 struct VaultIndex: Sendable {
     var entries: [NoteIndexEntry] = []
+    /// The `##` list headings in the capture note, in file order. Held
+    /// separately so a list the user created but hasn't filled yet is still
+    /// a list.
+    var listNames: [String] = []
 
     var allTasks: [TaskItem] { entries.flatMap(\.tasks) }
 
     /// Incomplete tasks sorted by due date, then time (date-only tasks
-    /// first within a day), then note title and line.
+    /// first within a day), then note title and line. List tasks are
+    /// excluded: the Lists screen keeps them visually separate.
     var incompleteTasks: [TaskItem] {
-        allTasks.filter { !$0.isCompleted }.sorted(by: Self.byDueDate)
+        allTasks.filter { !$0.isCompleted && $0.listName == nil }.sorted(by: Self.byDueDate)
     }
 
     /// Completed tasks in the same order, for display below the open ones.
     var completedTasks: [TaskItem] {
-        allTasks.filter(\.isCompleted).sorted(by: Self.byDueDate)
+        allTasks.filter { $0.isCompleted && $0.listName == nil }.sorted(by: Self.byDueDate)
     }
 
+    /// Every list in the capture note, heading order preserved.
+    var lists: [TaskList] {
+        let tasksByList = Dictionary(grouping: allTasks.filter { $0.listName != nil }) {
+            $0.listName!
+        }
+        return listNames.map { name in
+            let tasks = tasksByList[name] ?? []
+            return TaskList(
+                name: name,
+                openTasks: tasks.filter { !$0.isCompleted }.sorted(by: Self.byDueDate),
+                completedTasks: tasks.filter(\.isCompleted).sorted(by: Self.byDueDate))
+        }
+    }
+
+    /// Undated tasks sort after every dated one: the sentinel is past any
+    /// real zero-padded date, so a list reads "what's scheduled, then the
+    /// rest in the order I added it".
     static func byDueDate(_ lhs: TaskItem, _ rhs: TaskItem) -> Bool {
-        (lhs.dueDateString, lhs.dueTimeString ?? "", lhs.fileTitle, lhs.lineNumber)
-            < (rhs.dueDateString, rhs.dueTimeString ?? "", rhs.fileTitle, rhs.lineNumber)
+        (lhs.dueDateString ?? "9999-99-99", lhs.dueTimeString ?? "", lhs.fileTitle, lhs.lineNumber)
+            < (rhs.dueDateString ?? "9999-99-99", rhs.dueTimeString ?? "", rhs.fileTitle, rhs.lineNumber)
     }
 }

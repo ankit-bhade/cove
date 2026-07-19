@@ -15,7 +15,7 @@ final class TaskPresentationTests: XCTestCase {
     }
 
     private func task(text: String = "Task",
-                      due: String,
+                      due: String?,
                       time: String? = nil,
                       recurrence: RecurrenceRule? = nil,
                       completed: Bool = false) -> TaskItem {
@@ -26,7 +26,8 @@ final class TaskPresentationTests: XCTestCase {
                  dueDateString: due,
                  dueTimeString: time,
                  recurrence: recurrence,
-                 isCompleted: completed)
+                 isCompleted: completed,
+                 listName: nil)
     }
 
     // MARK: - Overdue
@@ -135,5 +136,19 @@ final class TaskPresentationTests: XCTestCase {
         let groups = TaskGroup.grouping(
             [task(due: "2026-07-19"), task(due: "2026-07-19")], now: today)
         XCTAssertEqual(groups.first?.title, "Today · 2")
+    }
+
+    // MARK: - Undated list items
+
+    func testAnUndatedItemIsNeverOverdue() {
+        let item = task(text: "Milk", due: nil)
+        XCTAssertFalse(item.isOverdue(at: now(2026, 7, 19, hour: 12)))
+        XCTAssertFalse(item.isDue(onSameDayAs: now(2026, 7, 19, hour: 12)))
+        XCTAssertFalse(item.hasDueDate)
+    }
+
+    func testAnUndatedItemHasNoDueDescription() {
+        XCTAssertEqual(task(text: "Milk", due: nil)
+            .relativeDueDescription(at: now(2026, 7, 19, hour: 12)), "")
     }
 }

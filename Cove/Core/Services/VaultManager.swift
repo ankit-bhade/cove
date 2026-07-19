@@ -120,6 +120,18 @@ final class VaultManager {
     /// Created on demand; any existing note with this name is appended to.
     nonisolated static let quickTaskNoteName = "Tasks.md"
 
+    /// The capture note is the one note whose `##` headings mean lists and
+    /// whose list items may go undated. Matched at the vault root only, so a
+    /// `Tasks.md` in a subfolder stays an ordinary note.
+    nonisolated static func isCaptureNote(_ url: URL, vaultRoot: URL) -> Bool {
+        url.lastPathComponent.caseInsensitiveCompare(quickTaskNoteName) == .orderedSame
+            && url.deletingLastPathComponent().standardizedFileURL.path
+                == vaultRoot.standardizedFileURL.path
+    }
+
+    /// The lists in the capture note, from the current index.
+    var lists: [TaskList] { index.lists }
+
     /// Toggles one task in its original Markdown file: re-reads the file,
     /// re-finds the task by content, rewrites the line (flipping the status,
     /// or advancing a recurring task's due date to its next occurrence), and
@@ -138,6 +150,7 @@ final class VaultManager {
                     dueTimeString: task.dueTimeString,
                     recurrence: task.recurrence,
                     isCompleted: task.isCompleted,
+                    listName: task.listName,
                     preferredLineNumber: task.lineNumber,
                     todayDateString: today,
                     in: text) else {
@@ -168,6 +181,7 @@ final class VaultManager {
                     dueTimeString: task.dueTimeString,
                     recurrence: task.recurrence,
                     isCompleted: task.isCompleted,
+                    listName: task.listName,
                     preferredLineNumber: task.lineNumber,
                     in: text) else {
                     throw TaskChangedOnDiskError()
@@ -188,12 +202,17 @@ final class VaultManager {
         guard !fileURLs.isEmpty else { return }
 
         let ops = fileOperations
+        let root = vaultURL
         var clearError: Error?
         do {
             try await Task.detached(priority: .userInitiated) {
                 for fileURL in fileURLs {
                     let text = try ops.readNote(at: fileURL)
-                    let updated = TaskParser.clearingCompletedTasks(in: text)
+                    // In the capture note this must parse sectioned, or the
+                    // Tasks screen's Clear All would also delete completed
+                    // items out of the lists it never showed.
+                    let sectioned = root.map { Self.isCaptureNote(fileURL, vaultRoot: $0) } ?? false
+                    let updated = TaskParser.clearingCompletedTasks(in: text, sectioned: sectioned)
                     if updated != text {
                         try ops.saveNote(updated, to: fileURL)
                     }
@@ -208,11 +227,72 @@ final class VaultManager {
 
     /// Appends a quick-added task's Markdown line to the capture note at the
     /// vault root, then rescans (which also reschedules notifications).
-    func captureTask(_ draft: TaskDraft) async throws {
+    /// With a `list`, the line goes under that `##` heading instead of the
+    /// end of the note, and the heading is created if it's missing.
+    func captureTask(_ draft: TaskDraft, into list: String? = nil) async throws {
         guard let vaultURL else { return }
         let line = draft.markdownLine
-        try await perform { try $0.appendLine(line, toNoteNamed: Self.quickTaskNoteName,
-                                              in: vaultURL) }
+        guard let list else {
+            try await perform { try $0.appendLine(line, toNoteNamed: Self.quickTaskNoteName,
+                                                  in: vaultURL) }
+            return
+        }
+        try await perform {
+            try $0.updateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
+                TaskListDocument.insertingLine(line, inSection: list, in: text)
+            }
+        }
+    }
+
+    // MARK: - Lists
+
+    /// A list already exists under that name.
+    struct ListExistsError: LocalizedError {
+        let name: String
+        var errorDescription: String? { "A list named “\(name)” already exists." }
+    }
+
+    /// Adds an empty `## name` heading to the capture note.
+    func createList(named name: String) async throws {
+        guard let vaultURL else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard !index.listNames.contains(where: {
+            $0.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) else { throw ListExistsError(name: trimmed) }
+
+        try await perform {
+            try $0.updateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
+                TaskListDocument.addingSection(named: trimmed, to: text)
+            }
+        }
+    }
+
+    /// Renames a list's heading, keeping its items under it.
+    func renameList(named name: String, to newName: String) async throws {
+        guard let vaultURL else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != name else { return }
+        guard !index.listNames.contains(where: {
+            $0.caseInsensitiveCompare(trimmed) == .orderedSame
+                && $0.caseInsensitiveCompare(name) != .orderedSame
+        }) else { throw ListExistsError(name: trimmed) }
+
+        try await perform {
+            try $0.updateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
+                TaskListDocument.renamingSection(named: name, to: trimmed, in: text)
+            }
+        }
+    }
+
+    /// Removes a list's heading and every task under it.
+    func deleteList(named name: String) async throws {
+        guard let vaultURL else { return }
+        try await perform {
+            try $0.updateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
+                TaskListDocument.removingSection(named: name, from: text)
+            }
+        }
     }
 
     /// Runs one coordinated mutation off the main actor, then rescans so the

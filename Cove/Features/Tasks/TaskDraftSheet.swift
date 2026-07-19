@@ -8,9 +8,15 @@ import SwiftUI
 struct TaskDraftSheet: View {
     @State var sentence: String
     @State var draft: TaskDraft
+    /// The list this task is bound for, when it came from the Lists screen.
+    /// Its items may be undated, so the date becomes a toggle and the sheet
+    /// says where the task is going.
+    var listName: String?
     let onConfirm: (TaskDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
+
+    private var allowsUndated: Bool { listName != nil }
 
     private var canAdd: Bool {
         !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -31,7 +37,8 @@ struct TaskDraftSheet: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Review Cove’s Interpretation")
                                 .font(.headline)
-                            Text("Fine-tune anything before it’s added to Tasks.md.")
+                            Text(listName.map { "Fine-tune anything before it’s added to \($0)." }
+                                 ?? "Fine-tune anything before it’s added to Tasks.md.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -50,7 +57,9 @@ struct TaskDraftSheet: View {
                         TextField("Try “get bread 3p tmr”", text: $sentence)
                             .autocorrectionDisabled()
                             .onChange(of: sentence) { _, newValue in
-                                draft = QuickTaskParser.parse(newValue, now: .now)
+                                draft = QuickTaskParser.parse(
+                                    newValue, now: .now,
+                                    defaultingToToday: !allowsUndated)
                             }
                     }
                 } header: {
@@ -66,25 +75,34 @@ struct TaskDraftSheet: View {
                         TextField("Task title", text: $draft.title, axis: .vertical)
                             .lineLimit(1...3)
                     }
-                    DatePicker(selection: dateBinding, displayedComponents: .date) {
-                        Label("Date", systemImage: "calendar")
-                    }
-                    Toggle(isOn: timeEnabledBinding) {
-                        Label("Time", systemImage: "clock")
-                    }
-                    if draft.dueTimeString != nil {
-                        DatePicker(selection: timeBinding,
-                                   displayedComponents: .hourAndMinute) {
-                            Label("At", systemImage: "bell")
+                    if allowsUndated {
+                        Toggle(isOn: dateEnabledBinding) {
+                            Label("Due Date", systemImage: "calendar")
                         }
                     }
-                    Picker(selection: $draft.recurrence) {
-                        ForEach(recurrenceOptions, id: \.self) { rule in
-                            Text(rule?.displayName ?? "Never")
-                                .tag(rule)
+                    if draft.dueDateString != nil {
+                        DatePicker(selection: dateBinding, displayedComponents: .date) {
+                            Label("Date", systemImage: "calendar")
                         }
-                    } label: {
-                        Label("Repeat", systemImage: "repeat")
+                        Toggle(isOn: timeEnabledBinding) {
+                            Label("Time", systemImage: "clock")
+                        }
+                        if draft.dueTimeString != nil {
+                            DatePicker(selection: timeBinding,
+                                       displayedComponents: .hourAndMinute) {
+                                Label("At", systemImage: "bell")
+                            }
+                        }
+                        // A repeat rule hangs off the `@due` tag, so it only
+                        // exists for a dated task.
+                        Picker(selection: $draft.recurrence) {
+                            ForEach(recurrenceOptions, id: \.self) { rule in
+                                Text(rule?.displayName ?? "Never")
+                                    .tag(rule)
+                            }
+                        } label: {
+                            Label("Repeat", systemImage: "repeat")
+                        }
                     }
                 }
 
@@ -94,6 +112,8 @@ struct TaskDraftSheet: View {
                             Text(draft.recurrence == nil
                                  ? "Notification at the time above."
                                  : "Notification at the time above, every occurrence.")
+                        } else if draft.dueDateString == nil {
+                            Text("No due date, so no notification.")
                         } else {
                             Text("No time set, so no notification.")
                         }
@@ -151,9 +171,24 @@ struct TaskDraftSheet: View {
 
     /// `dueDateString` as a `Date` for the picker (noon-anchored so the
     /// round-trip through the picker never shifts a day).
+    private var dateEnabledBinding: Binding<Bool> {
+        Binding {
+            draft.dueDateString != nil
+        } set: { enabled in
+            if enabled {
+                draft.dueDateString = draft.dueDateString ?? QuickTaskParser.ymdString(from: .now)
+            } else {
+                // Both tags live inside or after `@due`, so they go with it.
+                draft.dueDateString = nil
+                draft.dueTimeString = nil
+                draft.recurrence = nil
+            }
+        }
+    }
+
     private var dateBinding: Binding<Date> {
         Binding {
-            let parts = draft.dueDateString.split(separator: "-").compactMap { Int($0) }
+            let parts = (draft.dueDateString ?? "").split(separator: "-").compactMap { Int($0) }
             guard parts.count == 3,
                   let date = Calendar.current.date(from: DateComponents(
                       year: parts[0], month: parts[1], day: parts[2], hour: 12))

@@ -4,16 +4,20 @@ import Foundation
 /// confirmation before it is written to Markdown.
 struct TaskDraft: Equatable, Sendable {
     var title: String
-    /// Always resolved to a concrete `YYYY-MM-DD` (today when the sentence
-    /// names no date — Cove tasks require an `@due` tag).
-    var dueDateString: String
+    /// A concrete `YYYY-MM-DD`, or nil when the task is undated. Only list
+    /// items may go undated; a task bound for the Tasks screen is resolved
+    /// to today by its caller, since `@due` is required there.
+    var dueDateString: String?
     /// 24-hour `HH:MM`, only when the sentence names a time.
     var dueTimeString: String?
     var recurrence: RecurrenceRule?
 
-    /// The Markdown task line this draft saves as.
+    /// The Markdown task line this draft saves as. Without a date there is
+    /// no `@due` tag to hang a time or a repeat rule off, so both are
+    /// dropped — the syntax puts them inside and after the tag.
     var markdownLine: String {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let dueDateString else { return "- [ ] \(title)" }
         var line = "- [ ] \(title) @due(\(dueDateString)"
         if let dueTimeString { line += " \(dueTimeString)" }
         line += ")"
@@ -104,7 +108,14 @@ enum QuickTaskParser {
 
     // MARK: - Parse
 
-    static func parse(_ input: String, now: Date, calendar: Calendar = .current) -> TaskDraft {
+    /// `defaultingToToday` resolves an undated sentence to today, which is
+    /// what the Tasks screen needs (`@due` is required there). The Lists
+    /// screen passes false and keeps the item undated — a grocery item
+    /// isn't due today just because it was typed today.
+    static func parse(_ input: String,
+                      now: Date,
+                      calendar: Calendar = .current,
+                      defaultingToToday: Bool = true) -> TaskDraft {
         let lower = input.lowercased() as NSString
         // Title spans slice the original input; fall back to the lowered
         // string in the rare case lowercasing changed UTF-16 lengths.
@@ -324,8 +335,10 @@ enum QuickTaskParser {
         }
 
         // Cove divergence: tasks require @due, so undated input lands today
-        // (grove leaves it undated).
-        let resolvedDate = date ?? ymdString(from: now, calendar: calendar)
+        // (grove leaves it undated). List items are the exception — see
+        // `defaultingToToday`.
+        let resolvedDate = date ?? (defaultingToToday
+                                    ? ymdString(from: now, calendar: calendar) : nil)
 
         // ---- 6. Title: input minus consumed spans --------------------------
         var title = ""

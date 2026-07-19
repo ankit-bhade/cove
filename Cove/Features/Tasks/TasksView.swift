@@ -52,17 +52,7 @@ struct TasksView: View {
                         }
                     }
                 }
-                .alert(
-                    "Something Went Wrong",
-                    isPresented: Binding(
-                        get: { errorMessage != nil },
-                        set: { if !$0 { errorMessage = nil } }
-                    )
-                ) {
-                    Button("OK", role: .cancel) {}
-                } message: {
-                    Text(errorMessage ?? "")
-                }
+                .coveErrorAlert($errorMessage)
                 .confirmationDialog(
                     "Clear All Completed Tasks?",
                     isPresented: $showsClearCompletedConfirmation,
@@ -101,7 +91,9 @@ struct TasksView: View {
             ForEach(TaskGroup.grouping(incomplete, now: now)) { group in
                 Section {
                     ForEach(group.tasks) { task in
-                        row(for: task, now: now)
+                        TaskRow(task: task, now: now,
+                                onToggle: { toggle(task) },
+                                onDelete: { delete(task) })
                     }
                 } header: {
                     Label(group.title, systemImage: group.symbol)
@@ -112,7 +104,9 @@ struct TasksView: View {
             if !completed.isEmpty {
                 Section {
                     ForEach(completed) { task in
-                        row(for: task, now: now)
+                        TaskRow(task: task, now: now,
+                                onToggle: { toggle(task) },
+                                onDelete: { delete(task) })
                     }
                 } header: {
                     HStack {
@@ -214,102 +208,6 @@ struct TasksView: View {
         guard !sentence.isEmpty else { return }
         pendingDraft = PendingDraft(sentence: sentence,
                                     draft: QuickTaskParser.parse(sentence, now: .now))
-    }
-
-    private func row(for task: TaskItem, now: Date) -> some View {
-        let overdue = task.isOverdue(at: now)
-        return HStack(alignment: .top, spacing: 11) {
-            Button {
-                toggle(task)
-            } label: {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 21, weight: .medium))
-                    .foregroundStyle(task.isCompleted ? Color.secondary : CoveTheme.teal)
-                    // The glyph alone is a small target; padding brings the
-                    // hit area up to the 44pt minimum without moving it.
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .offset(x: -10)
-            .padding(.trailing, -10)
-            .accessibilityLabel(task.isCompleted ? "Mark incomplete"
-                                : task.recurrence == nil ? "Mark complete"
-                                : "Complete and reschedule")
-
-            NavigationLink(value: task.fileURL) {
-                // The source note is deliberately not shown: tasks nearly
-                // always live in the capture note, so the row read as a
-                // repeated "Tasks" caption under every task.
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(task.text)
-                        .font(.body.weight(.medium))
-                        .strikethrough(task.isCompleted)
-                        .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                    taskMetadata(for: task, overdue: overdue, now: now)
-                }
-                .padding(.vertical, 2)
-            }
-        }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                delete(task)
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
-        .contextMenu {
-            Button(role: .destructive) {
-                delete(task)
-            } label: {
-                Label("Delete Task", systemImage: "trash")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func taskMetadata(for task: TaskItem, overdue: Bool, now: Date) -> some View {
-        if let rule = task.recurrence, !dynamicTypeSize.isAccessibilitySize {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 7) {
-                    dueLabel(for: task, overdue: overdue, now: now)
-                    recurrenceLabel(rule)
-                }
-                VStack(alignment: .leading, spacing: 5) {
-                    dueLabel(for: task, overdue: overdue, now: now)
-                    recurrenceLabel(rule)
-                }
-            }
-        } else if let rule = task.recurrence {
-            VStack(alignment: .leading, spacing: 5) {
-                dueLabel(for: task, overdue: overdue, now: now)
-                recurrenceLabel(rule)
-            }
-        } else {
-            dueLabel(for: task, overdue: overdue, now: now)
-        }
-    }
-
-    private func recurrenceLabel(_ rule: RecurrenceRule) -> some View {
-        Label(rule.displayName, systemImage: "repeat")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-    }
-
-    private func dueLabel(for task: TaskItem, overdue: Bool, now: Date) -> some View {
-        let tint: Color = overdue ? .red
-            : task.isDue(onSameDayAs: now) ? CoveTheme.teal
-            : .secondary
-        return HStack(spacing: 5) {
-            Image(systemName: overdue ? "exclamationmark.circle.fill"
-                  : task.dueTimeString != nil ? "clock" : "calendar")
-            Text(task.relativeDueDescription(at: now))
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(tint)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(tint.opacity(0.10), in: Capsule())
     }
 
     /// Removes the task's line from its note. Deliberately not confirmed —

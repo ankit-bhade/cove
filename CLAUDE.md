@@ -6,10 +6,10 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 9 — appearance polish, app icon, and launch screen.**
+**Current phase: Phase 10 — task lists.**
 
-Status: Phase 9 implemented and visually refined. All build phases are
-complete. See CHANGELOG.md for merged work.
+Status: Phase 10 implemented. All build phases are complete. See
+CHANGELOG.md for merged work.
 
 ---
 
@@ -104,6 +104,8 @@ Collect task lines matching exactly:
 Rules:
 
 * This syntax family is fixed; the time and `@repeat` tag are optional,
+  and `@due` itself is optional *only* for a task inside a list section
+  of the capture note (see Lists),
   and `@repeat` rules are `daily`/`weekly`/`monthly`/`yearly`,
   `every N <days|weeks|months|years>`, `every weekday`, or
   `every <weekday names>` (the `@repeat` tag follows the `@due` tag)
@@ -130,6 +132,24 @@ even when that moment has passed. Before saving, the interpreted title,
 date, time, recurrence, and notification are shown for confirmation and
 editing. Confirmed tasks are appended to `Tasks.md` at the vault root,
 created on demand.
+
+#### Lists
+
+Lists group related tasks — groceries, subscriptions, packing — and keep
+them visually separate from the Tasks screen.
+
+* A list is a `##` heading inside the capture note (`Tasks.md` at the vault
+  root); its items are the task lines beneath it, up to the next heading
+* A `#` heading closes the open list; headings mean nothing in any other
+  note, where `@due` remains mandatory
+* List items use the same quick-entry interpreter, and may carry a due
+  date, time, and `@repeat` rule — but `@due` is optional here, and an
+  undated item gets no notification
+* Dated items sort before undated ones; undated items keep insertion order
+* List items never appear on the Tasks screen, and the Tasks screen's
+  Clear All never removes them
+* Lists can be created, renamed, and deleted; deleting a list removes its
+  heading and every task under it
 
 #### Settings
 
@@ -188,6 +208,7 @@ Complete and validate each phase before starting the next.
 7. Local task notifications
 8. Natural-language quick task entry with times and recurrence
 9. Appearance polish, app icon, and launch screen
+10. Task lists
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -203,6 +224,7 @@ Features/
   Editor/
   Search/
   Tasks/
+  Lists/
   Settings/
 Platform/
   iOS/
@@ -377,9 +399,10 @@ merged.
   every currently completed strict task line while preserving all other
   Markdown and line endings, saves through `VaultFileOperations`, and
   refreshes the tree/index afterward. Sorting compares
-  `(dueDateString, dueTimeString ?? "", fileTitle, lineNumber)` — the
-  zero-padded strings order chronologically, with date-only tasks first
-  within a day. `TasksView` sits in a `TabView` beside the browser
+  `(dueDateString ?? "9999-99-99", dueTimeString ?? "", fileTitle,
+  lineNumber)` — the zero-padded strings order chronologically, with
+  date-only tasks first within a day and undated list items last.
+  `TasksView` sits in a `TabView` beside the browser
   (`RootView`): open tasks sorted by due date, completed tasks below,
   checkbox buttons
   toggle, recurrence shown as a `repeat`-icon label, and rows navigate to
@@ -428,6 +451,33 @@ merged.
   `Tasks.md` at the vault root via `VaultFileOperations.appendLine` (a
   single coordinated read-modify-write that creates the note on first
   use), then rescans.
+* **Task lists.** A list is a `##` section of the capture note, so the
+  feature adds no new file, no new syntax family, and nothing to migrate —
+  `Tasks.md` stays a note a person can edit by hand. `TaskParser.tasks`
+  gained a `sectioned` flag: it tracks the nearest preceding heading
+  (`TaskListDocument.headingName`, where `#` closes a list and `##`+ opens
+  one), stamps each task with a `listName`, and *only then* accepts a
+  `@due`-less `- [ ] text` line. `VaultIndexBuilder` passes `sectioned:
+  true` for exactly one file — the root `Tasks.md`, matched by
+  `VaultManager.isCaptureNote` — so every other note keeps the strict rules
+  and no stray checkbox in the vault becomes a task. `TaskItem.dueDateString`
+  is therefore optional; undated items sort after dated ones (a
+  `"9999-99-99"` sentinel in `VaultIndex.byDueDate`), are never overdue,
+  render no due capsule, and can't be planned a notification.
+  `VaultIndex.incompleteTasks`/`completedTasks` filter to `listName == nil`,
+  which is what keeps lists out of the Tasks screen; `lists` builds from
+  `VaultIndex.listNames` (the note's headings) rather than from the tasks,
+  so a list created but not yet filled still exists.
+  `TaskParser.clearingCompletedTasks` takes the same `sectioned` flag,
+  because the Tasks screen's Clear All must not delete completed items out
+  of lists it never showed. Section surgery lives in `TaskListDocument`
+  (pure, unit-tested): add/rename/remove a section and insert a line at the
+  end of one, preserving all other Markdown; `VaultFileOperations.updateNote`
+  runs those transforms inside one coordinated read-modify-write, the same
+  guarantee `appendLine` gives. Names match case-insensitively but display
+  as the heading spells them. `TaskRow` is shared by both screens so a list
+  task and an ordinary task can't drift apart. Renaming a list dismisses its
+  detail view, since the navigation value is the name.
 * **Task notifications.** Split into a pure, unit-tested planner and a thin
   scheduler (both in `Cove/Core/Services/`). `TaskNotificationPlanner` turns
   the task list into `TaskNotificationPlan`s for incomplete tasks *with a
@@ -452,7 +502,8 @@ merged.
   refresh (the spec's "foreground or files change"). No push
   notifications and no background scheduling.
 * **Settings and appearance.** `SettingsView` (`Cove/Features/Settings/`)
-  is a third tab beside Notes and Tasks, shown when a vault is open: the
+  is the last tab beside Notes, Tasks, and Lists, shown when a vault is
+  open: the
   current vault's name and path with the shared `VaultPickerButton`
   reselect flow (the same recovery path as the welcome/stale screens), a
   greeting-name field, a
@@ -500,9 +551,9 @@ merged.
   share those primitives. The richer presentation remains standard SwiftUI
   and platform text views only; it adds no assets beyond the existing
   `LaunchIcon`, no dependencies, and no persistence changes.
-* **Adaptive app navigation.** `RootView` keeps the three-section tab bar on
+* **Adaptive app navigation.** `RootView` keeps the four-section tab bar on
   iOS, where it is the expected compact navigation, and presents the same
-  Notes/Tasks/Settings destinations in a branded `NavigationSplitView`
+  Notes/Tasks/Lists/Settings destinations in a branded `NavigationSplitView`
   sidebar on macOS. `AppSection` is the shared selection model, so both
   platforms route to the same feature views and no core behavior diverges.
 * **Level-aware Notes browser.** `VaultBrowserView` presents one folder level
@@ -561,7 +612,8 @@ merged.
 * All vault filesystem access goes through `NSFileCoordinator`.
 * Hidden files and symlinks are always ignored.
 * Task syntax `- [ ] Task text @due(YYYY-MM-DD[ HH:MM])[ @repeat(rule)]`
-  is fixed; no alternates.
+  is fixed; no alternates. The one relaxation is `@due`-less lines inside a
+  `##` list section of the capture note, and it applies nowhere else.
 * No persisted search index; search is on demand.
 * No push notifications; no custom background sync.
 * iCloud conflict copies are shown as separate files, never auto-resolved.
@@ -701,6 +753,24 @@ problems as build warnings, not errors.
   the title. Hashtags are not lists (Cove has no tag feature) and stay in
   the title; ISO dates ("2026-07-21") aren't in grove's grammar — use
   slash or month-name dates, or the sheet's date picker.
+* Lists live only in the capture note. A `##` heading in any other note is
+  just a heading, and moving a task line under one there does nothing —
+  the Lists tab reads `Tasks.md` alone.
+* A list's identity is its heading text, so renaming a list by hand in the
+  editor is indistinguishable from deleting one list and creating another.
+  Nothing is lost (the items move with the heading), but the Lists tab has
+  no memory of the old name.
+* Deleting a list deletes its tasks with it. That is confirmed with a
+  dialog, but there is no undo beyond the editor's own.
+* An undated list item can never gain a time or a repeat rule, because both
+  live inside or after the `@due` tag. The draft sheet's date toggle drops
+  all three together, so turning the date back on starts from today with no
+  time.
+* Completed list items stay in their list, struck through under a Done
+  header. There is no per-list Clear All — the bulk action belongs to the
+  Tasks screen, and a list's completed items are usually its history.
+* An item captured into a list that was deleted meanwhile recreates the
+  heading at the end of the note, rather than failing.
 * A bare time stays on today even when that moment has passed (grove
   parity): "standup 9a" typed at 10:00 lands today, already overdue, and
   gets no notification. Add a date word if tomorrow was meant.

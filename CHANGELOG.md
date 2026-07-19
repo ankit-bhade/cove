@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A single task can now be deleted from the Tasks screen by swiping its row
   or right-clicking it, which removes that line from its Markdown note.
 - Settings takes a name, used by the Notes greeting.
+- Task lists (Phase 10): a Lists tab groups related tasks — groceries,
+  subscriptions, packing — as `##` sections of the same `Tasks.md`. List
+  items use the same natural-language capture and can carry due dates,
+  times, and repeats, but a due date is optional there, and list items are
+  kept out of the Tasks screen. Lists can be created, renamed, and deleted.
 
 ### Fixed
 
@@ -38,9 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The quick-entry interpreter no longer forces an undated sentence to today.
+  The Tasks screen still resolves one to today (its tasks require a due
+  date); the Lists screen leaves it undated.
 - Refined the app-wide UI for faster, more predictable navigation: macOS now
-  uses a branded Notes/Tasks/Settings sidebar while iPhone and iPad retain
-  their native tab bar; refresh actions show progress, reject duplicate
+  uses a branded Notes/Tasks/Lists/Settings sidebar while iPhone and iPad
+  retain their native tab bar; refresh actions show progress, reject duplicate
   scans, and support Command-R, and New Note supports Command-N.
 - Added readable-width layouts for wide windows and iPad, a narrower writing
   measure in the editor, adaptive dashboard/task/status layouts for Dynamic

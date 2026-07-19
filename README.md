@@ -5,7 +5,7 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 9 — all build phases complete): select a vault folder,
+Current state (Phase 10 — all build phases complete): select a vault folder,
 browse its nested folders, and open any note in a live-styled
 Markdown editor that saves automatically as you type. Opening a folder pushes
 it onto the Notes screen, so the system back button and the iOS swipe-back
@@ -54,6 +54,17 @@ recurring task rolls it to the next occurrence, whose notification is
 scheduled in turn; tasks with only a date get none (the app asks for
 notification permission the first time it has something to schedule). Reminder
 details use a compact friendly date such as `Jul 18, 8:00pm.`
+A Lists tab keeps grouped tasks visually separate from what's actually due.
+A list — Groceries, Subscriptions, Packing — is a `##` heading inside the
+same `Tasks.md`, and its items are ordinary task lines beneath it, so you can
+create and edit lists either in the app or by typing Markdown. Items are
+captured with the same one-sentence field ("order cake fri 3pm"), and they
+can carry due dates, times, and repeats — but here a due date is optional,
+so "milk" simply stays an item to buy. Dated items sort first within a list,
+undated ones follow in the order you added them, and timed ones notify like
+any other task. List items never appear on the Tasks screen, and the Tasks
+screen's Clear All never touches them. Lists can be renamed, and deleting a
+list removes it and its items from `Tasks.md` after confirmation.
 The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same
@@ -65,8 +76,8 @@ full moon in dark. The
 interface uses a cohesive coastal navy-and-teal visual system derived from
 that artwork, with branded setup and loading states, vault and task overview
 cards, richer file and task rows, polished empty and search states, and a more
-spacious writing canvas. On Mac, Notes, Tasks, and Settings live in a native
-branded sidebar; iPhone and iPad keep the familiar tab bar. Wide screens use
+spacious writing canvas. On Mac, Notes, Tasks, Lists, and Settings live in a
+native branded sidebar; iPhone and iPad keep the familiar tab bar. Wide screens use
 comfortable readable content widths, the editor keeps long lines under
 control, refresh actions show their progress, and compact layouts adapt for
 large text and short windows without hiding primary controls. Command-R

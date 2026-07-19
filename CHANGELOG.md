@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Today widget centered its task rows in the space under the header, so
+  a single task floated in the middle of the widget and the list appeared to
+  grow in both directions. Rows now hang from the header, with each new task
+  added below the last.
+- The Today widget's header date sat on its own baseline at a much smaller
+  size than "Today". The two now share a size and a baseline, separated by
+  weight and color instead.
 - A quick-captured task with no list was appended to the end of `Tasks.md`,
   which put it under the last `##` list heading — so a task added for today
   joined that list and vanished from the Tasks screen. Captures now land in

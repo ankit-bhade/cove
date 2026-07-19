@@ -47,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Today widget's header date sat on its own baseline at a much smaller
   size than "Today". The two now share a size and a baseline, separated by
   weight and color instead.
+- The Today widget's "All clear" state dropped the header entirely, losing
+  the day, the date, and the count. The header is now unconditional, so an
+  empty day still reads as today.
 - A quick-captured task with no list was appended to the end of `Tasks.md`,
   which put it under the last `##` list heading — so a task added for today
   joined that list and vanished from the Tasks screen. Captures now land in

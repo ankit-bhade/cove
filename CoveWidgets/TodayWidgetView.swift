@@ -21,27 +21,28 @@ struct TodayWidgetView: View {
     }
 
     var body: some View {
-        Group {
+        // The header is unconditional: the day and date are the widget's
+        // anchor on the Home Screen, and an empty day is still a day. Only
+        // what sits under it changes.
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.bottom, 9)
             if openTasks.isEmpty {
                 emptyState
             } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                        .padding(.bottom, 9)
-                    VStack(spacing: isSmall ? 6 : 7) {
-                        ForEach(visibleTasks) { task in
-                            row(for: task)
-                        }
+                VStack(spacing: isSmall ? 6 : 7) {
+                    ForEach(visibleTasks) { task in
+                        row(for: task)
                     }
-                    // Rows hang from the header rather than centering in the
-                    // leftover space: a single task belongs directly under
-                    // "Today", where the next one added will sit below it,
-                    // instead of drifting to the middle of the widget.
-                    .frame(maxHeight: .infinity, alignment: .top)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // Rows hang from the header rather than centering in the
+                // leftover space: a single task belongs directly under
+                // "Today", where the next one added will sit below it,
+                // instead of drifting to the middle of the widget.
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The design's own insets rather than WidgetKit's default content
         // margins, which are wider and would cost the small family a row.
         // Paired with `.contentMarginsDisabled()` on the configuration.

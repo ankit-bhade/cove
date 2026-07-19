@@ -36,6 +36,12 @@ struct VaultBookmarkStore {
         defaults.data(forKey: Self.bookmarkKey) != nil
     }
 
+    /// The stored bookmark itself, for handing to the widget extension
+    /// through the shared App Group container.
+    var bookmarkData: Data? {
+        defaults.data(forKey: Self.bookmarkKey)
+    }
+
     /// The URL must be within an active security scope when this is called.
     func saveBookmark(for url: URL) throws {
         let data = try url.bookmarkData(options: creationOptions,

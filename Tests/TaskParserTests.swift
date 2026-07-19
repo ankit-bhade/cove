@@ -212,6 +212,80 @@ final class TaskParserTests: XCTestCase {
             "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n")
     }
 
+    // MARK: - Removing one task
+
+    private func removing(_ text: String,
+                          taskText: String = "Buy milk",
+                          due: String = "2026-07-20",
+                          time: String? = nil,
+                          recurrence: RecurrenceRule? = nil,
+                          isCompleted: Bool = false,
+                          line: Int = 0) -> String? {
+        TaskParser.removingTask(
+            withText: taskText, dueDateString: due, dueTimeString: time,
+            recurrence: recurrence, isCompleted: isCompleted,
+            preferredLineNumber: line, in: text)
+    }
+
+    func testRemovingTaskDropsItsWholeLine() {
+        let text = "Intro\n- [ ] Buy milk @due(2026-07-20)\nOutro\n"
+        XCTAssertEqual(removing(text, line: 1), "Intro\nOutro\n")
+    }
+
+    func testRemovingTaskKeepsSurroundingMarkdownVerbatim() {
+        let text = """
+            # Tasks
+            - [ ] Buy milk @due(2026-07-20)
+            - [ ] Call mom @due(2026-07-21)
+            Some prose.
+            """
+        XCTAssertEqual(removing(text, line: 1), """
+            # Tasks
+            - [ ] Call mom @due(2026-07-21)
+            Some prose.
+            """)
+    }
+
+    func testRemovingTaskWithoutTrailingNewlineAtEndOfFile() {
+        let text = "Intro\n- [ ] Buy milk @due(2026-07-20)"
+        XCTAssertEqual(removing(text, line: 1), "Intro\n")
+    }
+
+    func testRemovingPrefersRememberedLineAmongDuplicates() {
+        let text = """
+            - [ ] Call mom @due(2026-07-20)
+            - [ ] Call mom @due(2026-07-20)
+            Tail
+            """
+        // Both lines are identical, so either removal leaves the same text —
+        // what matters is that exactly one goes.
+        XCTAssertEqual(removing(text, taskText: "Call mom", line: 1), """
+            - [ ] Call mom @due(2026-07-20)
+            Tail
+            """)
+    }
+
+    func testRemovingCompletedTask() {
+        let text = "- [x] Buy milk @due(2026-07-20)\nTail\n"
+        XCTAssertEqual(removing(text, isCompleted: true), "Tail\n")
+    }
+
+    func testRemovingRecurringTaskMatchesOnItsRule() {
+        let text = "- [ ] Stretch @due(2026-07-20) @repeat(daily)\n"
+        XCTAssertEqual(removing(text, taskText: "Stretch",
+                                recurrence: RecurrenceRule(frequency: .daily)), "")
+        // A task whose rule differs on disk is not the indexed one.
+        XCTAssertNil(removing(text, taskText: "Stretch"))
+    }
+
+    func testRemovingReturnsNilWhenTaskIsGone() {
+        XCTAssertNil(removing("Nothing here\n"))
+        // Same text but the state on disk no longer matches.
+        XCTAssertNil(removing("- [x] Buy milk @due(2026-07-20)\n"))
+        // Same text but the due date moved.
+        XCTAssertNil(removing("- [ ] Buy milk @due(2026-07-25)\n"))
+    }
+
     // MARK: - Clearing completed tasks
 
     func testClearingCompletedTasksRemovesOnlyStrictCompletedTaskLines() {

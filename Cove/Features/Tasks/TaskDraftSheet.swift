@@ -11,7 +11,6 @@ struct TaskDraftSheet: View {
     let onConfirm: (TaskDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
 
     private var canAdd: Bool {
         !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -107,9 +106,7 @@ struct TaskDraftSheet: View {
                     .padding(.vertical, 3)
                 }
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(CoveTheme.canvas(for: colorScheme))
+            .coveFormStyle()
             .navigationTitle("New Task")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

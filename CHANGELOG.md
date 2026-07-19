@@ -19,12 +19,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local task notifications for incomplete due tasks (Phase 7)
 - Natural-language quick task entry with times and recurrence (Phase 8)
 - Appearance polish, app icon, and launch screen: a Settings tab (vault
-  reselect, system/light/dark appearance, notification permission status,
-  app version), a teal accent color, generated app icon artwork for iOS
-  and macOS, and an iOS launch screen (Phase 9)
+  reselect, greeting name, system/light/dark appearance, notification
+  permission status), a teal accent color, generated app icon artwork for
+  iOS and macOS, and an iOS launch screen (Phase 9)
+- A single task can now be deleted from the Tasks screen by swiping its row
+  or right-clicking it, which removes that line from its Markdown note.
+- Settings takes a name, used by the Notes greeting.
 
 ### Changed
 
+- Refined the interface for clarity and consistency: folders now open as
+  real navigation pushes (system back button and iOS swipe-back), open
+  tasks are grouped into Overdue/Today/Tomorrow/Upcoming with plain-language
+  due dates, the editor reports its actual save state instead of a fixed
+  "Auto-save" label and can dismiss the iOS keyboard, search shows a
+  searching indicator, and the quick-capture "+" glyph became a working
+  submit button. Decorative icon tiles are hidden from VoiceOver and scale
+  with Dynamic Type, checkbox hit targets meet the 44pt minimum, empty names
+  no longer reach the create/rename error path, and the move picker marks
+  the item's current folder.
 - Replaced the app icon and launch-screen artwork with the `cove` wordmark
   over the coastal waves, its `o` a sun by day and a full moon at night.
   Adds a dark iOS app icon variant and a dark launch-screen tile.
@@ -40,6 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   note counts; the greeting is visually lighter and less prominent.
 - The Tasks screen now offers a confirmed Clear All action that removes every
   completed Cove task line from its original Markdown note.
+- Trimmed the Tasks screen: task rows no longer repeat their source note's
+  name beneath every task and sit tighter, and the quick-capture card drops
+  its how-it-works description and the vault-wide completed count.
+- The Notes greeting now varies across seven stretches of the day and can
+  address you by the name set in Settings.
+- Removed the About section from Settings.
 - Refined the interface with a cohesive coastal visual system, branded
   loading and vault-setup states, dashboard cards for Notes and Tasks,
   richer file, search, task, settings, and move rows, improved empty states,

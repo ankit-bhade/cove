@@ -101,6 +101,58 @@ final class TaskListDocumentTests: XCTestCase {
         XCTAssertEqual(result, note + "\n## Packing\n- [ ] Sunscreen\n")
     }
 
+    // MARK: - Inserting outside every list
+
+    func testUnlistedLineGoesAboveTheFirstListRatherThanTheEndOfTheNote() {
+        let result = TaskListDocument.insertingUnlistedLine("- [ ] Call bank @due(2026-07-19)",
+                                                            in: note)
+        XCTAssertEqual(result, """
+            - [ ] Renew passport @due(2026-07-25)
+            - [ ] Call bank @due(2026-07-19)
+
+            ## Groceries
+            - [ ] Milk
+            - [ ] Bread
+
+            ## Subscriptions
+            - [ ] Netflix @due(2026-08-01) @repeat(monthly)
+
+            """)
+    }
+
+    func testUnlistedLineAppendsWhenTheNoteHasNoLists() {
+        let plain = "- [ ] Old @due(2026-07-18)\n"
+        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)",
+                                                              in: plain),
+                       plain + "- [ ] New @due(2026-07-19)\n")
+    }
+
+    func testUnlistedLineStartsANoteThatIsNothingButLists() {
+        let listsOnly = "## Groceries\n- [ ] Milk\n"
+        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)",
+                                                              in: listsOnly),
+                       "- [ ] New @due(2026-07-19)\n" + listsOnly)
+    }
+
+    func testUnlistedLineFollowsFreeSpaceReopenedByATopLevelHeading() {
+        let reopened = """
+            ## Groceries
+            - [ ] Milk
+
+            # Inbox
+            - [ ] Old @due(2026-07-18)
+
+            """
+        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)",
+                                                              in: reopened),
+                       reopened + "- [ ] New @due(2026-07-19)\n")
+    }
+
+    func testUnlistedLineIntoAnEmptyNote() {
+        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)", in: ""),
+                       "- [ ] New @due(2026-07-19)\n")
+    }
+
     // MARK: - Removing
 
     func testRemovingSectionDropsItsHeadingAndItems() {

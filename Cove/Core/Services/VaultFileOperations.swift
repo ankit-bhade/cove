@@ -45,26 +45,9 @@ struct VaultFileOperations: Sendable {
         }
     }
 
-    /// Appends one line to the named note in `folder`, creating the note if
-    /// it doesn't exist yet. The read-modify-write runs inside a single
-    /// coordinated write so a syncing external copy can't be clobbered
-    /// mid-append.
-    @discardableResult
-    func appendLine(_ line: String, toNoteNamed name: String, in folder: URL) throws -> URL {
-        let fileName = try noteFileName(from: name)
-        let destination = folder.appendingPathComponent(fileName, isDirectory: false)
-        try coordinatedWrite(at: destination, options: .forMerging) { url in
-            var text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            if !text.isEmpty, !text.hasSuffix("\n") { text += "\n" }
-            text += line + "\n"
-            try text.write(to: url, atomically: true, encoding: .utf8)
-        }
-        return destination
-    }
-
     /// Rewrites the named note through `transform`, creating it if it
-    /// doesn't exist yet. Like `appendLine`, the whole read-modify-write
-    /// happens inside one coordinated write, which is what makes the Lists
+    /// doesn't exist yet. The whole read-modify-write happens inside one
+    /// coordinated write, which is what makes quick capture and the Lists
     /// screen's section surgery safe against a syncing external copy.
     /// Returning nil from `transform` leaves the file untouched.
     @discardableResult

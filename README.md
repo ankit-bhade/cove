@@ -49,8 +49,8 @@ cleaned-up title, the due date and time, the repeat rule — so pressing
 return adds the task immediately, with no confirmation step. When Cove
 reads a sentence wrong, the sliders button beside the preview opens a
 details sheet where the title, date, time, and repeat can be set by hand
-before adding. Added tasks are appended to a `Tasks.md` note at the vault
-root (created on demand), and a line like `- [ ] Get bread @due(2026-07-19 15:00)
+before adding. Added tasks go into a `Tasks.md` note at the vault root
+(created on demand), above any lists kept there, and a line like `- [ ] Get bread @due(2026-07-19 15:00)
 @repeat(every 2 weeks)` can equally be typed by hand in any note. Tasks
 with a time get one local notification at that moment, and completing a
 recurring task rolls it to the next occurrence, whose notification is

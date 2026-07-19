@@ -17,7 +17,7 @@ struct TaskRow: View {
 
     var body: some View {
         let overdue = task.isOverdue(at: now)
-        return HStack(alignment: .top, spacing: 11) {
+        return HStack(alignment: .center, spacing: 8) {
             Button(action: onToggle) {
                 Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 21, weight: .medium))
@@ -28,8 +28,8 @@ struct TaskRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .offset(x: -10)
-            .padding(.trailing, -10)
+            .offset(x: -8)
+            .padding(.trailing, -8)
             .accessibilityLabel(task.isCompleted ? "Mark incomplete"
                                 : task.recurrence == nil ? "Mark complete"
                                 : "Complete and reschedule")
@@ -38,16 +38,21 @@ struct TaskRow: View {
                 // The source note is deliberately not shown: tasks nearly
                 // always live in the capture note, so the row read as a
                 // repeated "Tasks" caption under every task.
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: task.hasDueDate ? 4 : 0) {
                     Text(task.text)
                         .font(.body.weight(.medium))
                         .strikethrough(task.isCompleted)
                         .foregroundStyle(task.isCompleted ? .secondary : .primary)
                     metadata(overdue: overdue)
                 }
-                .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .listRowInsets(CoveTheme.taskRowInsets(hasMetadata: task.hasDueDate))
+        // SwiftUI otherwise derives the separator inset from whichever
+        // nested label it happens to select. Recurring metadata can make
+        // that inferred edge jump as far right as the repeat label.
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
@@ -67,17 +72,17 @@ struct TaskRow: View {
             EmptyView()
         } else if let rule = task.recurrence, !dynamicTypeSize.isAccessibilitySize {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 7) {
+                HStack(spacing: 6) {
                     dueLabel(overdue: overdue)
                     recurrenceLabel(rule)
                 }
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 3) {
                     dueLabel(overdue: overdue)
                     recurrenceLabel(rule)
                 }
             }
         } else if let rule = task.recurrence {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 3) {
                 dueLabel(overdue: overdue)
                 recurrenceLabel(rule)
             }
@@ -103,7 +108,7 @@ struct TaskRow: View {
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(tint)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .background(tint.opacity(0.10), in: Capsule())
     }

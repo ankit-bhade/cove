@@ -36,6 +36,22 @@ enum CoveTheme {
     static func dashboardRowInsets(bottom: CGFloat = 14) -> EdgeInsets {
         EdgeInsets(top: 8, leading: 0, bottom: bottom, trailing: 0)
     }
+
+    /// Task rows keep a full-size checkbox target, so they need less of the
+    /// native List's extra vertical padding than an ordinary text row.
+    static func taskRowInsets(hasMetadata: Bool) -> EdgeInsets {
+        #if os(iOS)
+        EdgeInsets(top: hasMetadata ? 6 : 5,
+                   leading: 20,
+                   bottom: hasMetadata ? 6 : 5,
+                   trailing: 14)
+        #else
+        EdgeInsets(top: hasMetadata ? 4 : 3,
+                   leading: 10,
+                   bottom: hasMetadata ? 4 : 3,
+                   trailing: 8)
+        #endif
+    }
 }
 
 /// The shared list/form chrome: platform-appropriate grouped style over

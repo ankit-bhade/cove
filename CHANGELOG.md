@@ -99,3 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ranges, and richer recurrences ("every 2 weeks", "every mon wed fri",
   "monthly"); recurring tasks now get a one-shot notification for their
   current occurrence instead of repeating triggers (Phase 8)
+- Tightened row and quick-capture card density on the Tasks and Lists
+  screens: task rows use smaller list-row insets and a shared separator
+  edge instead of collapsing into the nearest metadata label, and the
+  quick-capture cards use less padding.

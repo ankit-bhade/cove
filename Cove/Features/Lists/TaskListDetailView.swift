@@ -78,6 +78,9 @@ struct TaskListDetailView: View {
             }
         }
         .coveListStyle()
+        #if os(iOS)
+        .listSectionSpacing(.compact)
+        #endif
         .coveReadableWidth()
         .navigationTitle(listName)
         #if os(iOS)
@@ -147,14 +150,14 @@ struct TaskListDetailView: View {
             .animation(.easeInOut(duration: 0.15), value: canCapture)
             .accessibilityLabel("Interpret and add item")
         }
-        .padding(11)
+        .padding(9)
         .background(CoveTheme.canvas(for: colorScheme),
                     in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .stroke(CoveTheme.border(for: colorScheme), lineWidth: 1)
         }
-        .padding(18)
+        .padding(14)
         .background { CoveCardBackground() }
     }
 

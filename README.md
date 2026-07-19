@@ -53,7 +53,9 @@ recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same
 flow that recovers a stale selection), switches between system, light, and
 dark appearance, and shows whether notification permission is granted, with
-a shortcut to enable it. The app has its own icon and launch screen. The
+a shortcut to enable it. The app has its own icon and launch screen — the
+`cove` wordmark over layered waves, its `o` a sun in light appearance and a
+full moon in dark. The
 interface uses a cohesive coastal navy-and-teal visual system derived from
 that artwork, with branded setup and loading states, vault and task overview
 cards, richer file and task rows, polished empty and search states, and a more

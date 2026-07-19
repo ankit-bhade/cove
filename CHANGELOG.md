@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replaced the app icon and launch-screen artwork with the `cove` wordmark
+  over the coastal waves, its `o` a sun by day and a full moon at night.
+  Adds a dark iOS app icon variant and a dark launch-screen tile.
 - Standardized grouped-screen card widths and made prominent vault-selection
   actions fill their available row, keeping Notes, Tasks, Settings, and the
   task review sheet visually aligned on iOS.

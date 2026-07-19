@@ -435,9 +435,15 @@ merged.
   recovery screens, and an unrecognized stored value falls back to
   `system`.
 * **Icon, accent, and launch screen.** The asset catalog carries generated
-  moon-over-waves artwork (drawn with a one-off CoreGraphics script):
-  a full-bleed 1024 iOS icon, icon-grid rounded-rect PNGs for every mac
-  size, and a `LaunchIcon` imageset plus `LaunchBackground` colorset
+  `cove` wordmark artwork — the word set in Cormorant Garamond semibold over
+  layered waves, with the `o` replaced by a sun (light) or a cratered full
+  moon (dark). The vector source is the `Cove Icon Final.dc.html` design
+  document; the PNGs are rendered from that SVG and derived into every size
+  by the pipeline described under "Regenerating the app icon" below. The set
+  is a full-bleed 1024 iOS icon plus a dark-appearance 1024 variant,
+  icon-grid rounded-rect PNGs for every mac size, and a `LaunchIcon`
+  imageset (light and dark rounded tiles, also reused in-app by the loading,
+  setup, and Settings headers) plus a `LaunchBackground` colorset
   (white/black) used by the iOS `UILaunchScreen` dictionary. That
   dictionary lives in a root-level partial `Info.plist` merged into the
   generated one via `INFOPLIST_FILE` alongside `GENERATE_INFOPLIST_FILE`
@@ -515,6 +521,26 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 # Tests (macOS host)
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
 ```
+
+## Regenerating the app icon
+
+The icon's source of truth is the `Cove Icon Final.dc.html` design document
+(two `<symbol>` elements, `coveLight` and `coveDark`, each a 1024×1024 SVG).
+The checked-in PNGs are produced from it in two steps, neither of which is
+part of the app or its build:
+
+1. Render each symbol standalone at 1024×1024 with headless Chrome. The
+   wordmark needs Cormorant Garamond, which is not installed on macOS — the
+   page must pull it from Google Fonts, and the render needs network access
+   and a `--virtual-time-budget` long enough for the webfont to land.
+   Confirm the result is Cormorant and not the Georgia fallback.
+2. Derive every catalog size from those two base renders with CoreGraphics:
+   full-bleed for the iOS icons, an 824/1024 rounded-rect body with a soft
+   drop shadow for the macOS icon grid, and full-bleed rounded tiles for
+   `LaunchIcon`.
+
+Verify with a macOS and an iOS build afterwards — `actool` reports icon
+problems as build warnings, not errors.
 
 ## Known issues and gotchas
 
@@ -622,6 +648,14 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
   up when the app returns to the foreground.
 * The launch screen is iOS-only (`UILaunchScreen` has no macOS equivalent);
   macOS windows simply open with the app's content.
-* The app icon PNGs are generated artwork checked into the asset catalog;
-  the CoreGraphics script that drew them is not part of the repo, so icon
-  changes mean regenerating the full size set.
+* The app icon PNGs are generated artwork checked into the asset catalog.
+  The vector source lives in the Claude Design project, not in the repo, so
+  an icon change means editing there and regenerating the full size set (see
+  "Regenerating the app icon").
+* The icon is a wordmark, so the 16pt and 32pt macOS sizes reduce `cove` to
+  an illegible smudge. That is inherent to the design; the waves and the
+  sun/moon still read as the app's silhouette in the Dock and Finder.
+* The dark iOS app icon variant is opaque rather than transparent. Apple's
+  iOS 18 guidance prefers a transparent dark icon composited over a
+  system-drawn backdrop; the design supplies its own night sky, so it ships
+  as-is. iOS 17 ignores the variant entirely.

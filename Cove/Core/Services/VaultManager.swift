@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import WidgetKit
 
 /// Owns the vault lifecycle: restoring the saved bookmark on launch, opening
 /// a newly picked folder, keeping security-scoped access balanced, and
@@ -45,6 +46,7 @@ final class VaultManager {
     private let fileOperations = VaultFileOperations()
     private let indexBuilder = VaultIndexBuilder()
     private let notificationScheduler = TaskNotificationScheduler()
+    private let widgetStore = WidgetSnapshotStore()
 
     /// Set only when `startAccessingSecurityScopedResource()` returned true,
     /// so every stop is matched to a successful start. `@ObservationIgnored`
@@ -308,6 +310,9 @@ final class VaultManager {
     private func loadTree(from url: URL) async {
         let scanner = self.scanner
         let builder = indexBuilder
+        // Toggles the widget couldn't write itself are applied first, so the
+        // scan that follows already sees them and the index is built once.
+        await applyPendingWidgetToggles()
         do {
             let (node, index) = try await Task.detached(priority: .userInitiated) {
                 let node = try scanner.scanTree(at: url)
@@ -324,6 +329,7 @@ final class VaultManager {
             let scheduler = notificationScheduler
             let tasks = index.allTasks
             Task { await scheduler.rebuildNotifications(for: tasks) }
+            publishWidgetState(tasks: tasks)
         } catch {
             endAccess()
             rootNode = nil
@@ -331,7 +337,54 @@ final class VaultManager {
             vaultURL = nil
             lastErrorDescription = error.localizedDescription
             state = .recoveryNeeded
+            publishWidgetState(tasks: [])
         }
+    }
+
+    // MARK: - Widget
+
+    /// Publishes what the widget extension needs into the shared App Group
+    /// container: today's tasks to draw, and the vault bookmark so a tapped
+    /// checkbox can reach the note itself. Runs on every index rebuild, which
+    /// is the same set of moments that reschedules notifications.
+    private func publishWidgetState(tasks: [TaskItem]) {
+        widgetStore.writeSnapshot(TodaySnapshot.building(for: Date(), from: tasks))
+        if let bookmark = bookmarkStore.bookmarkData {
+            widgetStore.writeBookmark(bookmark)
+        }
+        WidgetCenter.shared.reloadTimelines(ofKind: CoveSharedContainer.todayWidgetKind)
+    }
+
+    /// Applies toggles the widget recorded but couldn't write — the extension
+    /// may not be able to resolve the vault bookmark from its own process.
+    /// Each one goes through the same re-find-then-rewrite path as an in-app
+    /// toggle, so a line that changed meanwhile is left alone rather than
+    /// overwritten. The queue is cleared regardless: a toggle that no longer
+    /// matches is stale, and retrying it forever would be worse than dropping it.
+    private func applyPendingWidgetToggles() async {
+        let pending = widgetStore.readPendingToggles()
+        guard !pending.isEmpty else { return }
+        widgetStore.clearPendingToggles()
+
+        let ops = fileOperations
+        let today = QuickTaskParser.ymdString(from: Date())
+        await Task.detached(priority: .userInitiated) {
+            for toggle in pending {
+                guard let text = try? ops.readNote(at: toggle.fileURL),
+                      let updated = TaskParser.togglingTask(
+                        withText: toggle.text,
+                        dueDateString: toggle.dueDateString,
+                        dueTimeString: toggle.dueTimeString,
+                        recurrence: toggle.recurrence,
+                        isCompleted: toggle.wasCompleted,
+                        listName: nil,
+                        preferredLineNumber: toggle.lineNumber,
+                        todayDateString: today,
+                        in: text)
+                else { continue }
+                try? ops.saveNote(updated, to: toggle.fileURL)
+            }
+        }.value
     }
 
     // MARK: - External change detection

@@ -5,7 +5,7 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 10 — all build phases complete): select a vault folder,
+Current state (Phase 11 — all build phases complete): select a vault folder,
 browse its nested folders, and open any note in a live-styled
 Markdown editor that saves automatically as you type. Opening a folder pushes
 it onto the Notes screen, so the system back button and the iOS swipe-back
@@ -58,6 +58,11 @@ scheduled in turn; tasks with only a date get none (the app asks for
 notification permission the first time it has something to schedule). Reminder
 details use a compact friendly date such as `Jul 18, 8:00pm.`
 A Lists tab keeps grouped tasks visually separate from what's actually due.
+On iPhone and iPad, a Today widget can be added to the Home Screen in small
+or medium size: it lists the tasks due today with a checkbox to tick one off
+without opening the app, shows overdue ones in red and a count of what's
+left, and reads "All clear" once nothing is due. Tapping it opens the Tasks
+tab.
 A list — Groceries, Subscriptions, Packing — is a `##` heading inside the
 same `Tasks.md`, and its items are ordinary task lines beneath it, so you can
 create and edit lists either in the app or by typing Markdown. Items are
@@ -93,6 +98,10 @@ screen.
 - macOS 14 (Sonoma) or later
 
 Built with SwiftUI and Apple frameworks only — no third-party dependencies.
+
+The Today widget is iOS-only; it builds and installs on the simulator as is,
+but running it on a device needs the `group.com.ankitbhade.Cove` App Group
+registered for your team, since the app and the widget share data through it.
 
 ## Building
 

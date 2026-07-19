@@ -30,6 +30,13 @@ struct RootView: View {
                 Task { await vaultManager.refresh() }
             }
         }
+        // Tapping the Today widget lands on the Tasks screen, which is the
+        // full version of what the widget was showing.
+        .onOpenURL { url in
+            if url.scheme == "cove", url.host == "tasks" {
+                selectedSection = .tasks
+            }
+        }
     }
 
     @ViewBuilder

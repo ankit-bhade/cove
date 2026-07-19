@@ -6,9 +6,9 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 10 — task lists.**
+**Current phase: Phase 11 — iOS Today widget.**
 
-Status: Phase 10 implemented. All build phases are complete. See
+Status: Phase 11 implemented. All build phases are complete. See
 CHANGELOG.md for merged work.
 
 ---
@@ -210,6 +210,7 @@ Complete and validate each phase before starting the next.
 8. Natural-language quick task entry with times and recurrence
 9. Appearance polish, app icon, and launch screen
 10. Task lists
+11. iOS Today home-screen widget
 
 Do not work ahead into a later phase unless explicitly asked.
 
@@ -232,6 +233,9 @@ Platform/
   macOS/
 Tests/
 ```
+
+The widget extension lives in a top-level `CoveWidgets/` folder, outside the
+app's `Cove/` folder, because it is a separate build target.
 
 Only create files that are needed for the current phase.
 
@@ -615,7 +619,70 @@ merged.
   document-picker folder access. macOS signing stays local/ad-hoc
   (`CODE_SIGN_IDENTITY[sdk=macosx*] = -`); a `DEVELOPMENT_TEAM` is set on the
   app target (added via Xcode) for automatic signing on device builds.
-* **Bundle identifiers.** `com.ankitbhade.Cove` / `com.ankitbhade.CoveTests`.
+* **Today widget (iOS).** `CoveWidgets` is a second target — an iOS-only
+  WidgetKit app extension (`com.apple.product-type.app-extension`) embedded
+  in the app through an "Embed Foundation Extensions" copy phase. Both the
+  phase's build file and the target dependency carry `platformFilters =
+  (ios)`, without which a macOS build fails outright ("contains embedded
+  content built for iOS"). The extension's `NSExtensionPointIdentifier` has
+  to come from a real partial `Info.plist` (`CoveWidgets-Info.plist`, kept at
+  the repo root like the app's): `NSExtension` is a nested dictionary, and
+  `INFOPLIST_KEY_*` settings only write top-level scalars — a missing one
+  builds cleanly and then fails to *install* ("Failed to create app extension
+  placeholder"). `TodayWidget` offers `.systemSmall` and `.systemMedium`,
+  reads the widget family from the environment, and applies the design's own
+  14/15pt insets with `.contentMarginsDisabled()` rather than WidgetKit's
+  wider default margins, which would cost the small family a row.
+  `WidgetPalette` holds the design's literal light/dark tokens instead of
+  referencing `CoveTheme`: the widget's accent is a deeper teal than the
+  app's, the handoff names an overdue red the app's palette doesn't have, and
+  keeping the colors local means the extension needs no shared asset catalog.
+* **Widget data channel.** The app reaches the vault through a per-device
+  security-scoped bookmark in `UserDefaults`; the widget is a separate
+  process and can reach neither, so everything shared goes through an App
+  Group (`group.com.ankitbhade.Cove`, entitled on the iOS app via
+  `Cove/Cove-iOS.entitlements` and on the extension via
+  `CoveWidgets/CoveWidgets.entitlements`). `WidgetSnapshot.swift`
+  (`Cove/Core/Services/`, compiled into both targets) owns the whole channel:
+  `TodaySnapshot` — the day string, the moment it was built, and the
+  `SnapshotTask`s due that day — plus the bookmark and a pending-toggle
+  queue. `VaultManager.publishWidgetState` writes the snapshot and the
+  bookmark on **every** index rebuild, the same set of moments that
+  reschedules notifications, then reloads the timeline. The snapshot is
+  derived state, never a source of truth; the Markdown files remain that.
+  A snapshot built for another day reads as empty (`valid(at:)`) so a widget
+  that hasn't refreshed since yesterday can't present yesterday's list as
+  today's.
+* **Widget toggle.** The checkbox is a `Button(intent:)` backed by
+  `ToggleTaskIntent`, which carries only the row's id — everything else is
+  looked up in the snapshot, which is by definition what the widget was
+  drawing. `TaskToggleWriter` resolves the shared bookmark and rewrites the
+  line through the same `TaskParser.togglingTask` and coordinated
+  `VaultFileOperations` write the app uses. Whether an extension can resolve
+  a bookmark its host app created is not guaranteed on iOS, so a failed write
+  is appended to the pending-toggle queue and
+  `VaultManager.applyPendingWidgetToggles` applies it at the start of the
+  next tree load — before the scan, so the index is still built once. Either
+  way the snapshot is updated optimistically, which is what makes the tap
+  feel instant; completing a recurring task removes the row rather than
+  striking it through, mirroring the app's roll-forward. `PendingToggle`
+  records the completion state the line had *before* the tap, since that is
+  what the app's re-find has to match.
+* **Widget target sources.** The app's `Cove` folder is a synchronized root
+  group belonging to the app target alone, so the eight pure files the widget
+  reuses (`RecurrenceRule`, `VaultIndex`, `VaultFileOperations`,
+  `VaultBookmarkStore`, `WidgetSnapshot`, `TaskParser`, `TaskPresentation`,
+  `QuickTaskParser`, `TaskListDocument`) are given explicit
+  `PBXFileReference`/`PBXBuildFile` entries in the widget target's Sources
+  phase, grouped under "Shared with CoveWidgets". Nothing moved on disk, and
+  the app target still picks them up through the synchronized folder. The
+  widget reuses the app's `DueDescription`/`TaskPresentation` so a date can't
+  be worded one way in the widget and another in the row it mirrors.
+* **Deep link.** The widget's `.widgetURL` is `cove://tasks`; `RootView`
+  handles it in `.onOpenURL` by selecting the Tasks section. The `cove`
+  scheme is registered in the root `Info.plist` under `CFBundleURLTypes`.
+* **Bundle identifiers.** `com.ankitbhade.Cove` / `com.ankitbhade.CoveTests`
+  / `com.ankitbhade.Cove.CoveWidgets`.
 
 ## Fixed rules
 
@@ -841,6 +908,38 @@ problems as build warnings, not errors.
 * The icon is a wordmark, so the 16pt and 32pt macOS sizes reduce `cove` to
   an illegible smudge. That is inherent to the design; the waves and the
   sun/moon still read as the app's silhouette in the Dock and Finder.
+* The Today widget is iOS-only. WidgetKit has a macOS equivalent, but the
+  App Group the data channel depends on needs real signing there, and the
+  macOS app signs ad-hoc; the extension is excluded from macOS builds with
+  `platformFilters`.
+* The App Group entitlement is honored in the simulator without any portal
+  setup, but a **device** build needs `group.com.ankitbhade.Cove` registered
+  for the team in the developer portal. Until it is, the widget installs and
+  renders its empty state (no snapshot to read) rather than failing loudly.
+* The widget never reads the vault itself. It renders whatever snapshot the
+  app last published, so a task added on another device shows up only after
+  this device's app next runs and rebuilds the index. That is the same
+  staleness the Tasks tab has between rebuilds, one step further removed.
+* Whether the widget extension can resolve the app's security-scoped
+  bookmark from its own process is not guaranteed on iOS. When it can't, the
+  checkbox still looks right — the snapshot updates optimistically — but the
+  Markdown line isn't rewritten until the app next launches or foregrounds
+  and drains the pending-toggle queue. This was not verifiable on the
+  simulator (the Home Screen can't be driven headlessly); confirm on device.
+* A pending toggle that no longer matches its line is dropped rather than
+  retried, and the queue is cleared before it is applied. A toggle can
+  therefore be lost if the line changed on disk in between — the same
+  "changed on disk" case the Tasks tab reports with an alert, but silent
+  here because there is no one to tell.
+* The widget's 44×44pt checkbox targets are larger than the row pitch, so
+  they overlap slightly between adjacent rows. That is the handoff's
+  specified target (it matches the app's `TaskRow`); a tap landing in the
+  ~8pt band between two rows may hit the neighbour.
+* The Today widget was verified by rendering its views on the simulator at
+  the nominal small and medium sizes in light and dark, and by confirming the
+  app writes a correct App Group snapshot. The widget running on a real Home
+  Screen — including the interactive checkbox — was not verified, because the
+  simulator offers no tap injection to add a widget.
 * The dark iOS app icon variant is opaque rather than transparent. Apple's
   iOS 18 guidance prefers a transparent dark icon composited over a
   system-drawn backdrop; the design supplies its own night sky, so it ships

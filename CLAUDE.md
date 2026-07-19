@@ -128,10 +128,11 @@ hours as afternoon, ranges like `7-9pm` keeping the start), and
 recurrences (`daily`/`weekly`/`monthly`/`yearly`/`annually`,
 `every day`/`week`/`month`/`year`, `every N <units>`, `every weekday`,
 `every mon wed fri` with comma/`and` lists). A bare time means today,
-even when that moment has passed. Before saving, the interpreted title,
-date, time, recurrence, and notification are shown for confirmation and
-editing. Confirmed tasks are appended to `Tasks.md` at the vault root,
-created on demand.
+even when that moment has passed. The interpreted title, date, time, and
+recurrence are shown live under the field as the sentence is typed, and
+return adds the task straight away; a details sheet is one tap away for
+adjusting the interpretation instead of rewording it. Added tasks are
+appended to `Tasks.md` at the vault root, created on demand.
 
 #### Lists
 
@@ -441,16 +442,28 @@ merged.
   divergences, forced by Cove's fixed rules: no hashtag lists (tags stay
   in the title), undated input resolves to today (`@due` is mandatory),
   and a time range (`7-9pm`) keeps only its start time (no calendar
-  events). `TasksView` hosts the entry field; submitting opens `TaskDraftSheet`,
-  which shows the interpretation for confirmation — editing the sentence
-  re-interprets everything, editing the field controls (title, date, time
-  toggle + picker, recurrence picker — presets plus the parsed rule when
-  it isn't one) tweaks the draft directly, and a
-  footer row states whether a notification will fire. Confirming calls
-  `VaultManager.captureTask`, which appends `draft.markdownLine` to
-  `Tasks.md` at the vault root via `VaultFileOperations.appendLine` (a
-  single coordinated read-modify-write that creates the note on first
-  use), then rescans.
+  events). `QuickCaptureField` (shared by `TasksView` and every
+  `TaskListDetailView`, so the two entry points can't drift) re-parses on
+  each keystroke and renders the draft under the field: the cleaned title,
+  a due capsule, and the repeat rule, one per line since the trailing edit
+  button leaves no room to sit them side by side. Return (or the arrow
+  button) captures immediately — the preview already answered "did it
+  understand me?", so a modal in front of every capture was pure friction.
+  A sentence whose title comes out empty (nothing but a date) can't be
+  captured. The sliders button reopens `TaskDraftSheet` for the current
+  sentence, which remains the way to fix an interpretation by hand:
+  editing the sentence re-interprets everything, editing the field
+  controls (title, date, time toggle + picker, recurrence picker —
+  presets plus the parsed rule when it isn't one) tweaks the draft
+  directly, and a footer row states whether a notification will fire.
+  Both paths call `VaultManager.captureTask`, which appends
+  `draft.markdownLine` to `Tasks.md` at the vault root via
+  `VaultFileOperations.appendLine` (a single coordinated
+  read-modify-write that creates the note on first use), then rescans.
+  `DueDescription` (in `TaskPresentation.swift`) formats the due wording
+  from the raw `YYYY-MM-DD`/`HH:MM` strings, so the preview and the task
+  row a capture becomes cannot word the same date differently;
+  `TaskItem.relativeDueDescription` delegates to it.
 * **Task lists.** A list is a `##` section of the capture note, so the
   feature adds no new file, no new syntax family, and nothing to migrate —
   `Tasks.md` stays a note a person can edit by hand. `TaskParser.tasks`
@@ -547,7 +560,7 @@ merged.
   decorative: it is `accessibilityHidden` (the surrounding row carries the
   label) and sized with `@ScaledMetric` so it tracks Dynamic Type. Setup,
   loading,
-  Notes, search, Tasks, task confirmation, move, editor, and Settings screens
+  Notes, search, Tasks, capture details, move, editor, and Settings screens
   share those primitives. The richer presentation remains standard SwiftUI
   and platform text views only; it adds no assets beyond the existing
   `LaunchIcon`, no dependencies, and no persistence changes.
@@ -753,6 +766,17 @@ problems as build warnings, not errors.
   the title. Hashtags are not lists (Cove has no tag feature) and stay in
   the title; ISO dates ("2026-07-21") aren't in grove's grammar — use
   slash or month-name dates, or the sheet's date picker.
+* Quick capture writes on return with no confirmation and no undo. A
+  mis-parsed task is a line in `Tasks.md`: swipe the row away and retype,
+  or open the details sheet before adding instead. The live preview is
+  what makes this safe, so it is not optional chrome — it is the only
+  thing standing between a typo and the note.
+* The capture preview re-parses the whole sentence on every keystroke.
+  The parser is pure and sentences are short, so this is cheap, but it is
+  a per-keystroke regex sweep rather than an incremental one.
+* An empty title can't be captured, so a sentence that is nothing but a
+  date ("tomorrow 3pm") leaves the add button disabled with the
+  placeholder showing greyed in the preview.
 * Lists live only in the capture note. A `##` heading in any other note is
   just a heading, and moving a task line under one there does nothing —
   the Lists tab reads `Tasks.md` alone.

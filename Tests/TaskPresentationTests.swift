@@ -89,6 +89,33 @@ final class TaskPresentationTests: XCTestCase {
         XCTAssertTrue(description.contains("30"), description)
     }
 
+    // MARK: - Due wording over raw strings
+
+    /// The quick-capture preview formats a `TaskDraft`, which has no
+    /// `TaskItem` to hang the wording off. Both paths must read identically,
+    /// or a task would change its words the moment it was saved.
+    func testDraftShapedInputMatchesTheTaskRowWording() {
+        let today = now(2026, 7, 19, hour: 8)
+        for (date, time) in [("2026-07-19", nil), ("2026-07-20", "15:30"),
+                             ("2026-07-22", nil), ("2027-09-14", "09:00")]
+            as [(String, String?)] {
+            XCTAssertEqual(
+                DueDescription.text(dueDateString: date, dueTimeString: time,
+                                    at: today, calendar: calendar),
+                task(due: date, time: time).relativeDueDescription(at: today),
+                "\(date) \(time ?? "-")")
+        }
+    }
+
+    /// An undated list item has no due wording at all — its row shows no
+    /// capsule, and neither does the capture preview.
+    func testUndatedInputHasNoWording() {
+        XCTAssertEqual(
+            DueDescription.text(dueDateString: nil, dueTimeString: nil,
+                                at: now(2026, 7, 19), calendar: calendar),
+            "")
+    }
+
     // MARK: - Grouping
 
     func testTasksLandInTheExpectedSections() {

@@ -35,16 +35,57 @@ extension TaskItem {
     /// that, and the year only when it isn't the current one. Empty for an
     /// undated list item, whose row shows no due label at all.
     func relativeDueDescription(at now: Date, calendar: Calendar = .current) -> String {
-        guard let dueDate else { return dueDateString ?? "" }
+        DueDescription.text(dueDateString: dueDateString,
+                            dueTimeString: dueTimeString,
+                            at: now,
+                            calendar: calendar)
+    }
+}
+
+/// Plain-language wording for a due date and optional time, over the raw
+/// `YYYY-MM-DD` / `HH:MM` strings rather than a `TaskItem`. Shared so a task
+/// reads identically in the quick-capture preview and in the row it becomes.
+enum DueDescription {
+    /// "Today, 3:00 PM", "Tomorrow", "Friday", "Jul 24", "Jul 24, 2027".
+    /// Empty when there is no date, which is what an undated list item shows.
+    static func text(dueDateString: String?,
+                     dueTimeString: String?,
+                     at now: Date,
+                     calendar: Calendar = .current) -> String {
+        guard let dueDateString,
+              let dueDate = date(from: dueDateString, calendar: calendar)
+        else { return dueDateString ?? "" }
         let day = dayDescription(dueDate, at: now, calendar: calendar)
-        guard let moment = dueDateTime else { return day }
+        guard let moment = moment(on: dueDate, at: dueTimeString, calendar: calendar)
+        else { return day }
         return "\(day), \(moment.formatted(.dateTime.hour().minute()))"
     }
 
-    private func dayDescription(_ dueDate: Date,
-                                at now: Date,
-                                calendar: Calendar) -> String {
-        switch daysFromToday(at: now, calendar: calendar) {
+    private static func date(from dueDateString: String, calendar: Calendar) -> Date? {
+        let parts = dueDateString.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0],
+                                                  month: parts[1],
+                                                  day: parts[2]))
+    }
+
+    private static func moment(on dueDate: Date,
+                               at dueTimeString: String?,
+                               calendar: Calendar) -> Date? {
+        guard let dueTimeString else { return nil }
+        let parts = dueTimeString.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        return calendar.date(bySettingHour: parts[0], minute: parts[1],
+                             second: 0, of: dueDate)
+    }
+
+    private static func dayDescription(_ dueDate: Date,
+                                       at now: Date,
+                                       calendar: Calendar) -> String {
+        let days = calendar.dateComponents([.day],
+                                           from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: dueDate)).day
+        switch days {
         case 0: return "Today"
         case 1: return "Tomorrow"
         case -1: return "Yesterday"

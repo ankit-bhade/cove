@@ -7,24 +7,13 @@ import SwiftUI
 /// rolls forward to its next occurrence); tapping the row opens the note.
 struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var errorMessage: String?
-    @State private var quickEntry = ""
-    @State private var pendingDraft: PendingDraft?
     @State private var isClearingCompleted = false
     @State private var showsClearCompletedConfirmation = false
     /// Ticks each minute so "Overdue" and "Today" stay accurate while the
     /// tab sits open across a due moment or across midnight.
     @State private var now = Date()
-
-    /// The sentence and its interpretation, handed to the confirmation
-    /// sheet together so reopening the sheet always matches the field.
-    private struct PendingDraft: Identifiable {
-        let sentence: String
-        let draft: TaskDraft
-        var id: String { sentence }
-    }
 
     var body: some View {
         NavigationStack {
@@ -37,18 +26,6 @@ struct TasksView: View {
                     ToolbarItem {
                         CoveRefreshButton {
                             await vaultManager.refresh()
-                        }
-                    }
-                }
-                .sheet(item: $pendingDraft) { pending in
-                    TaskDraftSheet(sentence: pending.sentence, draft: pending.draft) { draft in
-                        quickEntry = ""
-                        Task {
-                            do {
-                                try await vaultManager.captureTask(draft)
-                            } catch {
-                                errorMessage = error.localizedDescription
-                            }
                         }
                     }
                 }
@@ -158,38 +135,12 @@ struct TasksView: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                TextField("e.g. Get bread tomorrow at 3pm", text: $quickEntry)
-                    .textFieldStyle(.plain)
-                    .autocorrectionDisabled()
-                    .onSubmit(presentDraft)
-                    .submitLabel(.done)
-                    .accessibilityHint("Enter a task with an optional date, time, or repeat rule")
-                // Previously a decorative glyph that looked tappable and did
-                // nothing. It is now the actual submit action, and it leads
-                // the trailing edge so the field reads left-to-right.
-                Button(action: presentDraft) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(canCapture ? AnyShapeStyle(CoveTheme.brandGradient)
-                                    : AnyShapeStyle(Color.secondary.opacity(0.4)),
-                                    in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!canCapture)
-                .animation(.easeInOut(duration: 0.15), value: canCapture)
-                .accessibilityLabel("Interpret and add task")
+            QuickCaptureField(
+                placeholder: "e.g. Get bread tomorrow at 3pm",
+                accessibilityHint: "Enter a task with an optional date, time, or repeat rule"
+            ) { draft in
+                capture(draft)
             }
-            .padding(9)
-            .background(CoveTheme.canvas(for: colorScheme),
-                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(CoveTheme.border(for: colorScheme), lineWidth: 1)
-            }
-
         }
         .padding(14)
         .background { CoveCardBackground() }
@@ -201,16 +152,17 @@ struct TasksView: View {
             .foregroundStyle(CoveTheme.teal)
     }
 
-    private var canCapture: Bool {
-        !quickEntry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// Interprets the quick-entry sentence and opens the confirmation sheet.
-    private func presentDraft() {
-        let sentence = quickEntry.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sentence.isEmpty else { return }
-        pendingDraft = PendingDraft(sentence: sentence,
-                                    draft: QuickTaskParser.parse(sentence, now: .now))
+    /// Writes the interpreted task straight to the capture note. There is no
+    /// confirmation step: the field showed the interpretation while it was
+    /// being typed, and the new row appearing is the receipt.
+    private func capture(_ draft: TaskDraft) {
+        Task {
+            do {
+                try await vaultManager.captureTask(draft)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     /// Removes the task's line from its note. Deliberately not confirmed —

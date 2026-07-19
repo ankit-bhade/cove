@@ -7,22 +7,13 @@ struct TaskListDetailView: View {
     let listName: String
 
     @Environment(VaultManager.self) private var vaultManager
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @State private var errorMessage: String?
-    @State private var quickEntry = ""
-    @State private var pendingDraft: PendingDraft?
     @State private var showsRenamePrompt = false
     @State private var renameText = ""
     /// Ticks each minute so a dated item's "Today" stays true while the
     /// list sits open across a due moment or across midnight.
     @State private var now = Date()
-
-    private struct PendingDraft: Identifiable {
-        let sentence: String
-        let draft: TaskDraft
-        var id: String { sentence }
-    }
 
     /// The list as the current index sees it. Nil once it's been deleted,
     /// which is what pops this view.
@@ -105,20 +96,6 @@ struct TaskListDetailView: View {
             Button("Cancel", role: .cancel) {}
             Button("Rename") { rename() }
         }
-        .sheet(item: $pendingDraft) { pending in
-            TaskDraftSheet(sentence: pending.sentence,
-                           draft: pending.draft,
-                           listName: listName) { draft in
-                quickEntry = ""
-                Task {
-                    do {
-                        try await vaultManager.captureTask(draft, into: listName)
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
-                }
-            }
-        }
         .coveErrorAlert($errorMessage)
         .task {
             while !Task.isCancelled {
@@ -128,50 +105,28 @@ struct TaskListDetailView: View {
         }
     }
 
+    /// List items stay undated unless the sentence actually names a date,
+    /// which passing `listName` through to the field takes care of.
     private var captureCard: some View {
-        HStack(spacing: 10) {
-            TextField("Add to \(listName)", text: $quickEntry)
-                .textFieldStyle(.plain)
-                .autocorrectionDisabled()
-                .onSubmit(presentDraft)
-                .submitLabel(.done)
-                .accessibilityHint("Enter an item, optionally with a date, time, or repeat rule")
-            Button(action: presentDraft) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(canCapture ? AnyShapeStyle(CoveTheme.brandGradient)
-                                : AnyShapeStyle(Color.secondary.opacity(0.4)),
-                                in: Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!canCapture)
-            .animation(.easeInOut(duration: 0.15), value: canCapture)
-            .accessibilityLabel("Interpret and add item")
-        }
-        .padding(9)
-        .background(CoveTheme.canvas(for: colorScheme),
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(CoveTheme.border(for: colorScheme), lineWidth: 1)
+        QuickCaptureField(
+            placeholder: "Add to \(listName)",
+            accessibilityHint: "Enter an item, optionally with a date, time, or repeat rule",
+            listName: listName
+        ) { draft in
+            capture(draft)
         }
         .padding(14)
         .background { CoveCardBackground() }
     }
 
-    private var canCapture: Bool {
-        !quickEntry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func presentDraft() {
-        let sentence = quickEntry.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sentence.isEmpty else { return }
-        // List items stay undated unless the sentence actually names a date.
-        pendingDraft = PendingDraft(
-            sentence: sentence,
-            draft: QuickTaskParser.parse(sentence, now: .now, defaultingToToday: false))
+    private func capture(_ draft: TaskDraft) {
+        Task {
+            do {
+                try await vaultManager.captureTask(draft, into: listName)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     /// The navigation value is the list's name, so a rename makes this view

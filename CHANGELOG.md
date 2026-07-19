@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Quick capture now interprets as you type and adds on return. The Tasks and
+  Lists entry fields show the title, due date, time, and repeat rule they read
+  out of the sentence, so the confirmation sheet no longer sits in front of
+  every capture — it is now a sliders button beside the preview, for the
+  sentences Cove reads wrong.
 - The quick-entry interpreter no longer forces an undated sentence to today.
   The Tasks screen still resolves one to today (its tasks require a due
   date); the Lists screen leaves it undated.

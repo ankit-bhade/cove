@@ -33,7 +33,11 @@ struct TodayWidgetView: View {
                             row(for: task)
                         }
                     }
-                    .frame(maxHeight: .infinity, alignment: .center)
+                    // Rows hang from the header rather than centering in the
+                    // leftover space: a single task belongs directly under
+                    // "Today", where the next one added will sit below it,
+                    // instead of drifting to the middle of the widget.
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -49,20 +53,28 @@ struct TodayWidgetView: View {
 
     // MARK: - Header
 
+    private var headerSize: CGFloat { isSmall ? 13 : 15 }
+
     private var header: some View {
         HStack(spacing: isSmall ? 6 : 7) {
             Image(systemName: "sun.max")
                 .font(.system(size: isSmall ? 15 : 16, weight: .medium))
                 .foregroundStyle(palette.accent)
-            Text("Today")
-                .font(.system(size: isSmall ? 13 : 15, weight: .semibold))
-                .foregroundStyle(palette.primaryText)
-            if !isSmall {
-                Text(entry.date.formatted(.dateTime.weekday(.abbreviated))
-                    + " · "
-                    + entry.date.formatted(.dateTime.month(.abbreviated).day()))
-                    .font(.system(size: 11))
-                    .foregroundStyle(palette.secondaryText)
+            // "Today" and the date are one phrase, so they share a size and a
+            // baseline. At 11pt in a center-aligned row the date read as a
+            // caption sitting on its own line rather than part of the title;
+            // weight and color still separate them.
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("Today")
+                    .font(.system(size: headerSize, weight: .semibold))
+                    .foregroundStyle(palette.primaryText)
+                if !isSmall {
+                    Text(entry.date.formatted(.dateTime.weekday(.abbreviated))
+                        + " · "
+                        + entry.date.formatted(.dateTime.month(.abbreviated).day()))
+                        .font(.system(size: headerSize))
+                        .foregroundStyle(palette.secondaryText)
+                }
             }
             Spacer(minLength: 4)
             countPill

@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or right-clicking it, which removes that line from its Markdown note.
 - Settings takes a name, used by the Notes greeting.
 
+### Fixed
+
+- Tapping a note in the Notes browser, or a search result, did nothing and
+  never opened the editor. The browser's navigation path is typed as
+  `[URL]`, so the links carrying a `VaultNode` were silently inert; notes
+  now push their URL like folders do, and one destination routes each URL
+  to the editor or the next folder level.
+
 ### Changed
 
 - Refined the interface for clarity and consistency: folders now open as

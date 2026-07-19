@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A quick-captured task with no list was appended to the end of `Tasks.md`,
+  which put it under the last `##` list heading — so a task added for today
+  joined that list and vanished from the Tasks screen. Captures now land in
+  the note's list-free region instead.
 - Welcome and vault-recovery screens now scroll at large Dynamic Type sizes
   and in short windows, preventing their primary folder action from clipping.
 - Tapping a note in the Notes browser, or a search result, did nothing and

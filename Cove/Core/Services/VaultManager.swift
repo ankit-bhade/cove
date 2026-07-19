@@ -227,21 +227,21 @@ final class VaultManager {
         if let clearError { throw clearError }
     }
 
-    /// Appends a quick-added task's Markdown line to the capture note at the
+    /// Writes a quick-added task's Markdown line into the capture note at the
     /// vault root, then rescans (which also reschedules notifications).
-    /// With a `list`, the line goes under that `##` heading instead of the
-    /// end of the note, and the heading is created if it's missing.
+    /// With a `list`, the line goes under that `##` heading, created if it's
+    /// missing. Without one, it goes into the note's unlisted region rather
+    /// than the end of the file, which would otherwise put it inside the last
+    /// list and hide it from the Tasks screen.
     func captureTask(_ draft: TaskDraft, into list: String? = nil) async throws {
         guard let vaultURL else { return }
         let line = draft.markdownLine
-        guard let list else {
-            try await perform { try $0.appendLine(line, toNoteNamed: Self.quickTaskNoteName,
-                                                  in: vaultURL) }
-            return
-        }
         try await perform {
             try $0.updateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-                TaskListDocument.insertingLine(line, inSection: list, in: text)
+                guard let list else {
+                    return TaskListDocument.insertingUnlistedLine(line, in: text)
+                }
+                return TaskListDocument.insertingLine(line, inSection: list, in: text)
             }
         }
     }

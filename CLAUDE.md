@@ -460,10 +460,16 @@ merged.
   controls (title, date, time toggle + picker, recurrence picker —
   presets plus the parsed rule when it isn't one) tweaks the draft
   directly, and a footer row states whether a notification will fire.
-  Both paths call `VaultManager.captureTask`, which appends
-  `draft.markdownLine` to `Tasks.md` at the vault root via
-  `VaultFileOperations.appendLine` (a single coordinated
+  Both paths call `VaultManager.captureTask`, which writes
+  `draft.markdownLine` into `Tasks.md` at the vault root via
+  `VaultFileOperations.updateNote` (a single coordinated
   read-modify-write that creates the note on first use), then rescans.
+  A capture with no list goes through
+  `TaskListDocument.insertingUnlistedLine`, which anchors on the end of
+  the note's last *unlisted* stretch rather than the end of the file —
+  appending blindly would drop the line under whichever `##` list sits
+  last, which stamps it with that `listName` and hides it from the Tasks
+  screen entirely.
   `DueDescription` (in `TaskPresentation.swift`) formats the due wording
   from the raw `YYYY-MM-DD`/`HH:MM` strings, so the preview and the task
   row a capture becomes cannot word the same date differently;
@@ -491,7 +497,7 @@ merged.
   (pure, unit-tested): add/rename/remove a section and insert a line at the
   end of one, preserving all other Markdown; `VaultFileOperations.updateNote`
   runs those transforms inside one coordinated read-modify-write, the same
-  guarantee `appendLine` gives. Names match case-insensitively but display
+  guarantee every capture gets. Names match case-insensitively but display
   as the heading spells them. `TaskRow` is shared by both screens so a list
   task and an ordinary task can't drift apart. Renaming a list dismisses its
   detail view, since the navigation value is the name.
@@ -870,6 +876,10 @@ problems as build warnings, not errors.
 * Quick-added tasks always land in `Tasks.md` at the vault root; the
   capture note isn't configurable. If iCloud syncs in a folder named
   `Tasks.md`, capture fails with an error alert.
+* A listless capture lands at the end of the note's free space, which in a
+  note whose lists sit at the bottom means above the first `##` heading —
+  not at the end of the file. A note that is *nothing* but lists takes the
+  line at the very top, since there is no free space to append to.
 * The notification permission prompt appears the first time a rebuild has a
   task to schedule, not at launch. A denial silently disables scheduling;
   the Settings tab then shows the status as Off with an Open System

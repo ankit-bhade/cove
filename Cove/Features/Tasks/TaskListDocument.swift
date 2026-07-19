@@ -75,6 +75,46 @@ enum TaskListDocument {
         return text + line + "\n" + ns.substring(from: bounds.insertionPoint)
     }
 
+    /// Inserts a task line into the note's *unlisted* region — the part of
+    /// the capture note that belongs to no `##` list — so a quick capture
+    /// with no list can't be swallowed by whichever list happens to sit at
+    /// the end of the file.
+    ///
+    /// The anchor is the end of the last unlisted stretch: with lists at the
+    /// bottom (the usual shape) that's just before the first `##` heading;
+    /// with a `#` heading reopening free space after the lists, it's the end
+    /// of the note, which is where a plain append would have gone anyway.
+    static func insertingUnlistedLine(_ line: String, in fileText: String) -> String {
+        let all = lines(of: fileText)
+        var inList = false
+        var insertionPoint = 0
+        var sawUnlistedContent = false
+        for entry in all {
+            if let heading = headingName(in: entry.text) {
+                inList = !heading.isEmpty
+                // A `#` heading closes any list, so free space resumes below it.
+                if !inList {
+                    insertionPoint = entry.enclosingRange.location + entry.enclosingRange.length
+                    sawUnlistedContent = true
+                }
+                continue
+            }
+            guard !inList, !entry.text.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+            insertionPoint = entry.enclosingRange.location + entry.enclosingRange.length
+            sawUnlistedContent = true
+        }
+        // A note that is nothing but lists gets the line above the first one.
+        if !sawUnlistedContent, all.contains(where: { headingName(in: $0.text)?.isEmpty == false }) {
+            insertionPoint = 0
+        }
+
+        let ns = fileText as NSString
+        var head = ns.substring(to: insertionPoint)
+        if !head.isEmpty, !head.hasSuffix("\n") { head += "\n" }
+        let tail = ns.substring(from: insertionPoint)
+        return head + line + "\n" + tail
+    }
+
     /// Removes a list's heading and every line under it. Returns the text
     /// unchanged when no such list exists.
     static func removingSection(named name: String, from fileText: String) -> String {

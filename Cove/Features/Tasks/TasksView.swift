@@ -135,11 +135,14 @@ struct TasksView: View {
             }
         }
         .coveListStyle()
+        #if os(iOS)
+        .listSectionSpacing(.compact)
+        #endif
         .coveReadableWidth()
     }
 
     private func quickCaptureCard(openCount: Int) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Quick Capture")
@@ -179,7 +182,7 @@ struct TasksView: View {
                 .animation(.easeInOut(duration: 0.15), value: canCapture)
                 .accessibilityLabel("Interpret and add task")
             }
-            .padding(11)
+            .padding(9)
             .background(CoveTheme.canvas(for: colorScheme),
                         in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay {
@@ -188,7 +191,7 @@ struct TasksView: View {
             }
 
         }
-        .padding(18)
+        .padding(14)
         .background { CoveCardBackground() }
     }
 

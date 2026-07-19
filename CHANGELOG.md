@@ -25,9 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Standardized grouped-screen card widths and made prominent vault-selection
+  actions fill their available row, keeping Notes, Tasks, Settings, and the
+  task review sheet visually aligned on iOS.
+- Folder taps in Notes now update the current browser and its scoped stats in
+  place instead of pushing a new folder screen; notes still open in the editor.
 - Task reminder details now use a concise month, day, and time without the year
   or source-note label, for example `Jul 18, 8:00pm.`
-- The Notes browser now opens folders level by level and replaces its branded
+- The Notes browser shows folders level by level and replaces its branded
   workspace card with a time-aware greeting plus scoped folder, subfolder, and
   note counts; the greeting is visually lighter and less prominent.
 - The Tasks screen now offers a confirmed Clear All action that removes every

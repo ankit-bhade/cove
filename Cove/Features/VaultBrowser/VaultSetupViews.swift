@@ -109,7 +109,9 @@ struct VaultPickerButton: View {
             isPickerPresented = true
         } label: {
             Label(title, systemImage: "folder.badge.plus")
+                .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.roundedRectangle(radius: 12))
         .sheet(isPresented: $isPickerPresented) {
@@ -126,7 +128,9 @@ struct VaultPickerButton: View {
             }
         } label: {
             Label(title, systemImage: "folder.badge.plus")
+                .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
         .buttonStyle(.borderedProminent)
         .buttonBorderShape(.roundedRectangle(radius: 12))
     }

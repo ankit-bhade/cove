@@ -86,7 +86,7 @@ struct TasksView: View {
         return List {
             Section {
                 quickCaptureCard(openCount: incomplete.count, completedCount: completed.count)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+                    .listRowInsets(CoveTheme.dashboardRowInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }

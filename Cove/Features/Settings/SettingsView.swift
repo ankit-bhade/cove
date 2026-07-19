@@ -58,7 +58,7 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
             .background { CoveCardBackground() }
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+            .listRowInsets(CoveTheme.dashboardRowInsets())
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         }

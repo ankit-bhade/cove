@@ -29,6 +29,13 @@ enum CoveTheme {
     static func border(for scheme: ColorScheme) -> Color {
         scheme == .dark ? .white.opacity(0.09) : navy.opacity(0.10)
     }
+
+    /// Custom cards inside grouped lists should use the grouped section's
+    /// own horizontal bounds. Adding another inset makes them visibly
+    /// narrower than the native rows and controls around them.
+    static func dashboardRowInsets(bottom: CGFloat = 14) -> EdgeInsets {
+        EdgeInsets(top: 8, leading: 0, bottom: bottom, trailing: 0)
+    }
 }
 
 /// A reusable raised surface used for dashboard-style cards.

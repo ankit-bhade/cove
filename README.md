@@ -6,10 +6,11 @@ folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
 Current state (Phase 9 — all build phases complete): select a vault folder,
-browse its nested folders level by level, and open any note in a live-styled
+browse its nested folders in place, and open any note in a live-styled
 Markdown editor that saves automatically as you type. Each folder level opens
-with a time-aware greeting and a compact count of its direct folders, deeper
-subfolders, and notes. Headers and `**bold**` spans are styled in place
+instantly in the existing Notes screen, updating its time-aware greeting and
+compact count of direct folders, deeper subfolders, and notes. Headers and
+`**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
 click. Notes and folders can be created, renamed, moved, and deleted from the
 browser (long-press or right-click a row, or use the + toolbar menu). For a

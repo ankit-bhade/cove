@@ -446,15 +446,18 @@ merged.
   variant.
 * **Visual system.** `CoveTheme` (`Cove/App/`) centralizes the icon-derived
   navy/teal/sea-glass palette, adaptive light/dark canvas and surface colors,
-  brand gradient, card treatment, and compact icon tiles. Setup, loading,
+  brand gradient, card treatment, grouped-row card insets, and compact icon
+  tiles. Setup, loading,
   Notes, search, Tasks, task confirmation, move, editor, and Settings screens
   share those primitives. The richer presentation remains standard SwiftUI
   and platform text views only; it adds no assets beyond the existing
   `LaunchIcon`, no dependencies, and no persistence changes.
 * **Level-aware Notes browser.** `VaultBrowserView` presents one folder level
-  at a time rather than an inline recursive outline. Folder rows push the next
-  level and file rows push the editor; global search still resolves through
-  the shared `VaultNode` navigation destination. Every level has the same
+  at a time rather than an inline recursive outline. Folder rows update an
+  internal URL path so the title, overview, and rows change within the same
+  browser screen; the leading back action removes one path component. File
+  rows push the editor, and global search still resolves through the shared
+  `VaultNode` navigation destination. Every level has the same
   create/refresh tools and a compact card with a morning/afternoon/evening
   greeting set in a restrained title-3 semibold style. Its counts are scoped
   to that folder: direct child folders,

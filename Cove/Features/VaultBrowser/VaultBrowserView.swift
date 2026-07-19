@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Level-by-level vault browser with mutations and editor navigation. Each
-/// folder shows a scoped overview of the content beneath it.
+/// In-place, level-by-level vault browser with mutations and editor
+/// navigation. Each folder shows a scoped overview of the content beneath it.
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.colorScheme) private var colorScheme
@@ -12,17 +12,29 @@ struct VaultBrowserView: View {
     @State private var nodeToDelete: VaultNode?
     @State private var errorMessage: String?
     @State private var searchText = ""
+    /// Folder browsing stays within this screen. Only notes are pushed onto
+    /// the NavigationStack, which keeps folder changes immediate and lets the
+    /// overview and rows update in place.
+    @State private var folderPath: [URL] = []
 
     var body: some View {
         NavigationStack {
-            browserLevel(folderURL: nil)
+            browserLevel(folderURL: folderPath.last)
                 .navigationDestination(for: VaultNode.self) { node in
-                    if node.isDirectory {
-                        browserLevel(folderURL: node.url)
-                    } else {
-                        EditorView(fileURL: node.url)
-                    }
+                    EditorView(fileURL: node.url)
                 }
+        }
+        .onChange(of: vaultManager.vaultURL) { _, _ in
+            folderPath.removeAll()
+            searchText = ""
+        }
+        .onChange(of: vaultManager.rootNode) { _, _ in
+            // External moves or deletes can invalidate the current URL.
+            // Return to the closest parent that still exists.
+            while let currentURL = folderPath.last,
+                  folderNode(at: currentURL) == nil {
+                folderPath.removeLast()
+            }
         }
         .alert(
             namePrompt?.title ?? "",
@@ -66,7 +78,7 @@ struct VaultBrowserView: View {
 
     private func browserLevel(folderURL: URL?) -> some View {
         let folder = folderNode(at: folderURL)
-        let destinationURL = folder?.url ?? folderURL ?? vaultManager.vaultURL
+        let destinationURL = folder?.url ?? vaultManager.vaultURL
 
         return Group {
             if searchText.isEmpty {
@@ -78,6 +90,16 @@ struct VaultBrowserView: View {
         .searchable(text: $searchText, prompt: "Search all notes")
         .navigationTitle(folderURL == nil ? "Notes" : folder?.displayName ?? "Folder")
         .toolbar {
+            if !folderPath.isEmpty {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        folderPath.removeLast()
+                    } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .accessibilityHint("Returns to the parent folder")
+                }
+            }
             if let destinationURL {
                 toolbarContent(in: destinationURL)
             }
@@ -91,7 +113,7 @@ struct VaultBrowserView: View {
             if let folder {
                 Section {
                     vaultOverview(for: folder)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+                        .listRowInsets(CoveTheme.dashboardRowInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
@@ -212,9 +234,28 @@ struct VaultBrowserView: View {
 
     // MARK: - Rows
 
+    @ViewBuilder
     private func row(for node: VaultNode) -> some View {
-        NavigationLink(value: node) {
-            nodeLabel(node)
+        Group {
+            if node.isDirectory {
+                Button {
+                    folderPath.append(node.url)
+                } label: {
+                    HStack {
+                        nodeLabel(node)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                NavigationLink(value: node) {
+                    nodeLabel(node)
+                }
+            }
         }
         .padding(.vertical, 4)
         .contextMenu {

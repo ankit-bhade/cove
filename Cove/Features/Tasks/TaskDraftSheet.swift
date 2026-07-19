@@ -40,7 +40,7 @@ struct TaskDraftSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)
                     .background { CoveCardBackground() }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
+                    .listRowInsets(CoveTheme.dashboardRowInsets(bottom: 12))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }

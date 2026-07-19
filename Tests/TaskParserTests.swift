@@ -211,4 +211,34 @@ final class TaskParserTests: XCTestCase {
                      today: "2026-07-18"),
             "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n")
     }
+
+    // MARK: - Clearing completed tasks
+
+    func testClearingCompletedTasksRemovesOnlyStrictCompletedTaskLines() {
+        let text = """
+            # Tasks
+            - [x] Finished @due(2026-07-18)
+            - [ ] Still open @due(2026-07-19)
+            - [X] Also finished @due(2026-07-20 08:30)
+            - [x] Plain Markdown checkbox
+            """
+        XCTAssertEqual(TaskParser.clearingCompletedTasks(in: text), """
+            # Tasks
+            - [ ] Still open @due(2026-07-19)
+            - [x] Plain Markdown checkbox
+            """)
+    }
+
+    func testClearingCompletedTasksPreservesLineEndingsAndFinalLine() {
+        let text = "Intro\r\n- [x] Done @due(2026-07-18)\r\nOutro"
+        XCTAssertEqual(TaskParser.clearingCompletedTasks(in: text), "Intro\r\nOutro")
+
+        let finalTask = "Intro\n- [x] Done @due(2026-07-18)"
+        XCTAssertEqual(TaskParser.clearingCompletedTasks(in: finalTask), "Intro\n")
+    }
+
+    func testClearingCompletedTasksWithoutMatchesIsNoOp() {
+        let text = "- [ ] Open @due(2026-07-18)\nSome prose\n"
+        XCTAssertEqual(TaskParser.clearingCompletedTasks(in: text), text)
+    }
 }

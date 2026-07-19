@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Vault tree with mutations: create note/folder, rename, move, delete, and
-/// navigation into the editor. Folders sort first, then files, alphabetically.
+/// Level-by-level vault browser with mutations and editor navigation. Each
+/// folder shows a scoped overview of the content beneath it.
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.colorScheme) private var colorScheme
@@ -13,81 +13,96 @@ struct VaultBrowserView: View {
     @State private var errorMessage: String?
     @State private var searchText = ""
 
-    private var nodes: [VaultNode] {
-        vaultManager.rootNode?.children ?? []
-    }
-
     var body: some View {
         NavigationStack {
-            Group {
-                if searchText.isEmpty {
-                    treeList
-                } else {
-                    SearchResultsView(query: searchText)
+            browserLevel(folderURL: nil)
+                .navigationDestination(for: VaultNode.self) { node in
+                    if node.isDirectory {
+                        browserLevel(folderURL: node.url)
+                    } else {
+                        EditorView(fileURL: node.url)
+                    }
                 }
+        }
+        .alert(
+            namePrompt?.title ?? "",
+            isPresented: dismissBinding($namePrompt),
+            presenting: namePrompt
+        ) { prompt in
+            TextField("Name", text: $nameInput)
+            Button("Cancel", role: .cancel) {}
+            Button(prompt.confirmTitle) { submit(prompt) }
+        }
+        .sheet(item: $nodeToMove) { node in
+            MoveDestinationPicker(node: node) { destination in
+                run { try await vaultManager.move(itemAt: node.url, into: destination) }
             }
-            .navigationDestination(for: VaultNode.self) { node in
-                EditorView(fileURL: node.url)
+        }
+        .confirmationDialog(
+            "Delete “\(nodeToDelete?.displayName ?? "")”?",
+            isPresented: dismissBinding($nodeToDelete),
+            titleVisibility: .visible,
+            presenting: nodeToDelete
+        ) { node in
+            Button("Delete", role: .destructive) {
+                run { try await vaultManager.deleteItem(at: node.url) }
             }
-            .searchable(text: $searchText, prompt: "Search all notes")
-            .navigationTitle("Notes")
-            .toolbar { toolbarContent }
-            .alert(
-                namePrompt?.title ?? "",
-                isPresented: dismissBinding($namePrompt),
-                presenting: namePrompt
-            ) { prompt in
-                TextField("Name", text: $nameInput)
-                Button("Cancel", role: .cancel) {}
-                Button(prompt.confirmTitle) { submit(prompt) }
+        } message: { node in
+            Text(node.isDirectory
+                 ? "The folder and everything inside it will be deleted."
+                 : "The note will be deleted.")
+        }
+        .alert(
+            "Something Went Wrong",
+            isPresented: dismissBinding($errorMessage)
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    // MARK: - Folder levels
+
+    private func browserLevel(folderURL: URL?) -> some View {
+        let folder = folderNode(at: folderURL)
+        let destinationURL = folder?.url ?? folderURL ?? vaultManager.vaultURL
+
+        return Group {
+            if searchText.isEmpty {
+                folderList(folder: folder)
+            } else {
+                SearchResultsView(query: searchText)
             }
-            .sheet(item: $nodeToMove) { node in
-                MoveDestinationPicker(node: node) { destination in
-                    run { try await vaultManager.move(itemAt: node.url, into: destination) }
-                }
-            }
-            .confirmationDialog(
-                "Delete “\(nodeToDelete?.displayName ?? "")”?",
-                isPresented: dismissBinding($nodeToDelete),
-                titleVisibility: .visible,
-                presenting: nodeToDelete
-            ) { node in
-                Button("Delete", role: .destructive) {
-                    run { try await vaultManager.deleteItem(at: node.url) }
-                }
-            } message: { node in
-                Text(node.isDirectory
-                     ? "The folder and everything inside it will be deleted."
-                     : "The note will be deleted.")
-            }
-            .alert(
-                "Something Went Wrong",
-                isPresented: dismissBinding($errorMessage)
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "")
+        }
+        .searchable(text: $searchText, prompt: "Search all notes")
+        .navigationTitle(folderURL == nil ? "Notes" : folder?.displayName ?? "Folder")
+        .toolbar {
+            if let destinationURL {
+                toolbarContent(in: destinationURL)
             }
         }
     }
 
-    // MARK: - Tree
+    private func folderList(folder: VaultNode?) -> some View {
+        let nodes = folder?.children ?? []
 
-    private var treeList: some View {
-        List {
-            Section {
-                vaultOverview
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+        return List {
+            if let folder {
+                Section {
+                    vaultOverview(for: folder)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
             }
 
             if nodes.isEmpty {
                 Section {
                     ContentUnavailableView {
-                        Label("Your Vault Is Ready", systemImage: "doc.badge.plus")
+                        Label("This Folder Is Ready", systemImage: "doc.badge.plus")
                     } description: {
-                        Text("Create your first Markdown note with the + button above.")
+                        Text("Create a Markdown note or folder with the + button above.")
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 34)
@@ -95,11 +110,11 @@ struct VaultBrowserView: View {
                 }
             } else {
                 Section {
-                    OutlineGroup(nodes, children: \.children) { node in
+                    ForEach(nodes) { node in
                         row(for: node)
                     }
                 } header: {
-                    Text("Library")
+                    Text("Contents")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
@@ -114,83 +129,97 @@ struct VaultBrowserView: View {
         .background(CoveTheme.canvas(for: colorScheme))
     }
 
-    private var vaultOverview: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 14) {
-                Image("LaunchIcon")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 54, height: 54)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .shadow(color: CoveTheme.navy.opacity(0.18), radius: 10, y: 5)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(vaultManager.rootNode?.name ?? "Your Vault")
-                        .font(.title3.weight(.bold))
-                        .lineLimit(1)
-                    Text("Your Markdown workspace")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "checkmark.icloud.fill")
-                    .foregroundStyle(CoveTheme.teal)
-                    .accessibilityLabel("Vault connected")
-            }
-
-            Divider().opacity(0.6)
-
-            HStack(spacing: 24) {
-                overviewStat(value: noteCount, label: noteCount == 1 ? "Note" : "Notes",
-                             systemImage: "doc.text.fill")
-                overviewStat(value: folderCount, label: folderCount == 1 ? "Folder" : "Folders",
-                             systemImage: "folder.fill")
-                Spacer()
-                Text("Auto-saved")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(18)
-        .background { CoveCardBackground() }
+    private func folderNode(at folderURL: URL?) -> VaultNode? {
+        guard let root = vaultManager.rootNode else { return nil }
+        guard let folderURL else { return root }
+        return node(at: folderURL.standardizedFileURL, in: root)
     }
 
-    private func overviewStat(value: Int, label: String, systemImage: String) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
+    private func node(at targetURL: URL, in node: VaultNode) -> VaultNode? {
+        if node.url.standardizedFileURL == targetURL { return node }
+        for child in node.children ?? [] where child.isDirectory {
+            if let match = self.node(at: targetURL, in: child) { return match }
+        }
+        return nil
+    }
+
+    private func vaultOverview(for folder: VaultNode) -> some View {
+        let counts = overviewCounts(for: folder)
+
+        return TimelineView(.periodic(from: .now, by: 60)) { context in
+            VStack(alignment: .leading, spacing: 18) {
+                Text(greeting(for: context.date))
+                    .font(.title3.weight(.semibold))
+
+                HStack(spacing: 0) {
+                    overviewStat(value: counts.folders,
+                                 label: counts.folders == 1 ? "Folder" : "Folders")
+                    Divider()
+                        .padding(.vertical, 2)
+                    overviewStat(value: counts.subfolders,
+                                 label: counts.subfolders == 1 ? "Subfolder" : "Subfolders")
+                    Divider()
+                        .padding(.vertical, 2)
+                    overviewStat(value: counts.notes,
+                                 label: counts.notes == 1 ? "Note" : "Notes")
+                }
+                .frame(height: 42)
+            }
+            .padding(18)
+            .background { CoveCardBackground() }
+        }
+    }
+
+    private func overviewStat(value: Int, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value, format: .number)
+                .font(.title3.weight(.bold))
                 .foregroundStyle(CoveTheme.teal)
-            Text("\(value) \(label)")
-                .font(.caption.weight(.semibold))
+            Text(label)
+                .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+    }
+
+    /// Direct folders, deeper folders, and all notes within this level.
+    private func overviewCounts(for folder: VaultNode) ->
+        (folders: Int, subfolders: Int, notes: Int) {
+        let children = folder.children ?? []
+        let directFolders = children.filter(\.isDirectory).count
+        let allFolders = countFolders(in: children)
+        return (directFolders,
+                max(0, allFolders - directFolders),
+                children.flatMap(\.allFiles).count)
+    }
+
+    private func countFolders(in nodes: [VaultNode]) -> Int {
+        nodes.reduce(0) { count, node in
+            count + (node.isDirectory ? 1 : 0) + countFolders(in: node.children ?? [])
         }
     }
 
-    private var noteCount: Int {
-        vaultManager.rootNode?.allFiles.count ?? 0
-    }
-
-    private var folderCount: Int {
-        func count(in nodes: [VaultNode]) -> Int {
-            nodes.reduce(0) { result, node in
-                result + (node.isDirectory ? 1 : 0) + count(in: node.children ?? [])
-            }
+    private func greeting(for date: Date) -> String {
+        switch Calendar.current.component(.hour, from: date) {
+        case 0..<12: "Good morning"
+        case 12..<17: "Good afternoon"
+        default: "Good evening"
         }
-        return count(in: nodes)
     }
 
-    @ViewBuilder
+    // MARK: - Rows
+
     private func row(for node: VaultNode) -> some View {
-        Group {
-            if node.isDirectory {
-                nodeLabel(node)
-            } else {
-                NavigationLink(value: node) {
-                    nodeLabel(node)
-                }
-            }
+        NavigationLink(value: node) {
+            nodeLabel(node)
         }
         .padding(.vertical, 4)
-        .contextMenu { contextMenu(for: node) }
+        .contextMenu {
+            contextMenu(for: node)
+        }
     }
 
     private func nodeLabel(_ node: VaultNode) -> some View {
@@ -247,20 +276,16 @@ struct VaultBrowserView: View {
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
+    private func toolbarContent(in folder: URL) -> some ToolbarContent {
         ToolbarItem {
             Menu {
                 Button {
-                    if let root = vaultManager.vaultURL {
-                        present(NamePrompt(kind: .newNote(in: root)))
-                    }
+                    present(NamePrompt(kind: .newNote(in: folder)))
                 } label: {
                     Label("New Note", systemImage: "square.and.pencil")
                 }
                 Button {
-                    if let root = vaultManager.vaultURL {
-                        present(NamePrompt(kind: .newFolder(in: root)))
-                    }
+                    present(NamePrompt(kind: .newFolder(in: folder)))
                 } label: {
                     Label("New Folder", systemImage: "folder.badge.plus")
                 }

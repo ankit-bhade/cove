@@ -40,13 +40,13 @@ final class TaskNotificationPlannerTests: XCTestCase {
 
     func testPlansTimedIncompleteFutureTask() {
         let plans = TaskNotificationPlanner.plans(
-            for: [task(text: "Get bread", due: "2026-07-19", time: "15:00", file: "Tasks")],
+            for: [task(text: "Do Laundry", due: "2026-07-18", time: "20:00", file: "Tasks")],
             now: earlyNow, calendar: calendar)
         XCTAssertEqual(plans.count, 1)
-        XCTAssertEqual(plans.first?.title, "Get bread")
-        XCTAssertEqual(plans.first?.body, "Due 2026-07-19 15:00 · Tasks")
+        XCTAssertEqual(plans.first?.title, "Do Laundry")
+        XCTAssertEqual(plans.first?.body, "Jul 18, 8:00pm.")
         XCTAssertEqual(plans.first?.fireDateComponents,
-                       DateComponents(year: 2026, month: 7, day: 19, hour: 15, minute: 0))
+                       DateComponents(year: 2026, month: 7, day: 18, hour: 20, minute: 0))
     }
 
     func testDateOnlyTasksGetNoNotification() {
@@ -90,7 +90,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
                        file: "Chores")],
             now: earlyNow, calendar: calendar)
         XCTAssertEqual(plans.count, 1)
-        XCTAssertEqual(plans.first?.body, "Due 2026-07-19 18:00 · Every Sunday · Chores")
+        XCTAssertEqual(plans.first?.body, "Jul 19, 6:00pm.")
         XCTAssertEqual(plans.first?.fireDateComponents,
                        DateComponents(year: 2026, month: 7, day: 19, hour: 18, minute: 0))
     }
@@ -104,6 +104,13 @@ final class TaskNotificationPlannerTests: XCTestCase {
                        recurrence: RecurrenceRule(frequency: .daily))],
             now: now, calendar: calendar)
         XCTAssertTrue(plans.isEmpty)
+    }
+
+    func testNotificationBodyKeepsNonzeroMinutes() {
+        let plans = TaskNotificationPlanner.plans(
+            for: [task(text: "Laundry", due: "2026-07-18", time: "20:30")],
+            now: earlyNow, calendar: calendar)
+        XCTAssertEqual(plans.first?.body, "Jul 18, 8:30pm.")
     }
 
     // MARK: - Ordering and cap

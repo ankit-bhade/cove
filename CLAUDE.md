@@ -354,14 +354,20 @@ merged.
   date and today (the checkbox stays open — the line is the task's single
   home), while every other toggle flips the status character. If the task
   can't be re-found it throws `TaskChangedOnDiskError` after still
-  refreshing, and `TasksView` shows an alert. Sorting compares
+  refreshing, and `TasksView` shows an alert. `clearCompletedTasks` groups
+  the indexed completed tasks by source note, re-reads each note, removes
+  every currently completed strict task line while preserving all other
+  Markdown and line endings, saves through `VaultFileOperations`, and
+  refreshes the tree/index afterward. Sorting compares
   `(dueDateString, dueTimeString ?? "", fileTitle, lineNumber)` — the
   zero-padded strings order chronologically, with date-only tasks first
   within a day. `TasksView` sits in a `TabView` beside the browser
   (`RootView`): open tasks sorted by due date with overdue moments in red
   (time-aware for timed tasks), completed tasks below, checkbox buttons
   toggle, recurrence shown as a `repeat`-icon label, and rows navigate to
-  the editor through a `URL` navigation destination. The tab refreshes the
+  the editor through a `URL` navigation destination. The completed-section
+  header includes a destructive Clear All button with a confirmation dialog.
+  The tab refreshes the
   vault on each appearance because editor autosaves don't trigger a rescan.
 * **Quick task entry.** `QuickTaskParser` (pure, in
   `Cove/Features/Tasks/`, fully unit-tested against a fixed `now`) is a
@@ -401,7 +407,10 @@ merged.
   rolls the line to the next date and the rebuild that follows schedules
   that occurrence's notification. Plans are ordered soonest-due first and
   capped at 60 (the system holds at most 64 pending local notifications
-  per app). Identifiers carry the `cove-task:` prefix.
+  per app). Notification titles are the task text; bodies use a compact
+  English month, day, and 12-hour time (for example, `Jul 18, 8:00pm.`),
+  without exposing the year, Markdown filename, or recurrence metadata.
+  Identifiers carry the `cove-task:` prefix.
   `TaskNotificationScheduler` (an actor) wraps `UNUserNotificationCenter`:
   each rebuild removes every pending request with that prefix, then — only
   when there is something to schedule — ensures authorization (prompting on
@@ -441,7 +450,17 @@ merged.
   Notes, search, Tasks, task confirmation, move, editor, and Settings screens
   share those primitives. The richer presentation remains standard SwiftUI
   and platform text views only; it adds no assets beyond the existing
-  `LaunchIcon`, no dependencies, and no persistence or behavior changes.
+  `LaunchIcon`, no dependencies, and no persistence changes.
+* **Level-aware Notes browser.** `VaultBrowserView` presents one folder level
+  at a time rather than an inline recursive outline. Folder rows push the next
+  level and file rows push the editor; global search still resolves through
+  the shared `VaultNode` navigation destination. Every level has the same
+  create/refresh tools and a compact card with a morning/afternoon/evening
+  greeting set in a restrained title-3 semibold style. Its counts are scoped
+  to that folder: direct child folders,
+  deeper descendant folders, and all Markdown notes in the subtree. The card
+  intentionally omits the app icon and the old “Your Markdown workspace”
+  treatment.
 * **Tree scanning.** `VaultTreeScanner` performs one coordinated read
   (`NSFileCoordinator.coordinate(readingItemAt:)`) of the vault root, then
   recursively lists directories with `FileManager`, skipping hidden files

@@ -152,6 +152,31 @@ final class VaultManager {
         if let toggleError { throw toggleError }
     }
 
+    /// Removes all completed Cove task lines from their original Markdown
+    /// notes, then rebuilds the index even if one of the file writes fails.
+    func clearCompletedTasks() async throws {
+        let fileURLs = Set(index.completedTasks.map(\.fileURL))
+        guard !fileURLs.isEmpty else { return }
+
+        let ops = fileOperations
+        var clearError: Error?
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                for fileURL in fileURLs {
+                    let text = try ops.readNote(at: fileURL)
+                    let updated = TaskParser.clearingCompletedTasks(in: text)
+                    if updated != text {
+                        try ops.saveNote(updated, to: fileURL)
+                    }
+                }
+            }.value
+        } catch {
+            clearError = error
+        }
+        await refresh()
+        if let clearError { throw clearError }
+    }
+
     /// Appends a quick-added task's Markdown line to the capture note at the
     /// vault root, then rescans (which also reschedules notifications).
     func captureTask(_ draft: TaskDraft) async throws {

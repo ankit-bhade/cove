@@ -11,6 +11,8 @@ struct TasksView: View {
     @State private var errorMessage: String?
     @State private var quickEntry = ""
     @State private var pendingDraft: PendingDraft?
+    @State private var isClearingCompleted = false
+    @State private var showsClearCompletedConfirmation = false
 
     /// The sentence and its interpretation, handed to the confirmation
     /// sheet together so reopening the sheet always matches the field.
@@ -59,6 +61,17 @@ struct TasksView: View {
                 } message: {
                     Text(errorMessage ?? "")
                 }
+                .confirmationDialog(
+                    "Clear All Completed Tasks?",
+                    isPresented: $showsClearCompletedConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Clear All", role: .destructive) {
+                        clearCompletedTasks()
+                    }
+                } message: {
+                    Text("This permanently removes every completed task line from its Markdown note.")
+                }
                 // Editor autosaves don't rescan the vault, so returning to
                 // this tab rebuilds the index to pick up freshly typed tasks.
                 .task {
@@ -93,8 +106,16 @@ struct TasksView: View {
                         row(for: task)
                     }
                 } header: {
-                    Text("Completed · \(completed.count)")
-                        .font(.caption.weight(.semibold))
+                    HStack {
+                        Text("Completed · \(completed.count)")
+                        Spacer()
+                        Button("Clear All", role: .destructive) {
+                            showsClearCompletedConfirmation = true
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isClearingCompleted)
+                    }
+                    .font(.caption.weight(.semibold))
                 }
             }
             if incomplete.isEmpty, completed.isEmpty {
@@ -250,6 +271,18 @@ struct TasksView: View {
         Task {
             do {
                 try await vaultManager.toggleTask(task)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func clearCompletedTasks() {
+        isClearingCompleted = true
+        Task {
+            defer { isClearingCompleted = false }
+            do {
+                try await vaultManager.clearCompletedTasks()
             } catch {
                 errorMessage = error.localizedDescription
             }

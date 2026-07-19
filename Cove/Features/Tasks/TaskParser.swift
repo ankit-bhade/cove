@@ -16,6 +16,9 @@ enum TaskParser {
     struct ParsedTask: Equatable, Sendable {
         /// 0-based line index within the parsed text.
         let lineNumber: Int
+        /// UTF-16 range of the whole line, including its line ending when
+        /// present. Used when clearing completed tasks from their notes.
+        let lineRange: NSRange
         /// UTF-16 range of the single status character in the parsed text.
         let statusRange: NSRange
         /// UTF-16 range of the `YYYY-MM-DD` date in the parsed text, so a
@@ -42,7 +45,8 @@ enum TaskParser {
         var tasks: [ParsedTask] = []
         var lineNumber = 0
         ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length),
-                               options: [.byLines, .substringNotRequired]) { _, lineRange, _, _ in
+                               options: [.byLines, .substringNotRequired]) {
+            _, lineRange, enclosingRange, _ in
             defer { lineNumber += 1 }
             let line = ns.substring(with: lineRange)
             let wholeLine = NSRange(location: 0, length: (line as NSString).length)
@@ -74,6 +78,7 @@ enum TaskParser {
             let dateInLine = match.range(at: 3)
             tasks.append(ParsedTask(
                 lineNumber: lineNumber,
+                lineRange: enclosingRange,
                 statusRange: NSRange(location: lineRange.location + statusInLine.location,
                                      length: statusInLine.length),
                 dueDateRange: NSRange(location: lineRange.location + dateInLine.location,
@@ -124,5 +129,21 @@ enum TaskParser {
         }
         return (fileText as NSString)
             .replacingCharacters(in: match.statusRange, with: isCompleted ? " " : "x")
+    }
+
+    /// Removes every completed line matching Cove's strict task syntax while
+    /// preserving incomplete tasks and all other Markdown verbatim.
+    static func clearingCompletedTasks(in fileText: String) -> String {
+        let completedRanges = tasks(in: fileText)
+            .filter(\.isCompleted)
+            .map(\.lineRange)
+            .sorted { $0.location > $1.location }
+        guard !completedRanges.isEmpty else { return fileText }
+
+        let result = NSMutableString(string: fileText)
+        for range in completedRanges {
+            result.replaceCharacters(in: range, with: "")
+        }
+        return result as String
     }
 }

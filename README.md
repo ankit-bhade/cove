@@ -6,9 +6,10 @@ folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
 Current state (Phase 9 — all build phases complete): select a vault folder,
-browse its nested folders and
-Markdown files, and open any note in a live-styled Markdown editor that saves
-automatically as you type. Headers and `**bold**` spans are styled in place
+browse its nested folders level by level, and open any note in a live-styled
+Markdown editor that saves automatically as you type. Each folder level opens
+with a time-aware greeting and a compact count of its direct folders, deeper
+subfolders, and notes. Headers and `**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
 click. Notes and folders can be created, renamed, moved, and deleted from the
 browser (long-press or right-click a row, or use the + toolbar menu). For a
@@ -25,7 +26,9 @@ the editor. A Tasks tab collects every line of the exact form
 `- [ ] Task text @due(YYYY-MM-DD)` from across the vault: open tasks are
 sorted by due date (overdue dates shown in red), completed ones listed below,
 and checking a task off rewrites that line in its original Markdown file.
-Tapping a task opens its note. New tasks can be typed as one sentence in
+The completed section has a Clear All action that, after confirmation,
+removes every completed Cove task line from its original note. Tapping a task
+opens its note. New tasks can be typed as one sentence in
 the field at the top of the Tasks tab — "get bread 3p tmr", "gym every mon
 wed 6a", "rent 2/3", "meeting next fri 2pm". The interpreter (a port of
 the grove-app capture parser) understands relative dates ("tdy", "tmr",
@@ -42,7 +45,8 @@ demand), and a line like `- [ ] Get bread @due(2026-07-19 15:00)
 with a time get one local notification at that moment, and completing a
 recurring task rolls it to the next occurrence, whose notification is
 scheduled in turn; tasks with only a date get none (the app asks for
-notification permission the first time it has something to schedule).
+notification permission the first time it has something to schedule). Reminder
+details use a compact friendly date such as `Jul 18, 8:00pm.`
 The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same

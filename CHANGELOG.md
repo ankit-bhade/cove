@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Task reminder details now use a concise month, day, and time without the year
+  or source-note label, for example `Jul 18, 8:00pm.`
+- The Notes browser now opens folders level by level and replaces its branded
+  workspace card with a time-aware greeting plus scoped folder, subfolder, and
+  note counts; the greeting is visually lighter and less prominent.
+- The Tasks screen now offers a confirmed Clear All action that removes every
+  completed Cove task line from its original Markdown note.
 - Refined the interface with a cohesive coastal visual system, branded
   loading and vault-setup states, dashboard cards for Notes and Tasks,
   richer file, search, task, settings, and move rows, improved empty states,

@@ -44,16 +44,26 @@ enum TaskNotificationPlanner {
                     hour: time.hour, minute: time.minute)
                 guard let fireDate = calendar.date(from: components),
                       fireDate > now else { return nil }
-                var body = "Due \(task.dueDateString) \(task.dueTimeString!)"
-                if let rule = task.recurrence { body += " · \(rule.displayName)" }
-                body += " · \(task.fileTitle)"
                 return TaskNotificationPlan(
                     identifier: identifierPrefix + task.id,
                     title: task.text,
-                    body: body,
+                    body: "\(formattedDueMoment(fireDate, calendar: calendar)).",
                     fireDateComponents: components)
             }
             .prefix(maximumPlans)
             .map { $0 }
+    }
+
+    /// A compact, human-readable reminder date, for example
+    /// `Jul 18, 8:00pm` or `Jul 18, 8:30pm`.
+    private static func formattedDueMoment(_ date: Date, calendar: Calendar) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d, h:mm a"
+        return formatter.string(from: date)
+            .replacingOccurrences(of: " AM", with: "am")
+            .replacingOccurrences(of: " PM", with: "pm")
     }
 }

@@ -44,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Quick capture no longer clears the typed sentence before its Markdown write
+  succeeds. The entry field and review sheet now show saving progress, keep
+  failed input available for retry, and block accidental duplicate submits.
+- Task checkboxes now show an in-row progress indicator and ignore repeated
+  taps while their filesystem update is in flight, preventing overlapping
+  toggles from producing avoidable changed-on-disk errors.
+- Quick capture's add and details controls now provide full 44-point touch
+  targets, and blank list names can no longer submit from create or rename
+  dialogs.
 - The Today widget centered its task rows in the space under the header, so
   a single task floated in the middle of the widget and the list appeared to
   grow in both directions. Rows now hang from the header, with each new task

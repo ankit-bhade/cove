@@ -14,6 +14,7 @@ struct TaskListDetailView: View {
     @State private var showsClearCompletedConfirmation = false
     @State private var isClearingCompleted = false
     @State private var showsDeleteConfirmation = false
+    @State private var pendingTaskIDs: Set<String> = []
     /// Ticks each minute so a dated item's "Today" stays true while the
     /// list sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -38,7 +39,8 @@ struct TaskListDetailView: View {
                         ForEach(list.openTasks) { task in
                             TaskRow(task: task, now: now,
                                     onToggle: { toggle(task) },
-                                    onDelete: { delete(task) })
+                                    onDelete: { delete(task) },
+                                    isProcessing: pendingTaskIDs.contains(task.id))
                         }
                     } header: {
                         Text("To Do · \(list.openTasks.count)")
@@ -50,7 +52,8 @@ struct TaskListDetailView: View {
                         ForEach(list.completedTasks) { task in
                             TaskRow(task: task, now: now,
                                     onToggle: { toggle(task) },
-                                    onDelete: { delete(task) })
+                                    onDelete: { delete(task) },
+                                    isProcessing: pendingTaskIDs.contains(task.id))
                         }
                     } header: {
                         HStack {
@@ -133,6 +136,7 @@ struct TaskListDetailView: View {
             TextField("List name", text: $renameText)
             Button("Cancel", role: .cancel) {}
             Button("Rename") { rename() }
+                .disabled(trimmedRenameText.isEmpty)
         }
         .coveErrorAlert($errorMessage)
         .task {
@@ -151,27 +155,17 @@ struct TaskListDetailView: View {
             accessibilityHint: "Enter an item, optionally with a date, time, or repeat rule",
             listName: listName
         ) { draft in
-            capture(draft)
+            try await vaultManager.captureTask(draft, into: listName)
         }
         .padding(14)
         .background { CoveCardBackground() }
-    }
-
-    private func capture(_ draft: TaskDraft) {
-        Task {
-            do {
-                try await vaultManager.captureTask(draft, into: listName)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
     }
 
     /// The navigation value is the list's name, so a rename makes this view
     /// point at a list that no longer exists — pop back to the overview,
     /// where the new name is already showing.
     private func rename() {
-        let newName = renameText
+        let newName = trimmedRenameText
         Task {
             do {
                 try await vaultManager.renameList(named: listName, to: newName)
@@ -180,6 +174,10 @@ struct TaskListDetailView: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private var trimmedRenameText: String {
+        renameText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Like a rename, this leaves the navigation value pointing at a list
@@ -197,7 +195,9 @@ struct TaskListDetailView: View {
     }
 
     private func toggle(_ task: TaskItem) {
+        guard pendingTaskIDs.insert(task.id).inserted else { return }
         Task {
+            defer { pendingTaskIDs.remove(task.id) }
             do {
                 try await vaultManager.toggleTask(task)
             } catch {
@@ -219,7 +219,9 @@ struct TaskListDetailView: View {
     }
 
     private func delete(_ task: TaskItem) {
+        guard pendingTaskIDs.insert(task.id).inserted else { return }
         Task {
+            defer { pendingTaskIDs.remove(task.id) }
             do {
                 try await vaultManager.deleteTask(task)
             } catch {

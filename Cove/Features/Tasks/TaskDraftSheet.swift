@@ -12,9 +12,11 @@ struct TaskDraftSheet: View {
     /// Its items may be undated, so the date becomes a toggle and the sheet
     /// says where the task is going.
     var listName: String?
-    let onConfirm: (TaskDraft) -> Void
+    let onConfirm: (TaskDraft) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var isAdding = false
+    @State private var errorMessage: String?
 
     private var allowsUndated: Bool { listName != nil }
 
@@ -126,6 +128,7 @@ struct TaskDraftSheet: View {
                     .padding(.vertical, 3)
                 }
             }
+            .disabled(isAdding)
             .coveFormStyle()
             .coveReadableWidth(680)
             .navigationTitle("New Task")
@@ -135,19 +138,43 @@ struct TaskDraftSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(isAdding)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        onConfirm(draft)
-                        dismiss()
+                    Button {
+                        addTask()
+                    } label: {
+                        if isAdding {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text("Add")
+                        }
                     }
-                    .disabled(!canAdd)
+                    .disabled(!canAdd || isAdding)
+                    .accessibilityLabel(isAdding ? "Adding task" : "Add task")
                 }
             }
+            .coveErrorAlert($errorMessage)
         }
+        .interactiveDismissDisabled(isAdding)
         #if os(macOS)
         .frame(minWidth: 380, minHeight: 440)
         #endif
+    }
+
+    private func addTask() {
+        guard canAdd, !isAdding else { return }
+        isAdding = true
+        Task {
+            do {
+                try await onConfirm(draft)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isAdding = false
+            }
+        }
     }
 
     /// Common presets, plus the parsed rule when the sentence produced one

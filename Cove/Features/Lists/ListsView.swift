@@ -41,6 +41,7 @@ struct ListsView: View {
                     TextField("List name", text: $newListName)
                     Button("Cancel", role: .cancel) {}
                     Button("Create") { createList() }
+                        .disabled(trimmedNewListName.isEmpty)
                 } message: {
                     Text("Lists are sections of Tasks.md, so you can edit them as Markdown too.")
                 }
@@ -147,7 +148,7 @@ struct ListsView: View {
     }
 
     private func createList() {
-        let name = newListName
+        let name = trimmedNewListName
         Task {
             do {
                 try await vaultManager.createList(named: name)
@@ -155,6 +156,10 @@ struct ListsView: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private var trimmedNewListName: String {
+        newListName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func deleteList(named name: String) {

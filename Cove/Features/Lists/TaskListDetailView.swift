@@ -13,6 +13,7 @@ struct TaskListDetailView: View {
     @State private var renameText = ""
     @State private var showsClearCompletedConfirmation = false
     @State private var isClearingCompleted = false
+    @State private var showsDeleteConfirmation = false
     /// Ticks each minute so a dated item's "Today" stays true while the
     /// list sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -96,6 +97,11 @@ struct TaskListDetailView: View {
                     } label: {
                         Label("Rename List", systemImage: "pencil")
                     }
+                    Button(role: .destructive) {
+                        showsDeleteConfirmation = true
+                    } label: {
+                        Label("Delete List", systemImage: "trash")
+                    }
                 } label: {
                     Label("List Options", systemImage: "ellipsis.circle")
                 }
@@ -111,6 +117,17 @@ struct TaskListDetailView: View {
             }
         } message: {
             Text("This permanently removes every completed item from “\(listName)”. Its open items stay.")
+        }
+        .confirmationDialog(
+            "Delete “\(listName)”?",
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete List", role: .destructive) {
+                delete()
+            }
+        } message: {
+            Text("This removes the list and every task in it from Tasks.md.")
         }
         .alert("Rename List", isPresented: $showsRenamePrompt) {
             TextField("List name", text: $renameText)
@@ -158,6 +175,20 @@ struct TaskListDetailView: View {
         Task {
             do {
                 try await vaultManager.renameList(named: listName, to: newName)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Like a rename, this leaves the navigation value pointing at a list
+    /// that no longer exists — pop back to the overview rather than sit on
+    /// an empty detail view.
+    private func delete() {
+        Task {
+            do {
+                try await vaultManager.deleteList(named: listName)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

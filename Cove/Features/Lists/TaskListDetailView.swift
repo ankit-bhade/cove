@@ -11,6 +11,8 @@ struct TaskListDetailView: View {
     @State private var errorMessage: String?
     @State private var showsRenamePrompt = false
     @State private var renameText = ""
+    @State private var showsClearCompletedConfirmation = false
+    @State private var isClearingCompleted = false
     /// Ticks each minute so a dated item's "Today" stays true while the
     /// list sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -50,8 +52,16 @@ struct TaskListDetailView: View {
                                     onDelete: { delete(task) })
                         }
                     } header: {
-                        Text("Done · \(list.completedTasks.count)")
-                            .font(.caption.weight(.semibold))
+                        HStack {
+                            Text("Done · \(list.completedTasks.count)")
+                            Spacer()
+                            Button("Clear All", role: .destructive) {
+                                showsClearCompletedConfirmation = true
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(isClearingCompleted)
+                        }
+                        .font(.caption.weight(.semibold))
                     }
                 }
                 if list.isEmpty {
@@ -90,6 +100,17 @@ struct TaskListDetailView: View {
                     Label("List Options", systemImage: "ellipsis.circle")
                 }
             }
+        }
+        .confirmationDialog(
+            "Clear Completed Items?",
+            isPresented: $showsClearCompletedConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear All", role: .destructive) {
+                clearCompletedTasks()
+            }
+        } message: {
+            Text("This permanently removes every completed item from “\(listName)”. Its open items stay.")
         }
         .alert("Rename List", isPresented: $showsRenamePrompt) {
             TextField("List name", text: $renameText)
@@ -148,6 +169,18 @@ struct TaskListDetailView: View {
         Task {
             do {
                 try await vaultManager.toggleTask(task)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func clearCompletedTasks() {
+        isClearingCompleted = true
+        Task {
+            defer { isClearingCompleted = false }
+            do {
+                try await vaultManager.clearCompletedTasks(inList: listName)
             } catch {
                 errorMessage = error.localizedDescription
             }

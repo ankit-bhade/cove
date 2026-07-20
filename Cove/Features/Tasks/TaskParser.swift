@@ -246,12 +246,15 @@ enum TaskParser {
     }
 
     /// Removes every completed line matching Cove's strict task syntax while
-    /// preserving incomplete tasks and all other Markdown verbatim. In the
-    /// capture note (`sectioned`), tasks that belong to a list are left
-    /// alone — the Tasks screen's Clear All owns only the tasks it shows.
-    static func clearingCompletedTasks(in fileText: String, sectioned: Bool = false) -> String {
+    /// preserving incomplete tasks and all other Markdown verbatim. Each
+    /// screen clears only what it shows: with no `inList` name, tasks that
+    /// belong to a list are left alone (the Tasks screen's Clear All), and
+    /// with one, only that list's items go (a list's own Clear Completed).
+    static func clearingCompletedTasks(in fileText: String,
+                                       sectioned: Bool = false,
+                                       inList listName: String? = nil) -> String {
         let completedRanges = tasks(in: fileText, sectioned: sectioned)
-            .filter { $0.isCompleted && $0.listName == nil }
+            .filter { $0.isCompleted && belongsToList(listName, $0.listName) }
             .map(\.lineRange)
             .sorted { $0.location > $1.location }
         guard !completedRanges.isEmpty else { return fileText }
@@ -261,5 +264,13 @@ enum TaskParser {
             result.replaceCharacters(in: range, with: "")
         }
         return result as String
+    }
+
+    /// A list's identity is its heading text, matched the way the rest of the
+    /// feature matches it: case-insensitively. No name means the unlisted
+    /// tasks, which are the only ones the Tasks screen shows.
+    private static func belongsToList(_ wanted: String?, _ actual: String?) -> Bool {
+        guard let wanted else { return actual == nil }
+        return actual?.caseInsensitiveCompare(wanted) == .orderedSame
     }
 }

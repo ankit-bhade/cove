@@ -22,12 +22,6 @@ final class VaultChangeObserver {
         self.vaultURL = vaultURL
     }
 
-    deinit {
-        for observer in notificationObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
-
     func start() {
         query.searchScopes = [NSMetadataQueryAccessibleUbiquitousExternalDocumentsScope]
         query.predicate = NSPredicate(format: "%K LIKE '*'", NSMetadataItemFSNameKey)
@@ -36,8 +30,9 @@ final class VaultChangeObserver {
         notificationObservers.append(center.addObserver(
             forName: .NSMetadataQueryDidUpdate, object: query, queue: .main
         ) { [weak self] notification in
+            let urls = Self.changedURLs(from: notification)
             MainActor.assumeIsolated {
-                self?.handleUpdate(notification)
+                self?.handleUpdate(urls)
             }
         })
         query.start()
@@ -72,16 +67,18 @@ final class VaultChangeObserver {
         return relevant
     }
 
-    private func handleUpdate(_ notification: Notification) {
-        query.disableUpdates()
-        defer { query.enableUpdates() }
-
+    nonisolated private static func changedURLs(from notification: Notification) -> [URL] {
         let itemKeys = [NSMetadataQueryUpdateAddedItemsKey,
                         NSMetadataQueryUpdateChangedItemsKey,
                         NSMetadataQueryUpdateRemovedItemsKey]
-        let urls = itemKeys
+        return itemKeys
             .flatMap { notification.userInfo?[$0] as? [NSMetadataItem] ?? [] }
             .compactMap { $0.value(forAttribute: NSMetadataItemURLKey) as? URL }
+    }
+
+    private func handleUpdate(_ urls: [URL]) {
+        query.disableUpdates()
+        defer { query.enableUpdates() }
 
         let relevant = Self.relevantChangeURLs(from: urls, vaultURL: vaultURL)
         guard !relevant.isEmpty else { return }

@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let bookmarkLogger = Logger(subsystem: "com.ankitbhade.Cove", category: "Vault")
 
 /// Persists the vault's security-scoped bookmark in `UserDefaults` and
 /// resolves it back into a URL on launch.
@@ -59,10 +62,14 @@ struct VaultBookmarkStore {
             return .noBookmark
         }
         var isStale = false
-        guard let url = try? URL(resolvingBookmarkData: data,
-                                 options: resolutionOptions,
-                                 relativeTo: nil,
-                                 bookmarkDataIsStale: &isStale) else {
+        let url: URL
+        do {
+            url = try URL(resolvingBookmarkData: data,
+                          options: resolutionOptions,
+                          relativeTo: nil,
+                          bookmarkDataIsStale: &isStale)
+        } catch {
+            bookmarkLogger.error("Bookmark restoration failed: \(error.localizedDescription, privacy: .private)")
             return .stale
         }
         if isStale {
@@ -79,6 +86,10 @@ struct VaultBookmarkStore {
         defer {
             if didStart { url.stopAccessingSecurityScopedResource() }
         }
-        try? saveBookmark(for: url)
+        do {
+            try saveBookmark(for: url)
+        } catch {
+            bookmarkLogger.error("Stale bookmark refresh failed: \(error.localizedDescription, privacy: .private)")
+        }
     }
 }

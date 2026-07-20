@@ -132,7 +132,8 @@ struct RecurrenceRule: Hashable, Sendable {
     /// the same format — a port of grove's `nextOccurrence`. Nil only for an
     /// unparseable input date.
     func nextDueDateString(after dateString: String,
-                           calendar: Calendar = .current) -> String? {
+                           calendar: Calendar = TaskCalendar.gregorian()) -> String? {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let parts = dateString.split(separator: "-").compactMap { Int($0) }
         // Anchor at noon so day arithmetic is immune to DST transitions.
         guard parts.count == 3,

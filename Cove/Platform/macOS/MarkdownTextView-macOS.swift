@@ -62,7 +62,8 @@ struct MarkdownTextView: NSViewRepresentable {
             // break the composition, so wait until it commits.
             guard !textView.hasMarkedText() else { return }
             if let storage = textView.textStorage {
-                MarkdownStyler.applyLiveStyles(to: storage)
+                MarkdownStyler.applyLiveStyles(to: storage,
+                                               dirtyRange: storage.editedRange)
             }
         }
     }
@@ -82,6 +83,39 @@ final class CheckboxTogglingTextView: NSTextView {
             return
         }
         super.mouseDown(with: event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers == [.command, .shift], event.charactersIgnoringModifiers == " ",
+           toggleCheckboxAtCursor() {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        [NSAccessibilityCustomAction(
+            name: "Toggle checkbox at cursor",
+            target: self,
+            selector: #selector(accessibilityToggleCheckbox))]
+    }
+
+    @objc private func accessibilityToggleCheckbox() -> Bool {
+        toggleCheckboxAtCursor()
+    }
+
+    private func toggleCheckboxAtCursor() -> Bool {
+        let cursor = selectedRange().location
+        guard let checkbox = MarkdownParser.parse(string).checkboxes.first(where: {
+            NSLocationInRange(cursor, $0.markerRange)
+                || $0.markerRange.location <= cursor && cursor <= NSMaxRange($0.textRange)
+        }), shouldChangeText(in: checkbox.statusRange,
+                             replacementString: checkbox.toggledStatus) else { return false }
+        textStorage?.replaceCharacters(in: checkbox.statusRange,
+                                       with: checkbox.toggledStatus)
+        didChangeText()
+        return true
     }
 }
 #endif

@@ -40,22 +40,30 @@ struct TodayProvider: TimelineProvider {
     /// the app never runs). Capped well under WidgetKit's per-day budget.
     static func entries(for snapshot: TodaySnapshot,
                         from now: Date,
-                        calendar: Calendar = .current) -> [TodayEntry] {
+                        calendar: Calendar = TaskCalendar.gregorian()) -> [TodayEntry] {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let dueMoments = snapshot.openTasks
-            .compactMap { $0.taskItem.dueDateTime }
+            .compactMap { $0.taskItem.dueDateTime(in: calendar) }
             .filter { $0 > now }
-        let midnight = calendar.startOfDay(for: now.addingTimeInterval(24 * 60 * 60))
-        let moments = ([now] + dueMoments + [midnight])
-            .filter { $0 >= now && $0 <= midnight }
-        return Array(Set(moments)).sorted().prefix(24).map {
+        let midnight = TaskCalendar.nextMidnight(after: now, calendar: calendar)
+        let moments = Array(Set([now] + dueMoments))
+            .filter { $0 >= now && $0 < midnight }
+            .sorted()
+            .prefix(23)
+        let currentDayEntries = moments.map {
             TodayEntry(date: $0, snapshot: snapshot)
         }
+        // Reserve the final budget slot for rollover even on a day with many
+        // timed tasks; otherwise prefixing the combined list could drop it.
+        return currentDayEntries + [TodayEntry(date: midnight, snapshot: .empty)]
     }
 
     /// Tomorrow's first refresh once the day is spent, otherwise a periodic
     /// nudge so a snapshot written while the widget slept is picked up.
-    static func nextRefresh(after now: Date, calendar: Calendar = .current) -> Date {
-        let midnight = calendar.startOfDay(for: now.addingTimeInterval(24 * 60 * 60))
+    static func nextRefresh(after now: Date,
+                            calendar: Calendar = TaskCalendar.gregorian()) -> Date {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        let midnight = TaskCalendar.nextMidnight(after: now, calendar: calendar)
         return min(now.addingTimeInterval(30 * 60), midnight)
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// One list's items, with the same quick-entry field the Tasks screen uses.
 /// The only difference is that an item here may stay undated — "milk" is a
@@ -8,6 +9,7 @@ struct TaskListDetailView: View {
 
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.undoManager) private var undoManager
     @State private var errorMessage: String?
     @State private var showsRenamePrompt = false
     @State private var renameText = ""
@@ -200,6 +202,16 @@ struct TaskListDetailView: View {
             defer { pendingTaskIDs.remove(task.id) }
             do {
                 try await vaultManager.toggleTask(task)
+                let previousCompletion = task.isCompleted
+                undoManager?.registerUndo(withTarget: vaultManager) { manager in
+                    Task {
+                        do { try await manager.setTaskCompleted(task, to: previousCompletion) }
+                        catch {
+                            CoveLog.vault.error("Checkbox undo failed: \(error.localizedDescription, privacy: .private)")
+                        }
+                    }
+                }
+                undoManager?.setActionName("Toggle Checkbox")
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -223,7 +235,16 @@ struct TaskListDetailView: View {
         Task {
             defer { pendingTaskIDs.remove(task.id) }
             do {
-                try await vaultManager.deleteTask(task)
+                let record = try await vaultManager.deleteTask(task)
+                undoManager?.registerUndo(withTarget: vaultManager) { manager in
+                    Task {
+                        do { try await manager.restoreDeletedTask(record) }
+                        catch {
+                            CoveLog.vault.error("Task undo failed: \(error.localizedDescription, privacy: .private)")
+                        }
+                    }
+                }
+                undoManager?.setActionName("Delete Task")
             } catch {
                 errorMessage = error.localizedDescription
             }

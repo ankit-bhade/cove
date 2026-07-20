@@ -56,7 +56,7 @@ enum TaskParser {
     private static let undatedTaskLineRegex = try! NSRegularExpression(
         pattern: #"^- \[([ xX])\] (\S(?:.*\S)?)[ \t]*$"#)
 
-    private static let gregorian = Calendar(identifier: .gregorian)
+    private static let gregorian = TaskCalendar.gregorian(timeZone: TimeZone(secondsFromGMT: 0)!)
 
     static func tasks(in text: String, sectioned: Bool = false) -> [ParsedTask] {
         let ns = text as NSString
@@ -196,6 +196,34 @@ enum TaskParser {
             .replacingCharacters(in: match.statusRange, with: isCompleted ? " " : "x")
     }
 
+    /// Idempotently puts the identified task in `desiredCompletion`. The
+    /// latest file text is parsed on every call. For an incomplete recurring
+    /// task, completing means advancing that occurrence once; a retry carrying
+    /// the old due-date identity no longer matches and is therefore stale,
+    /// never a second toggle.
+    static func settingTaskCompleted(
+        _ identity: TaskIdentity,
+        to desiredCompletion: Bool,
+        todayDateString: String,
+        in fileText: String
+    ) -> String? {
+        guard let match = matchingTask(identity, in: fileText) else { return nil }
+        if match.isCompleted == desiredCompletion { return fileText }
+
+        if desiredCompletion,
+           let rule = match.recurrence,
+           let currentDate = match.dueDateString,
+           let dateRange = match.dueDateRange {
+            let base = max(currentDate, todayDateString)
+            guard let next = rule.nextDueDateString(after: base) else { return nil }
+            return (fileText as NSString).replacingCharacters(in: dateRange, with: next)
+        }
+
+        return (fileText as NSString).replacingCharacters(
+            in: match.statusRange,
+            with: desiredCompletion ? "x" : " ")
+    }
+
     /// Returns `fileText` with the matching task's whole line removed, or nil
     /// if no task in the text matches. Re-finds the task the same way
     /// `togglingTask` does, so a line that changed on disk is left alone and
@@ -217,6 +245,27 @@ enum TaskParser {
                                        preferredLineNumber: preferredLineNumber,
                                        in: fileText) else { return nil }
         return (fileText as NSString).replacingCharacters(in: match.lineRange, with: "")
+    }
+
+    /// Deletes by semantic identity while deliberately ignoring completion
+    /// state, so a concurrent completion followed by deletion still removes
+    /// the intended line rather than a stale offset or an unrelated task.
+    static func removingTask(_ identity: TaskIdentity, in fileText: String) -> String? {
+        guard let match = matchingTask(identity, in: fileText) else { return nil }
+        return (fileText as NSString).replacingCharacters(in: match.lineRange, with: "")
+    }
+
+    static func matchingTask(_ identity: TaskIdentity,
+                             in fileText: String) -> ParsedTask? {
+        let candidates = tasks(in: fileText, sectioned: identity.listName != nil).filter {
+            $0.text == identity.text
+                && $0.dueDateString == identity.dueDateString
+                && $0.dueTimeString == identity.dueTimeString
+                && $0.recurrence == identity.recurrence
+                && $0.listName == identity.listName
+        }
+        return candidates.first(where: { $0.lineNumber == identity.lineNumber })
+            ?? candidates.first
     }
 
     /// Re-finds one indexed task in a fresh read of its file: among tasks with

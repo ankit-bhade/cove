@@ -1,5 +1,65 @@
 import Foundation
 
+/// Calendar semantics for Cove's fixed Markdown date format. Stored
+/// `YYYY-MM-DD` values are Gregorian regardless of the user's system calendar.
+enum TaskCalendar {
+    static func gregorian(timeZone: TimeZone = .autoupdatingCurrent) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    static func nextMidnight(after date: Date,
+                             calendar: Calendar = gregorian()) -> Date {
+        let calendar = gregorian(timeZone: calendar.timeZone)
+        let start = calendar.startOfDay(for: date)
+        return calendar.date(byAdding: .day, value: 1, to: start)!
+    }
+}
+
+/// Stable, serializable task identity used to re-find a line after re-reading
+/// its latest note contents. Completion is intentionally not identity: a
+/// semantic set-completed operation must still find a task after another
+/// caller has already put it in the desired state.
+struct TaskIdentity: Codable, Hashable, Sendable {
+    let filePath: String
+    let lineNumber: Int
+    let text: String
+    let dueDateString: String?
+    let dueTimeString: String?
+    let recurrenceTag: String?
+    let listName: String?
+
+    var fileURL: URL { URL(fileURLWithPath: filePath) }
+    var recurrence: RecurrenceRule? { recurrenceTag.flatMap(RecurrenceRule.init(tagText:)) }
+
+    init(filePath: String,
+         lineNumber: Int,
+         text: String,
+         dueDateString: String?,
+         dueTimeString: String?,
+         recurrenceTag: String?,
+         listName: String?) {
+        self.filePath = filePath
+        self.lineNumber = lineNumber
+        self.text = text
+        self.dueDateString = dueDateString
+        self.dueTimeString = dueTimeString
+        self.recurrenceTag = recurrenceTag
+        self.listName = listName
+    }
+
+    init(_ task: TaskItem) {
+        self.init(filePath: task.fileURL.path,
+                  lineNumber: task.lineNumber,
+                  text: task.text,
+                  dueDateString: task.dueDateString,
+                  dueTimeString: task.dueTimeString,
+                  recurrenceTag: task.recurrence?.tagText,
+                  listName: task.listName)
+    }
+}
+
 /// One due task collected from a note, carrying enough to display it and to
 /// re-find its line when toggling. Ranges are deliberately absent: the file
 /// is re-read and re-parsed at toggle time, so nothing here goes stale.
@@ -26,18 +86,29 @@ struct TaskItem: Identifiable, Hashable, Sendable {
 
     var id: String { "\(fileURL.path)#\(lineNumber)" }
 
+    var identity: TaskIdentity { TaskIdentity(self) }
+
     var hasDueDate: Bool { dueDateString != nil }
 
-    /// Start of the due day in the current calendar, for display formatting.
+    /// Start of the due day in Cove's Gregorian task calendar.
     var dueDate: Date? {
-        dateComponents.flatMap(Calendar.current.date(from:))
+        dueDate(in: TaskCalendar.gregorian())
+    }
+
+    func dueDate(in calendar: Calendar) -> Date? {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        return dateComponents.flatMap(calendar.date(from:))
     }
 
     /// The due moment including the time of day, when a time is set.
     var dueDateTime: Date? {
+        dueDateTime(in: TaskCalendar.gregorian())
+    }
+
+    func dueDateTime(in calendar: Calendar) -> Date? {
         guard var components = dateComponents, let time = timeComponents else { return nil }
         (components.hour, components.minute) = time
-        return Calendar.current.date(from: components)
+        return TaskCalendar.gregorian(timeZone: calendar.timeZone).date(from: components)
     }
 
     private var dateComponents: DateComponents? {
@@ -61,6 +132,35 @@ struct NoteIndexEntry: Hashable, Sendable {
     let url: URL
     let title: String
     let tasks: [TaskItem]
+    let listNames: [String]
+    let searchableText: String
+    let modificationDate: Date?
+    let fileSize: Int?
+
+    init(url: URL,
+         title: String,
+         tasks: [TaskItem],
+         listNames: [String] = [],
+         searchableText: String = "",
+         modificationDate: Date? = nil,
+         fileSize: Int? = nil) {
+        self.url = url
+        self.title = title
+        self.tasks = tasks
+        self.listNames = listNames
+        self.searchableText = searchableText
+        self.modificationDate = modificationDate
+        self.fileSize = fileSize
+    }
+}
+
+/// The reusable in-memory representation requested by incremental indexing.
+/// It is never persisted into the vault.
+struct IndexedNote: Sendable {
+    let url: URL
+    let tasks: [TaskItem]
+    let lists: [String]
+    let searchableText: String
 }
 
 /// One named list from the capture note: its `##` heading and the tasks

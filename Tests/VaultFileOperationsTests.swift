@@ -133,6 +133,83 @@ final class VaultFileOperationsTests: XCTestCase {
         XCTAssertThrowsError(try ops.readNote(at: url("gone.md")))
     }
 
+    func testCoordinatedUpdateReportsUnchangedTextWithoutWriting() throws {
+        let note = try ops.createNote(named: "Stable", in: root)
+        try ops.saveNote("unchanged\n", to: note)
+        let before = try modificationDate(of: note)
+
+        let result = try ops.coordinatedUpdateNote(at: note) { $0 }
+
+        XCTAssertFalse(result.changed)
+        XCTAssertEqual(result.resultingText, "unchanged\n")
+        XCTAssertEqual(try modificationDate(of: note), before)
+    }
+
+    func testConcurrentIndependentTaskMutationsAreBothPreserved() async throws {
+        let note = try ops.createNote(named: "Concurrent", in: root)
+        let initial = "- [ ] Alpha @due(2026-07-20)\n- [ ] Beta @due(2026-07-21)\n"
+        try ops.saveNote(initial, to: note)
+        let parsed = TaskParser.tasks(in: initial)
+        let alpha = identity(for: parsed[0], in: note)
+        let beta = identity(for: parsed[1], in: note)
+        let repository = VaultRepository()
+
+        async let first = repository.updateNote(at: note) { text in
+            TaskParser.settingTaskCompleted(alpha, to: true,
+                                            todayDateString: "2026-07-19", in: text)
+        }
+        async let second = repository.updateNote(at: note) { text in
+            TaskParser.settingTaskCompleted(beta, to: true,
+                                            todayDateString: "2026-07-19", in: text)
+        }
+        _ = try await (first, second)
+
+        XCTAssertEqual(try ops.readNote(at: note),
+                       "- [x] Alpha @due(2026-07-20)\n- [x] Beta @due(2026-07-21)\n")
+    }
+
+    func testConcurrentToggleAndDeletePreserveBothValidChanges() async throws {
+        let note = try ops.createNote(named: "Concurrent", in: root)
+        let initial = "- [ ] Keep @due(2026-07-20)\n- [ ] Remove @due(2026-07-21)\n"
+        try ops.saveNote(initial, to: note)
+        let parsed = TaskParser.tasks(in: initial)
+        let keep = identity(for: parsed[0], in: note)
+        let remove = identity(for: parsed[1], in: note)
+        let appRepository = VaultRepository()
+        let widgetRepository = VaultRepository()
+
+        async let toggle = appRepository.updateNote(at: note) { text in
+            TaskParser.settingTaskCompleted(keep, to: true,
+                                            todayDateString: "2026-07-19", in: text)
+        }
+        async let delete = widgetRepository.updateNote(at: note) { text in
+            TaskParser.removingTask(remove, in: text)
+        }
+        _ = try await (toggle, delete)
+
+        XCTAssertEqual(try ops.readNote(at: note),
+                       "- [x] Keep @due(2026-07-20)\n")
+    }
+
+    func testRepeatedDesiredCompletionIsIdempotent() async throws {
+        let note = try ops.createNote(named: "Retry", in: root)
+        let initial = "- [ ] Retry me @due(2026-07-20)\n"
+        try ops.saveNote(initial, to: note)
+        let identity = identity(
+            for: try XCTUnwrap(TaskParser.tasks(in: initial).first), in: note)
+        let repository = VaultRepository()
+
+        for _ in 0..<3 {
+            _ = try await repository.updateNote(at: note) { text in
+                TaskParser.settingTaskCompleted(identity, to: true,
+                                                todayDateString: "2026-07-19", in: text)
+            }
+        }
+
+        XCTAssertEqual(try ops.readNote(at: note),
+                       "- [x] Retry me @due(2026-07-20)\n")
+    }
+
     // MARK: - Rename
 
     func testRenameNoteAddsExtensionAndKeepsContents() throws {
@@ -231,5 +308,58 @@ final class VaultFileOperationsTests: XCTestCase {
         try ops.createNote(named: "Inside", in: folder)
         try ops.delete(itemAt: folder)
         XCTAssertFalse(exists("Doomed"))
+    }
+
+    func testDeleteMovesNoteToRecoveryAndRestoreReturnsIt() throws {
+        let note = try ops.createNote(named: "Recoverable", in: root)
+        try ops.saveNote("body\n", to: note)
+
+        let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root)
+        XCTAssertFalse(fileManager.fileExists(atPath: note.path))
+        XCTAssertTrue(fileManager.fileExists(atPath: record.recoveryURL.path))
+
+        try ops.restore(record)
+        XCTAssertEqual(try ops.readNote(at: note), "body\n")
+        XCTAssertFalse(fileManager.fileExists(atPath: record.recoveryURL.path))
+    }
+
+    func testRecoveryRestoreRefusesToOverwriteOccupiedOriginalPath() throws {
+        let note = try ops.createNote(named: "Recoverable", in: root)
+        let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root)
+        try "replacement\n".write(to: note, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try ops.restore(record)) { error in
+            XCTAssertEqual(error as? VaultFileOperations.OperationError,
+                           .itemAlreadyExists("Recoverable.md"))
+        }
+        XCTAssertEqual(try ops.readNote(at: note), "replacement\n")
+        XCTAssertTrue(fileManager.fileExists(atPath: record.recoveryURL.path))
+    }
+
+    func testRecoveryCanRestoreUnderAUserSelectedName() throws {
+        let note = try ops.createNote(named: "Recoverable", in: root)
+        try ops.saveNote("recovered\n", to: note)
+        let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root)
+        try "occupied\n".write(to: note, atomically: true, encoding: .utf8)
+
+        let restored = try ops.restore(record, as: "Recovered Copy")
+
+        XCTAssertEqual(restored.lastPathComponent, "Recovered Copy.md")
+        XCTAssertEqual(try ops.readNote(at: restored), "recovered\n")
+        XCTAssertEqual(try ops.readNote(at: note), "occupied\n")
+    }
+
+    private func modificationDate(of url: URL) throws -> Date {
+        try XCTUnwrap(fileManager.attributesOfItem(atPath: url.path)[.modificationDate] as? Date)
+    }
+
+    private func identity(for task: TaskParser.ParsedTask, in note: URL) -> TaskIdentity {
+        TaskIdentity(filePath: note.path,
+                     lineNumber: task.lineNumber,
+                     text: task.text,
+                     dueDateString: task.dueDateString,
+                     dueTimeString: task.dueTimeString,
+                     recurrenceTag: task.recurrence?.tagText,
+                     listName: task.listName)
     }
 }

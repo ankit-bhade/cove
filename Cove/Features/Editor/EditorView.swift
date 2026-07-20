@@ -33,16 +33,35 @@ struct EditorView: View {
         }
         .background(CoveTheme.canvas(for: colorScheme).ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) {
-            if let message = document.saveErrorDescription {
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(11)
-                    .background(.orange.opacity(0.16),
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
+            if document.saveErrorDescription != nil || document.conflictDescription != nil {
+                VStack(spacing: 8) {
+                    if let message = document.saveErrorDescription {
+                        HStack {
+                            Label(message, systemImage: "exclamationmark.triangle")
+                            Spacer()
+                            Button("Retry") {
+                                Task { await document.retrySave() }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .font(.footnote)
+                        .foregroundStyle(.primary)
+                        .padding(11)
+                        .background(.orange.opacity(0.16),
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    if let message = document.conflictDescription {
+                        Label(message, systemImage: "doc.on.doc")
+                            .font(.footnote)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(11)
+                            .background(CoveTheme.teal.opacity(0.12),
+                                        in: RoundedRectangle(cornerRadius: 12,
+                                                             style: .continuous))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
             }
         }
         .navigationTitle(document.fileURL.deletingPathExtension().lastPathComponent)
@@ -68,13 +87,13 @@ struct EditorView: View {
         }
         .onDisappear {
             let document = document
-            Task { await document.saveNow() }
+            Task { await document.flush() }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { await document.reloadAfterExternalChange() }
             } else {
-                Task { await document.saveNow() }
+                Task { await document.flush() }
             }
         }
         .onChange(of: vaultManager.externalChangeCount) { _, _ in

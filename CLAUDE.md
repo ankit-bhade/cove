@@ -6,10 +6,10 @@ build phases, and current status. Read it fully before making changes.
 
 ## Current phase and status
 
-**Current phase: Phase 11 — iOS Today widget.**
+**Current phase: Post-Phase 11 reliability hardening.**
 
-Status: Phase 11 implemented. All build phases are complete. See
-CHANGELOG.md for merged work.
+Status: All build phases and the filesystem/concurrency reliability pass are
+implemented. See CHANGELOG.md for completed work.
 
 ---
 
@@ -186,8 +186,9 @@ Use `UNUserNotificationCenter`.
 * Every notification is a one-shot at the task's due moment; recurring
   tasks are never scheduled ahead — completing an occurrence rolls the
   line to the next date, and the rebuild schedules that occurrence
-* Rebuild task notifications when the app enters the foreground or files change
-* Remove previously generated task notifications before rebuilding
+* Reconcile task notifications when the app enters the foreground or files change
+* Diff only Cove-owned notification requests; do not remove/recreate unchanged requests
+* Never request notification permission from a rebuild; permission UI belongs in Settings
 * Do not use push notifications
 * Do not implement custom background sync
 
@@ -270,8 +271,8 @@ merged.
 * **Single multiplatform target.** One `Cove` app target supports
   `iphoneos iphonesimulator macosx` (`SDKROOT = auto`). Platform differences
   are handled with `#if os(...)` in `Cove/Platform/`.
-* **Swift language mode 5** with `@Observable` (Observation framework,
-  iOS 17/macOS 14) for app state.
+* **Swift language mode 6** with complete strict concurrency checking and
+  `@Observable` (Observation framework, iOS 17/macOS 14) for app state.
 * **State model.** `VaultManager` (`@MainActor @Observable`) owns the vault
   lifecycle: `restoring → needsVault | recoveryNeeded | open`. It is created in
   `CoveApp` and injected via `.environment`.
@@ -295,7 +296,14 @@ merged.
   renames skip the destination-exists check (APFS is case-insensitive by
   default). `VaultManager` wraps each mutation (`createNote`, `createFolder`,
   `rename`, `move`, `deleteItem`) in `Task.detached` off the main actor and
-  rescans the tree afterward.
+  rescans the tree afterward. `VaultRepository` is the process-local actor
+  boundary for atomic note mutations: it coordinates one write, reads the
+  latest text inside that coordination, applies a throwing semantic transform,
+  and atomically replaces only changed content. Task/capture/list/widget paths
+  use this API rather than a public read followed by save. Note and folder
+  deletion moves items into a unique encoded name under `.cove-recovery`;
+  immediate Undo restores them without overwriting a newly occupied path and
+  prompts for a replacement name when necessary.
 * **Editor.** `NoteDocument` (`@MainActor @Observable`) owns one open note:
   coordinated load, dirty tracking against the last saved text, debounced
   autosave (1 s after typing stops), and `saveNow()` flushes on view
@@ -314,23 +322,31 @@ merged.
   platform under `Cove/Platform/`, `#if os(...)`-guarded, distinct file
   basenames — identical basenames in one target collide in the build system).
   Smart quotes/dashes are disabled on both platforms so Markdown syntax
-  survives typing.
+  survives typing. A per-document `NoteWriter` actor serializes physical
+  writes and coalesces pending revisions so an old save cannot finish last.
+  Explicit flushes run on navigation and scene transitions. Save failures keep
+  the live document dirty with Retry UI. Before replacing an externally
+  changed file, the writer preserves that disk text in a deterministic sibling
+  `cove-conflict` note and reports it in the editor.
 * **Live Markdown styling.** `MarkdownParser` (pure Foundation, in
   `Cove/Features/Editor/`) scans for ATX headers, `**bold**` spans, and
   `- [ ]` checkboxes, returning UTF-16 `NSRange`s that apply directly to the
   text storage; it is fully unit-tested. `MarkdownStyler` maps a parse to
   attributes — header fonts sized from the body font, dimmed syntax markers,
   bold variants of the in-effect font, strikethrough on checked task text —
-  and restyles the whole document after every change. The stored text stays
-  plain Markdown; styling is attribute-only, so selection and the undo stack
-  are unaffected. Restyling is skipped while IME marked text is active.
+  and restyles the affected paragraph plus neighboring paragraphs after an
+  edit; whole-document styling is reserved for initial load and global style
+  changes. The stored text stays plain Markdown; styling is attribute-only, so
+  selection and the undo stack are unaffected. Restyling is skipped while IME
+  marked text is active.
   Checkbox toggling: iOS adds a tap recognizer (recognizing simultaneously
   with the text view's own gestures) that hit-tests the tapped character
   index against marker ranges; macOS uses a `CheckboxTogglingTextView`
   subclass (instantiated via `scrollableTextView()`, which honors the
   subclass) whose `mouseDown` routes the flip through
   `shouldChangeText`/`didChangeText` so it is undoable and reaches the
-  delegate.
+  delegate. Both platforms expose “Toggle checkbox at cursor” as an
+  accessibility custom action and Command-Shift-Space keyboard command.
 * **Change detection.** `VaultChangeObserver` (`@MainActor`, in
   `Cove/Core/Services/`) wraps one `NSMetadataQuery` with
   `NSMetadataQueryAccessibleUbiquitousExternalDocumentsScope`, which covers
@@ -338,8 +354,10 @@ merged.
   notifications are filtered to non-hidden items under the vault (a pure,
   unit-tested static helper) and debounced 600 ms; the initial gathering pass
   is a baseline and never reported. `VaultManager` starts the observer when a
-  vault opens, stops it in `endAccess()`, and on each event bumps
-  `externalChangeCount` and rescans the tree. `EditorView` observes that
+  vault opens, explicitly stops it on background or in `endAccess()`, and on
+  each event bumps `externalChangeCount` and requests a coalesced refresh.
+  Notifications are reduced to Sendable URL values before entering the main
+  actor; observer tokens are never touched from `deinit`. `EditorView` observes that
   count (and scene re-activation) to call
   `NoteDocument.reloadAfterExternalChange()`, which adopts the disk contents
   only when there are no unsaved local edits — pending local edits always
@@ -379,22 +397,25 @@ merged.
   last one on the line is the tag, and an `@repeat(...)` before the `@due`
   tag is just text. `VaultIndexBuilder` (`Cove/Core/Services/`) walks
   the scanned tree's files with coordinated reads and produces `VaultIndex`
-  (`Cove/Core/Models/`): one entry per file with path, title, and
-  `TaskItem`s (now carrying optional `dueTimeString` and `recurrence`).
-  `VaultManager` rebuilds the index inside every tree load —
-  launch, app-created mutations, external changes, and explicit refreshes —
-  in the same detached task as the scan. `toggleTask` re-reads the task's
-  file, re-finds the task by content (`text` + full schedule + state,
+  (`Cove/Core/Models/`): one entry per file with path, title, `TaskItem`s,
+  list headings, searchable text, modification date, and file size. A vault
+  switch performs a full parse; later file-change refreshes reuse unchanged
+  entries, reparse forced/metadata-changed Markdown files, and drop deleted
+  files. Scanning and indexing check cancellation throughout. `VaultManager`
+  gives every load a generation and requested vault URL, cancels its
+  predecessor, and commits results only when both still match, so an older
+  completion cannot restore stale tree/index/error state. `toggleTask`
+  atomically re-reads and re-finds the task by content (`text` + full schedule,
   preferring the remembered line number among duplicates so duplicate task
-  lines toggle correctly), rewrites the line, saves coordinated, and
-  rescans; completing an incomplete recurring task advances its due date
+  lines toggle correctly), transforms the latest text in the coordinated
+  write, and rescans; completing an incomplete recurring task advances its due date
   in place to the rule's next occurrence after the later of the stale due
   date and today (the checkbox stays open — the line is the task's single
   home), while every other toggle flips the status character. If the task
   can't be re-found it throws `TaskChangedOnDiskError` after still
   refreshing, and `TasksView` shows an alert. `deleteTask` follows the same
   re-find-then-rewrite path (`TaskParser.removingTask`, sharing the private
-  `matchingTask` matcher with `togglingTask`) but drops the whole
+  semantic matcher) but drops the whole
   `lineRange`, so a line that changed on disk raises
   `TaskChangedOnDiskError` instead of deleting the wrong task; it is
   reachable from a row's trailing swipe action and its context menu, and is
@@ -525,16 +546,15 @@ merged.
   rolls the line to the next date and the rebuild that follows schedules
   that occurrence's notification. Plans are ordered soonest-due first and
   capped at 60 (the system holds at most 64 pending local notifications
-  per app). Notification titles are the task text; bodies use a compact
-  English month, day, and 12-hour time (for example, `Jul 18, 8:00pm.`),
-  without exposing the year, Markdown filename, or recurrence metadata.
+  per app). Notification titles are the task text; bodies use a compact,
+  locale-sensitive month/day/time without exposing the year, Markdown
+  filename, or recurrence metadata.
   Identifiers carry the `cove-task:` prefix.
   `TaskNotificationScheduler` (an actor) wraps `UNUserNotificationCenter`:
-  each rebuild removes every pending request with that prefix, then — only
-  when there is something to schedule — ensures authorization (prompting on
-  first use; a denial silently skips scheduling) and adds one one-shot
-  `UNCalendarNotificationTrigger` request per plan. Rebuilds are chained through a stored `Task` so overlapping calls
-  never interleave their remove/add steps. `VaultManager` enqueues a
+  each rebuild reads existing Cove-owned requests, removes obsolete ones,
+  and adds only new or changed one-shot `UNCalendarNotificationTrigger`
+  requests. It schedules only when authorization is already granted and never
+  presents a permission prompt; Settings owns that user action. `VaultManager` enqueues a
   rebuild at the end of every successful tree load, which covers launch,
   app-created mutations, external changes, and the scene-activation
   refresh (the spec's "foreground or files change"). No push
@@ -666,8 +686,8 @@ merged.
   `CoveWidgets/CoveWidgets.entitlements`). `WidgetSnapshot.swift`
   (`Cove/Core/Services/`, compiled into both targets) owns the whole channel:
   `TodaySnapshot` — the day string, the moment it was built, and the
-  `SnapshotTask`s due that day — plus the bookmark and a pending-toggle
-  queue. `VaultManager.publishWidgetState` writes the snapshot and the
+  `SnapshotTask`s due that day — plus the bookmark and a versioned pending
+  desired-state operation queue. `VaultManager.publishWidgetState` writes the snapshot and the
   bookmark on **every** index rebuild, the same set of moments that
   reschedules notifications, then reloads the timeline. The snapshot is
   derived state, never a source of truth; the Markdown files remain that.
@@ -678,17 +698,19 @@ merged.
   `ToggleTaskIntent`, which carries only the row's id — everything else is
   looked up in the snapshot, which is by definition what the widget was
   drawing. `TaskToggleWriter` resolves the shared bookmark and rewrites the
-  line through the same `TaskParser.togglingTask` and coordinated
-  `VaultFileOperations` write the app uses. Whether an extension can resolve
-  a bookmark its host app created is not guaranteed on iOS, so a failed write
-  is appended to the pending-toggle queue and
-  `VaultManager.applyPendingWidgetToggles` applies it at the start of the
+  line through the same idempotent `TaskParser.settingTaskCompleted` and
+  atomic `VaultRepository` mutation the app uses. The operation is durably
+  queued before attempting the file write and acknowledged only after
+  success. Whether an extension can resolve a bookmark its host app created
+  is not guaranteed on iOS, so a failed write remains in the queue and
+  `VaultManager.applyPendingWidgetOperations` retries it at the start of the
   next tree load — before the scan, so the index is still built once. Either
   way the snapshot is updated optimistically, which is what makes the tap
   feel instant; completing a recurring task removes the row rather than
-  striking it through, mirroring the app's roll-forward. `PendingToggle`
-  records the completion state the line had *before* the tap, since that is
-  what the app's re-find has to match.
+  striking it through, mirroring the app's roll-forward. A legacy
+  `PendingToggle` is decoded only to migrate an ephemeral pre-upgrade queue;
+  new `PendingTaskOperation`s carry UUID, semantic identity, desired final
+  completion, creation time, and attempt count, so replay cannot toggle back.
 * **Widget target sources.** The app's `Cove` folder is a synchronized root
   group belonging to the app target alone, so the eight pure files the widget
   reuses (`RecurrenceRule`, `VaultIndex`, `VaultFileOperations`,
@@ -742,6 +764,9 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
 ```
 
+Current verified suite: 292 tests (macOS host), plus clean macOS and generic
+iOS Simulator builds. All targets use Swift 6 and complete concurrency checking.
+
 ## Regenerating the app icon
 
 The icon's source of truth is the `Cove Icon Final.dc.html` design document
@@ -781,10 +806,6 @@ problems as build warnings, not errors.
 * The unit-test bundle runs inside the sandboxed app host on macOS; tests that
   create bookmarks use the app container's temporary directory, which the
   sandbox can bookmark.
-* Styling reparses and restyles the whole document on every keystroke. Fine
-  for typical notes; very large files would need incremental styling.
-* The iOS checkbox toggle edits the text storage directly, so it does not
-  land on `UITextView`'s undo stack (the macOS toggle is undoable).
 * Clicking anywhere in a `- [ ]` marker toggles it instead of placing the
   insertion point; edit the marker text by moving the caret in from outside.
 * Header fonts are computed from the current body font at restyle time, so
@@ -793,10 +814,10 @@ problems as build warnings, not errors.
 * `NSMetadataQuery` only reports iCloud-backed items, so external edits to a
   non-iCloud vault are picked up only by the scene-activation rescan, not
   live.
-* An external change to a note with unsaved local edits is not adopted: the
-  local text wins and the next autosave overwrites the external version.
-  When both sides really changed, iCloud creates a conflict copy, which
-  appears as a separate file (per spec, never auto-resolved).
+* An external change to a note with unsaved local edits is not adopted into
+  the live buffer. On save, local text wins while the current disk text is
+  preserved as a deterministic sibling conflict note; the editor reports the
+  copy rather than silently discarding either version.
 * Every external change event makes each open editor re-read its own file
   (one coordinated read), even when the changed items don't include it —
   metadata URLs aren't reliably comparable to picker URLs, so the reload is
@@ -810,17 +831,13 @@ problems as build warnings, not errors.
   showing — edit the query (or reopen search) to re-run it.
 * Search matches are line-based: the snippet is the first matching line, and
   a query spanning a line break won't match.
-* Every index rebuild reads every Markdown file (launch, each mutation, each
-  external change event, each Tasks-tab appearance). Fine for typical
-  vaults; very large vaults would want incremental indexing.
 * The Tasks tab can lag reality between rebuilds: a task typed in the editor
-  appears only after the tab is revisited (its appearance triggers a
-  refresh) or another rescan fires. Toggling a task that meanwhile changed
+  appears only after another refresh or rescan fires. Toggling a task that meanwhile changed
   on disk shows a "changed on disk" alert and refreshes the list instead of
   writing (deleting one behaves the same way).
-* Deleting a task is immediate and unconfirmed, and there is no undo — the
-  line is gone from the note as soon as the swipe completes. Deliberate
-  (a swipe is already an intentional gesture), but worth knowing.
+* Deleting a task is immediate and unconfirmed, but registers semantic Undo
+  that atomically reinserts its original line near stable neighboring task
+  identities without replacing unrelated later edits.
 * A task row no longer names its source note, so tasks kept in notes other
   than `Tasks.md` are indistinguishable in the list until opened. Fine for
   the intended single-capture-note workflow; a vault that scatters tasks
@@ -895,17 +912,15 @@ problems as build warnings, not errors.
   note whose lists sit at the bottom means above the first `##` heading —
   not at the end of the file. A note that is *nothing* but lists takes the
   line at the very top, since there is no free space to append to.
-* The notification permission prompt appears the first time a rebuild has a
-  task to schedule, not at launch. A denial silently disables scheduling;
-  the Settings tab then shows the status as Off with an Open System
-  Settings shortcut (permission can only be re-granted there).
+* Notification rebuilds never request permission. Settings shows the current
+  state and owns the explicit request/Open System Settings actions.
 * A notification is a reminder, not a live view: tapping it opens the app
   but not the specific task, and a task completed on another device keeps
   its scheduled notification here until this device next rebuilds (launch,
   foreground, or a detected iCloud change).
-* `TaskNotificationScheduler` is untestable in unit tests (scheduling would
-  prompt for permission in the test host); only the planner is unit-tested.
-  Verify delivery manually.
+* `TaskNotificationScheduler` still requires manual delivery verification;
+  the pure planner and diff inputs are deterministic, but the system center
+  itself is not exercised by the unit-test host.
 * The Settings tab's notification status is polled on appearance and scene
   re-activation, not live; granting permission in the system settings shows
   up when the app returns to the foreground.
@@ -916,11 +931,10 @@ problems as build warnings, not errors.
 * The Tasks tab's minute tick re-evaluates the list body, which re-groups and
   re-formats every row. Cheap at typical task counts; a very large task list
   would want the tick narrowed to the rows that can actually change.
-* `TaskItem.dueDate` resolves through `Calendar.current`, so
-  `TaskPresentation`'s day arithmetic is local-calendar bound.
-  `TaskPresentationTests` therefore builds its fixed `now` values with
-  `Calendar.current` rather than the UTC calendar the notification-planner
-  tests use.
+* Stored `YYYY-MM-DD` values always use `TaskCalendar`'s Gregorian calendar,
+  even when the user's system calendar is Buddhist or Hebrew. Presentation
+  keeps the user's time zone and locale. Tests cover non-Gregorian system
+  calendars, UTC-ahead/behind zones, New York DST transitions, and midnight.
 * On iOS 26 a pushed folder level collapses the `.searchable` field into the
   toolbar rather than showing it under the title as the root level does.
   That is the system's own behavior for pushed levels, not a Cove layout bug.
@@ -949,13 +963,12 @@ problems as build warnings, not errors.
   bookmark from its own process is not guaranteed on iOS. When it can't, the
   checkbox still looks right — the snapshot updates optimistically — but the
   Markdown line isn't rewritten until the app next launches or foregrounds
-  and drains the pending-toggle queue. This was not verifiable on the
+  and drains the pending desired-state operation queue. This was not verifiable on the
   simulator (the Home Screen can't be driven headlessly); confirm on device.
-* A pending toggle that no longer matches its line is dropped rather than
-  retried, and the queue is cleared before it is applied. A toggle can
-  therefore be lost if the line changed on disk in between — the same
-  "changed on disk" case the Tasks tab reports with an alert, but silent
-  here because there is no one to tell.
+* Pending widget operations are acknowledged individually after success or a
+  definitive stale target. Coordinator/provider failures leave the operation
+  queued. A stale line that was semantically edited into a different task is
+  intentionally acknowledged rather than retried forever.
 * The widget's 44×44pt checkbox targets are larger than the row pitch, so
   they overlap slightly between adjacent rows. That is the handoff's
   specified target (it matches the app's `TaskRow`); a tap landing in the

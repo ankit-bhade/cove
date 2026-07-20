@@ -28,6 +28,8 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active, vaultManager.state == .open {
                 Task { await vaultManager.refresh() }
+            } else if newPhase == .background {
+                vaultManager.stopObservingExternalChanges()
             }
         }
         // Tapping the Today widget lands on the Tasks screen, which is the

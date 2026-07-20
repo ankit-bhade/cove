@@ -1,7 +1,6 @@
 import XCTest
 @testable import Cove
 
-@MainActor
 final class NoteDocumentTests: XCTestCase {
     private var root: URL!
     private var noteURL: URL!
@@ -19,26 +18,26 @@ final class NoteDocumentTests: XCTestCase {
         try? fileManager.removeItem(at: root)
     }
 
-    private func loadedDocument() async -> NoteDocument {
+    @MainActor private func loadedDocument() async -> NoteDocument {
         let document = NoteDocument(fileURL: noteURL)
         await document.load()
         return document
     }
 
-    func testLoadReadsFileContents() async {
+    @MainActor func testLoadReadsFileContents() async {
         let document = await loadedDocument()
         XCTAssertEqual(document.loadState, .loaded)
         XCTAssertEqual(document.text, "original")
     }
 
-    func testExternalChangeIsAdoptedWhenThereAreNoLocalEdits() async throws {
+    @MainActor func testExternalChangeIsAdoptedWhenThereAreNoLocalEdits() async throws {
         let document = await loadedDocument()
         try "changed externally".write(to: noteURL, atomically: true, encoding: .utf8)
         await document.reloadAfterExternalChange()
         XCTAssertEqual(document.text, "changed externally")
     }
 
-    func testLocalEditsWinOverAnExternalChange() async throws {
+    @MainActor func testLocalEditsWinOverAnExternalChange() async throws {
         let document = await loadedDocument()
         document.text = "local edit"
         try "changed externally".write(to: noteURL, atomically: true, encoding: .utf8)
@@ -46,26 +45,41 @@ final class NoteDocumentTests: XCTestCase {
         XCTAssertEqual(document.text, "local edit")
     }
 
-    func testReloadIsANoOpWhenDiskIsUnchanged() async {
+    @MainActor func testReloadIsANoOpWhenDiskIsUnchanged() async {
         let document = await loadedDocument()
         await document.reloadAfterExternalChange()
         XCTAssertEqual(document.text, "original")
     }
 
-    func testReloadIsANoOpWhenTheFileIsGone() async throws {
+    @MainActor func testReloadIsANoOpWhenTheFileIsGone() async throws {
         let document = await loadedDocument()
         try fileManager.removeItem(at: noteURL)
         await document.reloadAfterExternalChange()
         XCTAssertEqual(document.text, "original")
     }
 
-    func testAdoptedExternalChangeIsNotResavedToDisk() async throws {
+    @MainActor func testAdoptedExternalChangeIsNotResavedToDisk() async throws {
         let document = await loadedDocument()
         try "changed externally".write(to: noteURL, atomically: true, encoding: .utf8)
         let modified = try modificationDate()
         await document.reloadAfterExternalChange()
         await document.saveNow()
         XCTAssertEqual(try modificationDate(), modified)
+    }
+
+    @MainActor func testSaveFailureKeepsDocumentDirtyAndRetryable() async {
+        struct InjectedFailure: Error {}
+        let writer = NoteWriter { _ in throw InjectedFailure() }
+        let document = NoteDocument(fileURL: noteURL, writer: writer)
+        await document.load()
+        document.text = "unsaved local edit"
+
+        await document.saveNow()
+
+        XCTAssertTrue(document.isDirty)
+        XCTAssertEqual(document.saveStatus, .failed)
+        XCTAssertNotNil(document.saveErrorDescription)
+        XCTAssertEqual(try? String(contentsOf: noteURL, encoding: .utf8), "original")
     }
 
     private func modificationDate() throws -> Date {

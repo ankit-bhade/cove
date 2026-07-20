@@ -31,8 +31,9 @@ enum TaskNotificationPlanner {
 
     static func plans(for tasks: [TaskItem],
                       now: Date,
-                      calendar: Calendar = .current) -> [TaskNotificationPlan] {
-        tasks
+                      calendar: Calendar = TaskCalendar.gregorian()) -> [TaskNotificationPlan] {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        return tasks
             .filter { !$0.isCompleted && $0.dueTimeString != nil }
             .sorted(by: VaultIndex.byDueDate)
             .compactMap { task -> TaskNotificationPlan? in
@@ -63,10 +64,8 @@ enum TaskNotificationPlanner {
         let formatter = DateFormatter()
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d, h:mm a"
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("MMM d, h:mm a")
         return formatter.string(from: date)
-            .replacingOccurrences(of: " AM", with: "am")
-            .replacingOccurrences(of: " PM", with: "pm")
     }
 }

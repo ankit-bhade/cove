@@ -45,7 +45,8 @@ final class TaskNotificationPlannerTests: XCTestCase {
             now: earlyNow, calendar: calendar)
         XCTAssertEqual(plans.count, 1)
         XCTAssertEqual(plans.first?.title, "Do Laundry")
-        XCTAssertEqual(plans.first?.body, "Jul 18, 8:00pm.")
+        XCTAssertEqual(plans.first?.body,
+                       notificationBody(2026, 7, 18, hour: 20, minute: 0))
         XCTAssertEqual(plans.first?.fireDateComponents,
                        DateComponents(year: 2026, month: 7, day: 18, hour: 20, minute: 0))
     }
@@ -91,7 +92,8 @@ final class TaskNotificationPlannerTests: XCTestCase {
                        file: "Chores")],
             now: earlyNow, calendar: calendar)
         XCTAssertEqual(plans.count, 1)
-        XCTAssertEqual(plans.first?.body, "Jul 19, 6:00pm.")
+        XCTAssertEqual(plans.first?.body,
+                       notificationBody(2026, 7, 19, hour: 18, minute: 0))
         XCTAssertEqual(plans.first?.fireDateComponents,
                        DateComponents(year: 2026, month: 7, day: 19, hour: 18, minute: 0))
     }
@@ -111,7 +113,8 @@ final class TaskNotificationPlannerTests: XCTestCase {
         let plans = TaskNotificationPlanner.plans(
             for: [task(text: "Laundry", due: "2026-07-18", time: "20:30")],
             now: earlyNow, calendar: calendar)
-        XCTAssertEqual(plans.first?.body, "Jul 18, 8:30pm.")
+        XCTAssertEqual(plans.first?.body,
+                       notificationBody(2026, 7, 18, hour: 20, minute: 30))
     }
 
     // MARK: - Ordering and cap
@@ -144,5 +147,17 @@ final class TaskNotificationPlannerTests: XCTestCase {
             $0.identifier.hasPrefix(TaskNotificationPlanner.identifierPrefix)
         })
         XCTAssertEqual(Set(plans.map(\.identifier)).count, plans.count)
+    }
+
+    private func notificationBody(_ year: Int, _ month: Int, _ day: Int,
+                                  hour: Int, minute: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("MMM d, h:mm a")
+        let moment = calendar.date(from: DateComponents(
+            year: year, month: month, day: day, hour: hour, minute: minute))!
+        return formatter.string(from: moment) + "."
     }
 }

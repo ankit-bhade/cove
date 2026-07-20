@@ -1,4 +1,9 @@
 import Foundation
+import OSLog
+
+let widgetChannelLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "com.ankitbhade.Cove",
+    category: "Widget")
 
 /// The channel between the app and its widget extension.
 ///
@@ -11,8 +16,9 @@ import Foundation
 ///   source of truth: the Markdown files remain that.
 /// * `vault.bookmark` — the vault bookmark, so the widget's toggle intent can
 ///   write a completed task straight back to its note.
-/// * `pending-toggles.json` — toggles the widget could not apply itself,
-///   drained by the app on its next refresh.
+/// * `pending-task-operations-v2.json` — durable, idempotent desired-state
+///   operations, acknowledged individually after the Markdown mutation lands.
+///   The pre-upgrade `pending-toggles.json` is read only for migration.
 ///
 /// The bookmark path is best-effort by design. Whether an extension can
 /// resolve a bookmark the host app created is not guaranteed on iOS, so the
@@ -31,9 +37,6 @@ enum CoveSharedContainer {
 
     static var snapshotURL: URL? { containerURL?.appendingPathComponent("today.json") }
     static var bookmarkURL: URL? { containerURL?.appendingPathComponent("vault.bookmark") }
-    static var pendingTogglesURL: URL? {
-        containerURL?.appendingPathComponent("pending-toggles.json")
-    }
 }
 
 /// One task as the widget needs it: enough to draw the row, and enough to
@@ -58,6 +61,15 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
 
     var fileURL: URL { URL(fileURLWithPath: filePath) }
     var recurrence: RecurrenceRule? { recurrenceTag.flatMap(RecurrenceRule.init(tagText:)) }
+    var identity: TaskIdentity {
+        TaskIdentity(filePath: filePath,
+                     lineNumber: lineNumber,
+                     text: text,
+                     dueDateString: dueDateString,
+                     dueTimeString: dueTimeString,
+                     recurrenceTag: recurrenceTag,
+                     listName: nil)
+    }
 
     init(filePath: String,
          lineNumber: Int,
@@ -137,21 +149,24 @@ struct TodaySnapshot: Codable, Sendable {
     }
 
     /// The snapshot for a day, built from the whole index.
-    static func building(for now: Date, from allTasks: [TaskItem]) -> TodaySnapshot {
-        let dayString = QuickTaskParser.ymdString(from: now)
+    static func building(for now: Date,
+                         from allTasks: [TaskItem],
+                         calendar: Calendar = TaskCalendar.gregorian()) -> TodaySnapshot {
+        let dayString = QuickTaskParser.ymdString(from: now, calendar: calendar)
         return TodaySnapshot(dayString: dayString,
                              generatedAt: now,
                              tasks: tasks(dueToday: dayString, from: allTasks))
     }
 
     /// The snapshot as of `now`, emptied if it was built for another day.
-    func valid(at now: Date) -> TodaySnapshot {
-        dayString == QuickTaskParser.ymdString(from: now) ? self : .empty
+    func valid(at now: Date,
+               calendar: Calendar = TaskCalendar.gregorian()) -> TodaySnapshot {
+        dayString == QuickTaskParser.ymdString(from: now, calendar: calendar) ? self : .empty
     }
 }
 
-/// One toggle the widget applied to its snapshot but could not write to disk,
-/// waiting for the app to apply it for real.
+/// Legacy queue record retained only so an ephemeral pre-upgrade queue can be
+/// decoded and converted without crashing either process.
 struct PendingToggle: Codable, Hashable, Sendable {
     let filePath: String
     let lineNumber: Int
@@ -177,69 +192,185 @@ struct PendingToggle: Codable, Hashable, Sendable {
     var recurrence: RecurrenceRule? { recurrenceTag.flatMap(RecurrenceRule.init(tagText:)) }
 }
 
+/// A retry-safe widget mutation. It records the desired final state rather
+/// than an instruction to toggle, so applying it more than once cannot undo a
+/// successful first attempt.
+struct PendingTaskOperation: Codable, Hashable, Sendable, Identifiable {
+    let id: UUID
+    let taskIdentity: TaskIdentity
+    let desiredCompletion: Bool
+    let createdAt: Date
+    var attemptCount: Int
+
+    init(id: UUID = UUID(),
+         taskIdentity: TaskIdentity,
+         desiredCompletion: Bool,
+         createdAt: Date = Date(),
+         attemptCount: Int = 0) {
+        self.id = id
+        self.taskIdentity = taskIdentity
+        self.desiredCompletion = desiredCompletion
+        self.createdAt = createdAt
+        self.attemptCount = attemptCount
+    }
+
+    init(task: SnapshotTask, desiredCompletion: Bool) {
+        self.init(taskIdentity: task.identity,
+                  desiredCompletion: desiredCompletion)
+    }
+}
+
+private extension PendingToggle {
+    var pendingOperation: PendingTaskOperation {
+        PendingTaskOperation(
+            taskIdentity: TaskIdentity(
+                filePath: filePath,
+                lineNumber: lineNumber,
+                text: text,
+                dueDateString: dueDateString,
+                dueTimeString: dueTimeString,
+                recurrenceTag: recurrenceTag,
+                listName: nil),
+            desiredCompletion: !wasCompleted)
+    }
+}
+
 /// Reads and writes the shared files. Both processes use this one type so the
 /// file names and the JSON shape can't drift apart.
 struct WidgetSnapshotStore: Sendable {
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
+    private let containerURL: URL?
 
-    init() {}
+    init(containerURL: URL? = CoveSharedContainer.containerURL) {
+        self.containerURL = containerURL
+    }
+
+    private var snapshotURL: URL? { containerURL?.appendingPathComponent("today.json") }
+    private var bookmarkURL: URL? { containerURL?.appendingPathComponent("vault.bookmark") }
+    private var pendingOperationsURL: URL? {
+        containerURL?.appendingPathComponent("pending-task-operations-v2.json")
+    }
+    private var legacyPendingTogglesURL: URL? {
+        containerURL?.appendingPathComponent("pending-toggles.json")
+    }
 
     // MARK: - Snapshot
 
     func writeSnapshot(_ snapshot: TodaySnapshot) {
-        guard let url = CoveSharedContainer.snapshotURL,
-              let data = try? encoder.encode(snapshot) else { return }
-        try? data.write(to: url, options: .atomic)
+        guard let url = snapshotURL else { return }
+        do {
+            let data = try JSONEncoder().encode(snapshot)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            widgetChannelLogger.error("Snapshot write failed: \(error.localizedDescription, privacy: .private)")
+        }
     }
 
     func readSnapshot() -> TodaySnapshot {
-        guard let url = CoveSharedContainer.snapshotURL,
-              let data = try? Data(contentsOf: url),
-              let snapshot = try? decoder.decode(TodaySnapshot.self, from: data)
-        else { return .empty }
-        return snapshot
+        guard let url = snapshotURL,
+              FileManager.default.fileExists(atPath: url.path) else { return .empty }
+        do {
+            let data = try Data(contentsOf: url)
+            return try JSONDecoder().decode(TodaySnapshot.self, from: data)
+        } catch {
+            widgetChannelLogger.error("Snapshot read failed: \(error.localizedDescription, privacy: .private)")
+            return .empty
+        }
     }
 
     // MARK: - Bookmark
 
     func writeBookmark(_ data: Data) {
-        guard let url = CoveSharedContainer.bookmarkURL else { return }
-        try? data.write(to: url, options: .atomic)
+        guard let url = bookmarkURL else { return }
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            widgetChannelLogger.error("Shared bookmark write failed: \(error.localizedDescription, privacy: .private)")
+        }
     }
 
     func readBookmark() -> Data? {
-        CoveSharedContainer.bookmarkURL.flatMap { try? Data(contentsOf: $0) }
-    }
-
-    // MARK: - Pending toggles
-
-    func appendPendingToggle(_ toggle: PendingToggle) {
-        var pending = readPendingToggles()
-        guard !pending.contains(toggle) else { return }
-        pending.append(toggle)
-        writePendingToggles(pending)
-    }
-
-    func readPendingToggles() -> [PendingToggle] {
-        guard let url = CoveSharedContainer.pendingTogglesURL,
-              let data = try? Data(contentsOf: url),
-              let pending = try? decoder.decode([PendingToggle].self, from: data)
-        else { return [] }
-        return pending
-    }
-
-    func writePendingToggles(_ pending: [PendingToggle]) {
-        guard let url = CoveSharedContainer.pendingTogglesURL else { return }
-        if pending.isEmpty {
-            try? FileManager.default.removeItem(at: url)
-            return
+        guard let url = bookmarkURL,
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        do {
+            return try Data(contentsOf: url)
+        } catch {
+            widgetChannelLogger.error("Shared bookmark read failed: \(error.localizedDescription, privacy: .private)")
+            return nil
         }
-        guard let data = try? encoder.encode(pending) else { return }
-        try? data.write(to: url, options: .atomic)
     }
 
-    func clearPendingToggles() {
-        writePendingToggles([])
+    // MARK: - Pending task operations
+
+    func loadPendingOperations() throws -> [PendingTaskOperation] {
+        guard let url = pendingOperationsURL else { throw CocoaError(.fileNoSuchFile) }
+        if FileManager.default.fileExists(atPath: url.path) {
+            return try coordinatedQueueRead(at: url)
+        }
+        guard let legacyURL = legacyPendingTogglesURL,
+              FileManager.default.fileExists(atPath: legacyURL.path) else { return [] }
+        let data = try Data(contentsOf: legacyURL)
+        return try JSONDecoder().decode([PendingToggle].self, from: data)
+            .map(\.pendingOperation)
+    }
+
+    func append(_ operation: PendingTaskOperation) throws {
+        try coordinatedQueueUpdate { operations in
+            guard !operations.contains(where: { $0.id == operation.id }) else { return }
+            operations.append(operation)
+        }
+    }
+
+    func acknowledge(operationID: UUID) throws {
+        try coordinatedQueueUpdate { operations in
+            operations.removeAll { $0.id == operationID }
+        }
+    }
+
+    func replace(_ operations: [PendingTaskOperation]) throws {
+        try coordinatedQueueUpdate { $0 = operations }
+    }
+
+    private func coordinatedQueueRead(at url: URL) throws -> [PendingTaskOperation] {
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var result: Result<[PendingTaskOperation], Error>?
+        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) {
+            coordinatedURL in
+            result = Result {
+                let data = try Data(contentsOf: coordinatedURL)
+                return try JSONDecoder().decode([PendingTaskOperation].self, from: data)
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw CocoaError(.fileReadUnknown) }
+        return try result.get()
+    }
+
+    private func coordinatedQueueUpdate(
+        _ transform: (inout [PendingTaskOperation]) throws -> Void
+    ) throws {
+        guard let url = pendingOperationsURL else { throw CocoaError(.fileNoSuchFile) }
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var result: Result<Void, Error>?
+        coordinator.coordinate(writingItemAt: url, options: .forMerging,
+                               error: &coordinationError) { coordinatedURL in
+            result = Result {
+                var operations: [PendingTaskOperation]
+                if FileManager.default.fileExists(atPath: coordinatedURL.path) {
+                    let data = try Data(contentsOf: coordinatedURL)
+                    operations = try JSONDecoder().decode(
+                        [PendingTaskOperation].self, from: data)
+                } else {
+                    operations = []
+                }
+                try transform(&operations)
+                let data = try JSONEncoder().encode(operations)
+                try data.write(to: coordinatedURL, options: .atomic)
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw CocoaError(.fileWriteUnknown) }
+        try result.get()
     }
 }

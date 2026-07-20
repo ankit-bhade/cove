@@ -217,7 +217,7 @@ struct TaskDraftSheet: View {
         Binding {
             let parts = (draft.dueDateString ?? "").split(separator: "-").compactMap { Int($0) }
             guard parts.count == 3,
-                  let date = Calendar.current.date(from: DateComponents(
+                  let date = TaskCalendar.gregorian().date(from: DateComponents(
                       year: parts[0], month: parts[1], day: parts[2], hour: 12))
             else { return .now }
             return date
@@ -240,9 +240,10 @@ struct TaskDraftSheet: View {
                 .split(separator: ":").compactMap { Int($0) }
             let components = DateComponents(hour: parts.first ?? 9,
                                             minute: parts.count > 1 ? parts[1] : 0)
-            return Calendar.current.date(from: components) ?? .now
+            return TaskCalendar.gregorian().date(from: components) ?? .now
         } set: { newValue in
-            let parts = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+            let parts = TaskCalendar.gregorian().dateComponents([.hour, .minute],
+                                                                from: newValue)
             draft.dueTimeString = String(format: "%02d:%02d", parts.hour!, parts.minute!)
         }
     }

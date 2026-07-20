@@ -114,8 +114,9 @@ enum QuickTaskParser {
     /// isn't due today just because it was typed today.
     static func parse(_ input: String,
                       now: Date,
-                      calendar: Calendar = .current,
+                      calendar: Calendar = TaskCalendar.gregorian(),
                       defaultingToToday: Bool = true) -> TaskDraft {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let lower = input.lowercased() as NSString
         // Title spans slice the original input; fall back to the lowered
         // string in the rare case lowercasing changed UTF-16 lengths.
@@ -430,7 +431,9 @@ enum QuickTaskParser {
 
     // MARK: - Formatting
 
-    static func ymdString(from date: Date, calendar: Calendar = .current) -> String {
+    static func ymdString(from date: Date,
+                          calendar: Calendar = TaskCalendar.gregorian()) -> String {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
     }

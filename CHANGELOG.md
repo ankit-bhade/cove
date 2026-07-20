@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Reliability hardening adds semantic Undo for task completion and deletion,
+  recoverable note/folder deletion through a hidden `.cove-recovery` area,
+  conflict-copy preservation for simultaneous editor/external edits, and a
+  Retry action for failed saves.
+- Editor checkboxes now expose a “Toggle checkbox at cursor” accessibility
+  action and Command-Shift-Space keyboard shortcut on iOS/iPadOS and macOS.
+- Local `Logger` categories cover vault, document, widget, notification, and
+  index failures without logging note contents or task titles.
+
 - Project scaffolding and repository documentation (Phase 0)
 - Folder picker, bookmark persistence, stale-bookmark recovery, and read-only vault tree browser (Phase 1)
 - Editor with autosave, and note and folder creation, rename, move, and delete (Phase 2)
@@ -44,6 +53,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Task, list, capture, and widget mutations now perform one coordinated atomic
+  read-modify-write against the latest file contents. Desired-state widget
+  operations are durable and idempotent, so concurrent actions and retries no
+  longer flip tasks twice or lose an independent edit.
+- Autosave is serialized per open note, coalesces rapid revisions, flushes on
+  navigation/background transitions, remains visibly dirty after failure, and
+  preserves a concurrently changed disk version as a deterministic sibling
+  conflict copy before saving local text.
+- Vault refreshes are latest-wins and cancellation-aware, preventing an older
+  scan or previous vault from replacing newer state. File-event bursts are
+  coalesced and unchanged notes reuse their in-memory index entries.
+- Stored task dates now always use Gregorian semantics regardless of the
+  system calendar. Recurrence, grouping, reminders, and widget rollover use
+  injected time zones and calendar-day arithmetic, including 23/25-hour DST
+  days; midnight widget entries no longer reuse yesterday’s snapshot.
+- Notification reconciliation now diffs Cove-owned requests instead of
+  deleting and rebuilding all of them, and background refresh never presents
+  an authorization prompt.
+- Markdown editing restyles only affected paragraphs and their neighbors,
+  preserving IME composition, selection, and text undo behavior.
+- Widget queue corruption and bookmark/snapshot I/O failures are diagnosed
+  instead of being silently replaced or discarded.
+
 - Quick capture no longer clears the typed sentence before its Markdown write
   succeeds. The entry field and review sheet now show saving progress, keep
   failed input available for retry, and block accidental duplicate submits.
@@ -76,6 +108,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the editor or the next folder level.
 
 ### Changed
+
+- The app, tests, and widget now compile in Swift 6 mode with complete strict
+  concurrency checking enabled.
+- Note and folder deletion keeps the existing confirmation but moves content
+  to Cove Recovery instead of permanently removing it. Immediate Undo restores
+  the original path, or asks for a new name when that path is occupied.
+- Reminder text now follows the user’s locale instead of a fixed POSIX format.
 
 - Quick capture now interprets as you type and adds on return. The Tasks and
   Lists entry fields show the title, due date, time, and repeat rule they read

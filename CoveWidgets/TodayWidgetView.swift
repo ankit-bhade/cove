@@ -214,10 +214,11 @@ extension SnapshotTask {
     /// so the day half of `DueDescription` would say "Today" on every one.
     var timeOfDayDescription: String {
         guard let components = taskItem.timeComponents,
-              let moment = Calendar.current.date(bySettingHour: components.hour,
-                                                 minute: components.minute,
-                                                 second: 0,
-                                                 of: Date())
+              let moment = TaskCalendar.gregorian().date(
+                bySettingHour: components.hour,
+                minute: components.minute,
+                second: 0,
+                of: Date())
         else { return "" }
         return moment.formatted(.dateTime.hour().minute())
     }

@@ -9,22 +9,27 @@ extension TaskItem {
     /// A date-only task is never overdue on its own due day.
     /// An undated list item is never overdue — it has no moment to be late
     /// for.
-    func isOverdue(at now: Date, calendar: Calendar = .current) -> Bool {
+    func isOverdue(at now: Date,
+                   calendar: Calendar = TaskCalendar.gregorian()) -> Bool {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         guard !isCompleted, let dueDateString else { return false }
-        if let moment = dueDateTime {
+        if let moment = dueDateTime(in: calendar) {
             return moment < now
         }
-        return dueDateString < QuickTaskParser.ymdString(from: now)
+        return dueDateString < QuickTaskParser.ymdString(from: now, calendar: calendar)
     }
 
-    func isDue(onSameDayAs now: Date) -> Bool {
-        dueDateString == QuickTaskParser.ymdString(from: now)
+    func isDue(onSameDayAs now: Date,
+               calendar: Calendar = TaskCalendar.gregorian()) -> Bool {
+        dueDateString == QuickTaskParser.ymdString(from: now, calendar: calendar)
     }
 
     /// Whole days from `now`'s day to the due day: 0 today, 1 tomorrow,
     /// negative in the past. Nil when the stored date can't be parsed.
-    func daysFromToday(at now: Date, calendar: Calendar = .current) -> Int? {
-        guard let dueDate else { return nil }
+    func daysFromToday(at now: Date,
+                       calendar: Calendar = TaskCalendar.gregorian()) -> Int? {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        guard let dueDate = dueDate(in: calendar) else { return nil }
         return calendar.dateComponents([.day],
                                        from: calendar.startOfDay(for: now),
                                        to: calendar.startOfDay(for: dueDate)).day
@@ -34,7 +39,8 @@ extension TaskItem {
     /// Relative wording for the days a reader thinks in, absolute beyond
     /// that, and the year only when it isn't the current one. Empty for an
     /// undated list item, whose row shows no due label at all.
-    func relativeDueDescription(at now: Date, calendar: Calendar = .current) -> String {
+    func relativeDueDescription(at now: Date,
+                                calendar: Calendar = TaskCalendar.gregorian()) -> String {
         DueDescription.text(dueDateString: dueDateString,
                             dueTimeString: dueTimeString,
                             at: now,
@@ -51,14 +57,15 @@ enum DueDescription {
     static func text(dueDateString: String?,
                      dueTimeString: String?,
                      at now: Date,
-                     calendar: Calendar = .current) -> String {
+                     calendar: Calendar = TaskCalendar.gregorian()) -> String {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         guard let dueDateString,
               let dueDate = date(from: dueDateString, calendar: calendar)
         else { return dueDateString ?? "" }
         let day = dayDescription(dueDate, at: now, calendar: calendar)
         guard let moment = moment(on: dueDate, at: dueTimeString, calendar: calendar)
         else { return day }
-        return "\(day), \(moment.formatted(.dateTime.hour().minute()))"
+        return "\(day), \(formatted(moment, template: "j:mm", calendar: calendar))"
     }
 
     private static func date(from dueDateString: String, calendar: Calendar) -> Date? {
@@ -92,14 +99,25 @@ enum DueDescription {
         case let days? where days > 1 && days < 7:
             // Inside the coming week a weekday name is easier to place than
             // a numeric date.
-            return dueDate.formatted(.dateTime.weekday(.wide))
+            return formatted(dueDate, template: "EEEE", calendar: calendar)
         default:
             let sameYear = calendar.component(.year, from: dueDate)
                 == calendar.component(.year, from: now)
-            return sameYear
-                ? dueDate.formatted(.dateTime.month(.abbreviated).day())
-                : dueDate.formatted(.dateTime.month(.abbreviated).day().year())
+            return formatted(dueDate,
+                             template: sameYear ? "MMM d" : "MMM d y",
+                             calendar: calendar)
         }
+    }
+
+    private static func formatted(_ date: Date,
+                                  template: String,
+                                  calendar: Calendar) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter.string(from: date)
     }
 }
 
@@ -138,7 +156,8 @@ struct TaskGroup: Identifiable {
     /// Partitions sorted incomplete tasks into the non-empty sections.
     static func grouping(_ tasks: [TaskItem],
                          now: Date,
-                         calendar: Calendar = .current) -> [TaskGroup] {
+                         calendar: Calendar = TaskCalendar.gregorian()) -> [TaskGroup] {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         var buckets: [Kind: [TaskItem]] = [:]
         for task in tasks {
             buckets[kind(for: task, now: now, calendar: calendar), default: []].append(task)
@@ -149,7 +168,9 @@ struct TaskGroup: Identifiable {
         }
     }
 
-    static func kind(for task: TaskItem, now: Date, calendar: Calendar = .current) -> Kind {
+    static func kind(for task: TaskItem, now: Date,
+                     calendar: Calendar = TaskCalendar.gregorian()) -> Kind {
+        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         if task.isOverdue(at: now, calendar: calendar) { return .overdue }
         switch task.daysFromToday(at: now, calendar: calendar) {
         case 0: return .today

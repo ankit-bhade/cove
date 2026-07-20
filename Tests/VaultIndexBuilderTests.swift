@@ -39,7 +39,7 @@ final class VaultIndexBuilderTests: XCTestCase {
 
     private func builtIndex() throws -> VaultIndex {
         let tree = try VaultTreeScanner().scanTree(at: root)
-        return VaultIndexBuilder().buildIndex(from: tree)
+        return try VaultIndexBuilder().buildIndex(from: tree)
     }
 
     func testIndexHasOneEntryPerFileWithTitles() throws {
@@ -66,5 +66,55 @@ final class VaultIndexBuilderTests: XCTestCase {
     func testCompletedTasksAreSeparate() throws {
         let completed = try builtIndex().completedTasks
         XCTAssertEqual(completed.map(\.text), ["Draft outline"])
+    }
+
+    func testIncrementalRebuildUpdatesOnlyChangedNoteAndMatchesFullBuild() throws {
+        let scanner = VaultTreeScanner()
+        let builder = VaultIndexBuilder()
+        let originalTree = try scanner.scanTree(at: root)
+        let original = try builder.buildCancellableIndex(from: originalTree)
+        let groceriesURL = root.appendingPathComponent("Groceries.md")
+        let journalURL = root.appendingPathComponent("Journal.md")
+        let cachedJournal = try XCTUnwrap(original.entries.first { $0.url == journalURL })
+        try makeFile("Groceries.md", contents: "- [ ] Tea @due(2026-07-21)\n")
+        let changedTree = try scanner.scanTree(at: root)
+
+        let incremental = try builder.buildCancellableIndex(
+            from: changedTree, previous: original, changedURLs: [groceriesURL])
+        let clean = try builder.buildCancellableIndex(from: changedTree)
+
+        XCTAssertEqual(incremental.entries, clean.entries)
+        XCTAssertEqual(incremental.listNames, clean.listNames)
+        XCTAssertEqual(incremental.allTasks.map(\.text).filter { $0 == "Tea" }, ["Tea"])
+        XCTAssertEqual(incremental.entries.first { $0.url == journalURL }, cachedJournal)
+    }
+
+    func testDeletedNoteDisappearsFromIncrementalIndex() throws {
+        let scanner = VaultTreeScanner()
+        let builder = VaultIndexBuilder()
+        let originalTree = try scanner.scanTree(at: root)
+        let original = try builder.buildCancellableIndex(from: originalTree)
+        let deletedURL = root.appendingPathComponent("Groceries.md")
+        try fileManager.removeItem(at: deletedURL)
+
+        let changedTree = try scanner.scanTree(at: root)
+        let incremental = try builder.buildCancellableIndex(
+            from: changedTree, previous: original, changedURLs: [deletedURL])
+
+        XCTAssertFalse(incremental.entries.contains { $0.url == deletedURL })
+        XCTAssertFalse(incremental.allTasks.contains { $0.fileURL == deletedURL })
+    }
+
+    func testRecoveryDirectoryNeverEntersTreeOrIndex() throws {
+        try fileManager.createDirectory(at: root.appendingPathComponent(".cove-recovery"),
+                                        withIntermediateDirectories: true)
+        try makeFile(".cove-recovery/Deleted.md",
+                     contents: "- [ ] Hidden @due(2026-07-20)\n")
+
+        let tree = try VaultTreeScanner().scanTree(at: root)
+        let index = try VaultIndexBuilder().buildCancellableIndex(from: tree)
+
+        XCTAssertFalse(tree.allFiles.contains { $0.name == "Deleted.md" })
+        XCTAssertFalse(index.allTasks.contains { $0.text == "Hidden" })
     }
 }

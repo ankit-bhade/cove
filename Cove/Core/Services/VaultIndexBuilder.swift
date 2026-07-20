@@ -10,15 +10,41 @@ import Foundation
 struct VaultIndexBuilder: Sendable {
     private let fileOperations = VaultFileOperations()
 
-    func buildIndex(from root: VaultNode) -> VaultIndex {
+    func buildIndex(from root: VaultNode) throws -> VaultIndex {
+        try buildCancellableIndex(from: root)
+    }
+
+    func buildCancellableIndex(from root: VaultNode,
+                               previous: VaultIndex = VaultIndex(),
+                               changedURLs: Set<URL>? = nil) throws -> VaultIndex {
         var listNames: [String] = []
-        let entries = root.allFiles.map { node in
+        var entries: [NoteIndexEntry] = []
+        let previousByURL = Dictionary(uniqueKeysWithValues: previous.entries.map {
+            ($0.url.standardizedFileURL, $0)
+        })
+        let forcedChanges = changedURLs.map {
+            Set($0.map(\.standardizedFileURL))
+        }
+        for node in root.allFiles {
+            try Task.checkCancellation()
             let sectioned = VaultManager.isCaptureNote(node.url, vaultRoot: root.url)
-            let text = try? fileOperations.readNote(at: node.url)
-            if sectioned, let text {
-                listNames = TaskListDocument.sectionNames(in: text)
+            let values = try node.url.resourceValues(forKeys: [.contentModificationDateKey,
+                                                                .fileSizeKey])
+            if let cached = previousByURL[node.url.standardizedFileURL],
+               forcedChanges?.contains(node.url.standardizedFileURL) != true,
+               cached.modificationDate == values.contentModificationDate,
+               cached.fileSize == values.fileSize {
+                entries.append(cached)
+                if sectioned { listNames = cached.listNames }
+                continue
             }
-            let tasks = (text.map { TaskParser.tasks(in: $0, sectioned: sectioned) } ?? [])
+            let text = try fileOperations.readNote(at: node.url)
+            var noteListNames: [String] = []
+            if sectioned {
+                noteListNames = TaskListDocument.sectionNames(in: text)
+                listNames = noteListNames
+            }
+            let tasks = TaskParser.tasks(in: text, sectioned: sectioned)
                 .map { parsed in
                     TaskItem(fileURL: node.url,
                              fileTitle: node.displayName,
@@ -30,8 +56,15 @@ struct VaultIndexBuilder: Sendable {
                              isCompleted: parsed.isCompleted,
                              listName: parsed.listName)
                 }
-            return NoteIndexEntry(url: node.url, title: node.displayName, tasks: tasks)
+            entries.append(NoteIndexEntry(url: node.url,
+                                          title: node.displayName,
+                                          tasks: tasks,
+                                          listNames: noteListNames,
+                                          searchableText: text,
+                                          modificationDate: values.contentModificationDate,
+                                          fileSize: values.fileSize))
         }
+        try Task.checkCancellation()
         return VaultIndex(entries: entries, listNames: listNames)
     }
 }

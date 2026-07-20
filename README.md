@@ -14,17 +14,22 @@ which varies through the day and can address you by name, set in Settings —
 and a compact count of direct folders, deeper subfolders, and notes. Headers and
 `**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
-click. Notes and folders can be created, renamed, moved, and deleted from the
-browser (long-press or right-click a row, or use the + toolbar menu). For a
+click. Editor checkboxes can also be toggled at the cursor with an accessibility
+action or Command-Shift-Space. Notes and folders can be created, renamed,
+moved, and deleted from the browser (long-press or right-click a row, or use
+the + toolbar menu). Deletion moves content into a hidden Cove Recovery area
+and registers immediate Undo; if the original name has since been reused,
+Cove asks for a replacement name instead of overwriting it. For a
 vault in iCloud Drive, changes made outside the app — edits syncing in from
 another device, or files added or removed in Finder or the Files app — are
 detected while the app runs: the folder tree refreshes itself, and an open
 note reloads the new contents as long as you have no unsaved edits (your
-typing is never discarded; iCloud shows a true both-sides conflict as a
-separate conflict copy). Vaults outside iCloud Drive refresh whenever the
+typing is never discarded; a simultaneous local/external edit preserves the
+external version as a named sibling conflict copy and keeps failures visibly
+retryable). Vaults outside iCloud Drive refresh whenever the
 app returns to the foreground. The search field in the browser searches every
-note's title and contents as you type (case-insensitively, with no stored
-index — files are read on demand), and selecting a result opens that note in
+note's title and contents as you type (case-insensitively, with no persisted
+index), and selecting a result opens that note in
 the editor. A Tasks tab collects every line of the exact form
 `- [ ] Task text @due(YYYY-MM-DD)` from across the vault: open tasks are
 sorted by due date and grouped into Overdue, Today, Tomorrow, and Upcoming
@@ -35,7 +40,8 @@ and checking a task off rewrites that line in its original Markdown file.
 The completed section has a Clear All action that, after confirmation,
 removes every completed Cove task line from its original note. A single task
 can be deleted by swiping its row (or right-clicking it), which removes that
-line from its note. Tapping a task opens its note. New tasks can be typed as one sentence in
+line from its note. Task completion and deletion register semantic Undo, so
+later edits to the same note are preserved. Tapping a task opens its note. New tasks can be typed as one sentence in
 the field at the top of the Tasks tab — "get bread 3p tmr", "gym every mon
 wed 6a", "rent 2/3", "meeting next fri 2pm". The interpreter (a port of
 the grove-app capture parser) understands relative dates ("tdy", "tmr",
@@ -58,14 +64,17 @@ note at the vault root
 with a time get one local notification at that moment, and completing a
 recurring task rolls it to the next occurrence, whose notification is
 scheduled in turn; tasks with only a date get none (the app asks for
-notification permission the first time it has something to schedule). Reminder
-details use a compact friendly date such as `Jul 18, 8:00pm.`
+notification permission only from Settings, never during a background
+refresh). Reminder details use the user’s localized compact date and time.
 A Lists tab keeps grouped tasks visually separate from what's actually due.
 On iPhone and iPad, a Today widget can be added to the Home Screen in small
 or medium size: it lists the tasks due today with a checkbox to tick one off
 without opening the app, shows overdue ones in red and a count of what's
 left, and reads "All clear" once nothing is due. Tapping it opens the Tasks
 tab.
+A widget checkbox is first recorded as a durable desired-state operation, so
+an unavailable vault can be retried the next time Cove opens and replaying an
+already-applied operation cannot toggle the task back.
 A list — Groceries, Subscriptions, Packing — is a `##` heading inside the
 same `Tasks.md`, and its items are ordinary task lines beneath it, so you can
 create and edit lists either in the app or by typing Markdown. Items are
@@ -103,7 +112,8 @@ screen.
 - iOS / iPadOS 17 or later
 - macOS 14 (Sonoma) or later
 
-Built with SwiftUI and Apple frameworks only — no third-party dependencies.
+Built in Swift 6 with complete concurrency checking, using SwiftUI and Apple
+frameworks only — no third-party dependencies.
 
 The Today widget is iOS-only; it builds and installs on the simulator as is,
 but running it on a device needs the `group.com.ankitbhade.Cove` App Group

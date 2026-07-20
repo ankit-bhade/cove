@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// Level-by-level vault browser with mutations and editor navigation. Each
 /// folder is pushed onto the navigation stack and shows a scoped overview of
@@ -6,6 +7,7 @@ import SwiftUI
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.undoManager) private var undoManager
     /// Set in Settings; empty means the greetings stay impersonal.
     @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
 
@@ -13,6 +15,7 @@ struct VaultBrowserView: View {
     @State private var nameInput = ""
     @State private var nodeToMove: VaultNode?
     @State private var nodeToDelete: VaultNode?
+    @State private var recoveryNeedingName: RecoveryRecord?
     @State private var errorMessage: String?
     @State private var searchText = ""
     /// Drives the navigation stack directly: each folder is a real push, so
@@ -68,12 +71,28 @@ struct VaultBrowserView: View {
             presenting: nodeToDelete
         ) { node in
             Button("Delete", role: .destructive) {
-                run { try await vaultManager.deleteItem(at: node.url) }
+                delete(node)
             }
         } message: { node in
             Text(node.isDirectory
-                 ? "The folder and everything inside it will be deleted."
-                 : "The note will be deleted.")
+                 ? "The folder and everything inside it will move to Cove Recovery."
+                 : "The note will move to Cove Recovery.")
+        }
+        .alert(
+            "Original Name In Use",
+            isPresented: dismissBinding($recoveryNeedingName),
+            presenting: recoveryNeedingName
+        ) { record in
+            TextField("New name", text: $nameInput)
+                #if os(iOS)
+                .textInputAutocapitalization(.words)
+                #endif
+                .autocorrectionDisabled()
+            Button("Cancel", role: .cancel) {}
+            Button("Restore") { restore(record, as: trimmedName) }
+                .disabled(trimmedName.isEmpty)
+        } message: { record in
+            Text("“\(record.originalURL.lastPathComponent)” now exists. Choose a new name for the recovered item.")
         }
         .alert(
             "Something Went Wrong",
@@ -82,6 +101,40 @@ struct VaultBrowserView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    private func delete(_ node: VaultNode) {
+        Task {
+            do {
+                let record = try await vaultManager.deleteItem(at: node.url)
+                undoManager?.registerUndo(withTarget: vaultManager) { manager in
+                    Task { @MainActor in
+                        do {
+                            try await manager.restoreDeletedItem(record)
+                        } catch VaultFileOperations.OperationError.itemAlreadyExists(_) {
+                            nameInput = record.originalURL.deletingPathExtension().lastPathComponent
+                            recoveryNeedingName = record
+                        } catch {
+                            CoveLog.vault.error("Recovery restore failed: \(error.localizedDescription, privacy: .private)")
+                            errorMessage = error.localizedDescription
+                        }
+                    }
+                }
+                undoManager?.setActionName(node.isDirectory ? "Delete Folder" : "Delete Note")
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func restore(_ record: RecoveryRecord, as name: String) {
+        Task {
+            do {
+                try await vaultManager.restoreDeletedItem(record, as: name)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

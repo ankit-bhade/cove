@@ -213,6 +213,36 @@ final class TaskParserTests: XCTestCase {
             "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n")
     }
 
+    func testSetCompletedIsIdempotentWhenAlreadyInDesiredState() throws {
+        let text = "- [x] Buy milk @due(2026-07-20)\n"
+        let parsed = try XCTUnwrap(TaskParser.tasks(in: text).first)
+        let identity = taskIdentity(parsed)
+
+        XCTAssertEqual(TaskParser.settingTaskCompleted(
+            identity, to: true, todayDateString: "2026-07-19", in: text), text)
+    }
+
+    func testSetCompletedReturnsNilAfterTargetWasDeleted() throws {
+        let text = "- [ ] Buy milk @due(2026-07-20)\n"
+        let parsed = try XCTUnwrap(TaskParser.tasks(in: text).first)
+
+        XCTAssertNil(TaskParser.settingTaskCompleted(
+            taskIdentity(parsed), to: true,
+            todayDateString: "2026-07-19", in: "Nothing here\n"))
+    }
+
+    func testRecurringDesiredCompletionRetryDoesNotAdvanceTwice() throws {
+        let text = "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n"
+        let parsed = try XCTUnwrap(TaskParser.tasks(in: text).first)
+        let identity = taskIdentity(parsed)
+        let once = try XCTUnwrap(TaskParser.settingTaskCompleted(
+            identity, to: true, todayDateString: "2026-07-19", in: text))
+
+        XCTAssertEqual(once, "- [ ] Stretch @due(2026-07-20) @repeat(daily)\n")
+        XCTAssertNil(TaskParser.settingTaskCompleted(
+            identity, to: true, todayDateString: "2026-07-19", in: once))
+    }
+
     // MARK: - Removing one task
 
     private func removing(_ text: String,
@@ -227,6 +257,16 @@ final class TaskParserTests: XCTestCase {
             withText: taskText, dueDateString: due, dueTimeString: time,
             recurrence: recurrence, isCompleted: isCompleted, listName: list,
             preferredLineNumber: line, in: text)
+    }
+
+    private func taskIdentity(_ task: TaskParser.ParsedTask) -> TaskIdentity {
+        TaskIdentity(filePath: "/vault/Tasks.md",
+                     lineNumber: task.lineNumber,
+                     text: task.text,
+                     dueDateString: task.dueDateString,
+                     dueTimeString: task.dueTimeString,
+                     recurrenceTag: task.recurrence?.tagText,
+                     listName: task.listName)
     }
 
     func testRemovingTaskDropsItsWholeLine() {

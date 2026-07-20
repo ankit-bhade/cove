@@ -161,4 +161,76 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(decoded, [toggle])
         XCTAssertEqual(decoded.first?.recurrence, .everyWeekday)
     }
+
+    func testPendingDesiredStateOperationSurvivesJSON() throws {
+        let snapshotTask = SnapshotTask(task("Standup", due: "2026-07-19",
+                                             time: "09:30", line: 4))
+        let operation = PendingTaskOperation(
+            id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
+            taskIdentity: snapshotTask.identity,
+            desiredCompletion: true,
+            createdAt: Date(timeIntervalSince1970: 123),
+            attemptCount: 2)
+
+        let decoded = try JSONDecoder().decode(
+            PendingTaskOperation.self,
+            from: JSONEncoder().encode(operation))
+
+        XCTAssertEqual(decoded, operation)
+        XCTAssertTrue(decoded.desiredCompletion)
+    }
+
+    func testConcurrentQueueAppendsDoNotLoseOperations() async throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let firstStore = WidgetSnapshotStore(containerURL: root)
+        let secondStore = WidgetSnapshotStore(containerURL: root)
+        let first = PendingTaskOperation(task: SnapshotTask(
+            task("First", due: "2026-07-19", line: 1)), desiredCompletion: true)
+        let second = PendingTaskOperation(task: SnapshotTask(
+            task("Second", due: "2026-07-19", line: 2)), desiredCompletion: true)
+
+        async let appendFirst: Void = Task.detached { try firstStore.append(first) }.value
+        async let appendSecond: Void = Task.detached { try secondStore.append(second) }.value
+        _ = try await (appendFirst, appendSecond)
+
+        XCTAssertEqual(Set(try firstStore.loadPendingOperations().map(\.id)),
+                       Set([first.id, second.id]))
+    }
+
+    func testQueueAcknowledgesOnlySuccessfulOperation() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let first = PendingTaskOperation(task: SnapshotTask(
+            task("First", due: "2026-07-19", line: 1)), desiredCompletion: true)
+        let second = PendingTaskOperation(task: SnapshotTask(
+            task("Second", due: "2026-07-19", line: 2)), desiredCompletion: true)
+        try store.append(first)
+        try store.append(second)
+
+        try store.acknowledge(operationID: first.id)
+
+        XCTAssertEqual(try store.loadPendingOperations(), [second])
+    }
+
+    func testMalformedQueueIsNotSilentlyReplaced() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let queueURL = root.appendingPathComponent("pending-task-operations-v2.json")
+        let malformed = Data("not json".utf8)
+        try malformed.write(to: queueURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        XCTAssertThrowsError(try store.loadPendingOperations())
+        XCTAssertEqual(try Data(contentsOf: queueURL), malformed)
+    }
+
+    private func temporaryContainer() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cove-widget-store-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
 }

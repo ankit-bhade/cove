@@ -8,8 +8,8 @@ import WidgetKit
 /// the shared snapshot, which is by definition exactly what the widget was
 /// drawing when the tap landed.
 struct ToggleTaskIntent: AppIntent {
-    static var title: LocalizedStringResource = "Complete Task"
-    static var description = IntentDescription("Checks a Cove task off from the Today widget.")
+    static let title: LocalizedStringResource = "Complete Task"
+    static let description = IntentDescription("Checks a Cove task off from the Today widget.")
 
     /// The widget's own button, not a Shortcuts action: without a vault path
     /// and a live snapshot it has nothing to act on.
@@ -25,7 +25,7 @@ struct ToggleTaskIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        TaskToggleWriter().toggle(taskID: taskID)
+        try await TaskToggleWriter().setCompletion(taskID: taskID)
         WidgetCenter.shared.reloadTimelines(ofKind: CoveSharedContainer.todayWidgetKind)
         return .result()
     }
@@ -40,23 +40,42 @@ struct ToggleTaskIntent: AppIntent {
 /// the app applies it on its next refresh.
 struct TaskToggleWriter {
     private let store = WidgetSnapshotStore()
+    private let repository = VaultRepository()
 
-    func toggle(taskID: String, now: Date = Date()) {
+    func setCompletion(taskID: String, now: Date = Date()) async throws {
         var snapshot = store.readSnapshot()
         guard let index = snapshot.tasks.firstIndex(where: { $0.id == taskID }) else { return }
         let task = snapshot.tasks[index]
+        let desiredCompletion = !task.isCompleted
+        let operation = PendingTaskOperation(task: task,
+                                             desiredCompletion: desiredCompletion)
 
-        if !writeToVault(task, now: now) {
-            store.appendPendingToggle(PendingToggle(task))
+        // Queue first. If the note write succeeds but acknowledgment fails,
+        // the retained desired-state operation is safe to apply again.
+        try store.append(operation)
+        if await apply(operation, now: now) {
+            // A failure here deliberately leaves the operation queued.
+            do {
+                try store.acknowledge(operationID: operation.id)
+            } catch {
+                widgetChannelLogger.error("Operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
+            }
         }
 
         // Completing a recurring task rolls its line to the next occurrence
         // rather than checking it off, so the row leaves today's list instead
         // of sitting there struck through.
-        if task.recurrence != nil, !task.isCompleted {
+        if task.recurrence != nil, desiredCompletion {
             snapshot.tasks.remove(at: index)
         } else {
-            snapshot.tasks[index] = task.toggled()
+            snapshot.tasks[index] = SnapshotTask(
+                filePath: task.filePath,
+                lineNumber: task.lineNumber,
+                text: task.text,
+                dueDateString: task.dueDateString,
+                dueTimeString: task.dueTimeString,
+                recurrenceTag: task.recurrenceTag,
+                isCompleted: desiredCompletion)
         }
         store.writeSnapshot(snapshot)
     }
@@ -64,27 +83,23 @@ struct TaskToggleWriter {
     /// Rewrites the task's line in its note, through the same parser and the
     /// same coordinated write the app uses. Returns false if the vault can't
     /// be reached or the line no longer matches.
-    private func writeToVault(_ task: SnapshotTask, now: Date) -> Bool {
+    private func apply(_ operation: PendingTaskOperation, now: Date) async -> Bool {
         guard let vaultURL = resolveVaultURL() else { return false }
         let didStart = vaultURL.startAccessingSecurityScopedResource()
         defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
 
-        let operations = VaultFileOperations()
-        guard let text = try? operations.readNote(at: task.fileURL),
-              let updated = TaskParser.togglingTask(
-                withText: task.text,
-                dueDateString: task.dueDateString,
-                dueTimeString: task.dueTimeString,
-                recurrence: task.recurrence,
-                isCompleted: task.isCompleted,
-                listName: nil,
-                preferredLineNumber: task.lineNumber,
-                todayDateString: QuickTaskParser.ymdString(from: now),
-                in: text)
-        else { return false }
-
         do {
-            try operations.saveNote(updated, to: task.fileURL)
+            _ = try await repository.updateNote(at: operation.taskIdentity.fileURL) { text in
+                TaskParser.settingTaskCompleted(
+                    operation.taskIdentity,
+                    to: operation.desiredCompletion,
+                    todayDateString: QuickTaskParser.ymdString(
+                        from: now, calendar: TaskCalendar.gregorian()),
+                    in: text)
+            }
+            return true
+        } catch VaultFileOperations.OperationError.fileMissing(_) {
+            // The note (and therefore the task) is definitively gone.
             return true
         } catch {
             return false
@@ -94,9 +109,13 @@ struct TaskToggleWriter {
     private func resolveVaultURL() -> URL? {
         guard let data = store.readBookmark() else { return nil }
         var isStale = false
-        return try? URL(resolvingBookmarkData: data,
-                        options: VaultBookmarkStore.platformResolutionOptions,
-                        relativeTo: nil,
-                        bookmarkDataIsStale: &isStale)
+        do {
+            return try URL(resolvingBookmarkData: data,
+                           options: VaultBookmarkStore.platformResolutionOptions,
+                           relativeTo: nil,
+                           bookmarkDataIsStale: &isStale)
+        } catch {
+            return nil
+        }
     }
 }

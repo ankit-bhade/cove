@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// All due tasks collected by the in-memory index: incomplete tasks sorted
 /// by due date, completed ones below, with a quick-entry field on top that
@@ -8,6 +9,7 @@ import SwiftUI
 struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.undoManager) private var undoManager
     @State private var errorMessage: String?
     @State private var isClearingCompleted = false
     @State private var showsClearCompletedConfirmation = false
@@ -163,7 +165,16 @@ struct TasksView: View {
         Task {
             defer { pendingTaskIDs.remove(task.id) }
             do {
-                try await vaultManager.deleteTask(task)
+                let record = try await vaultManager.deleteTask(task)
+                undoManager?.registerUndo(withTarget: vaultManager) { manager in
+                    Task {
+                        do { try await manager.restoreDeletedTask(record) }
+                        catch {
+                            CoveLog.vault.error("Task undo failed: \(error.localizedDescription, privacy: .private)")
+                        }
+                    }
+                }
+                undoManager?.setActionName("Delete Task")
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -176,6 +187,16 @@ struct TasksView: View {
             defer { pendingTaskIDs.remove(task.id) }
             do {
                 try await vaultManager.toggleTask(task)
+                let previousCompletion = task.isCompleted
+                undoManager?.registerUndo(withTarget: vaultManager) { manager in
+                    Task {
+                        do { try await manager.setTaskCompleted(task, to: previousCompletion) }
+                        catch {
+                            CoveLog.vault.error("Task toggle undo failed: \(error.localizedDescription, privacy: .private)")
+                        }
+                    }
+                }
+                undoManager?.setActionName("Toggle Task")
             } catch {
                 errorMessage = error.localizedDescription
             }

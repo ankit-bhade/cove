@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   items use the same natural-language capture and can carry due dates,
   times, and repeats, but a due date is optional there, and list items are
   kept out of the Tasks screen. Lists can be created, renamed, and deleted.
+- Each list can clear its own completed items from its Done header, the way
+  the Tasks screen clears its completed tasks.
 - iOS Today home-screen widget (Phase 11): a WidgetKit widget in small and
   medium showing the tasks due today, with a tappable checkbox that completes
   one in place. Overdue tasks read red, the count pill tracks what's left,

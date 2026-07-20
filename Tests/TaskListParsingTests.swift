@@ -139,4 +139,39 @@ final class TaskListParsingTests: XCTestCase {
             - [x] Butter @due(2026-07-02)
             """)
     }
+
+    func testClearingCompletedInAListLeavesEverythingElseAlone() {
+        let text = """
+            - [x] Ordinary @due(2026-07-01)
+
+            ## Groceries
+            - [x] Bread
+            - [ ] Milk
+            - [x] Butter @due(2026-07-02)
+
+            ## Packing
+            - [x] Charger
+            """
+        XCTAssertEqual(
+            TaskParser.clearingCompletedTasks(in: text, sectioned: true, inList: "Groceries"),
+            """
+            - [x] Ordinary @due(2026-07-01)
+
+            ## Groceries
+            - [ ] Milk
+
+            ## Packing
+            - [x] Charger
+            """)
+    }
+
+    func testClearingCompletedMatchesTheListNameCaseInsensitively() {
+        let text = """
+            ## Groceries
+            - [x] Bread
+            """
+        XCTAssertEqual(
+            TaskParser.clearingCompletedTasks(in: text, sectioned: true, inList: "groceries"),
+            "## Groceries\n")
+    }
 }

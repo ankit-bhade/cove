@@ -287,6 +287,19 @@ final class VaultManager {
         }
     }
 
+    /// Removes a list's completed items, leaving its open ones and its
+    /// heading in place. The capture note is the only file lists live in, so
+    /// this is one coordinated read-modify-write rather than the per-file
+    /// sweep the Tasks screen's Clear All needs.
+    func clearCompletedTasks(inList name: String) async throws {
+        guard let vaultURL else { return }
+        try await perform {
+            try $0.updateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
+                TaskParser.clearingCompletedTasks(in: text, sectioned: true, inList: name)
+            }
+        }
+    }
+
     /// Removes a list's heading and every task under it.
     func deleteList(named name: String) async throws {
         guard let vaultURL else { return }

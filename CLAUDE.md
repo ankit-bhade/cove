@@ -491,9 +491,13 @@ merged.
   which is what keeps lists out of the Tasks screen; `lists` builds from
   `VaultIndex.listNames` (the note's headings) rather than from the tasks,
   so a list created but not yet filled still exists.
-  `TaskParser.clearingCompletedTasks` takes the same `sectioned` flag,
-  because the Tasks screen's Clear All must not delete completed items out
-  of lists it never showed. Section surgery lives in `TaskListDocument`
+  `TaskParser.clearingCompletedTasks` takes the same `sectioned` flag plus an
+  optional `inList` name, so each screen clears exactly what it shows: the
+  Tasks screen's Clear All must not delete completed items out of lists it
+  never showed, and a list's own Clear All (`VaultManager
+  .clearCompletedTasks(inList:)`, one coordinated `updateNote` on the capture
+  note rather than the Tasks screen's per-file sweep) touches only that
+  heading's items. List names match case-insensitively here as everywhere. Section surgery lives in `TaskListDocument`
   (pure, unit-tested): add/rename/remove a section and insert a line at the
   end of one, preserving all other Markdown; `VaultFileOperations.updateNote`
   runs those transforms inside one coordinated read-modify-write, the same
@@ -864,8 +868,8 @@ problems as build warnings, not errors.
   all three together, so turning the date back on starts from today with no
   time.
 * Completed list items stay in their list, struck through under a Done
-  header. There is no per-list Clear All — the bulk action belongs to the
-  Tasks screen, and a list's completed items are usually its history.
+  header, until that list's own Clear All sweeps them. Like the Tasks
+  screen's, it is confirmed and has no undo beyond the editor's.
 * An item captured into a list that was deleted meanwhile recreates the
   heading at the end of the note, rather than failing.
 * A bare time stays on today even when that moment has passed (grove

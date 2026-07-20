@@ -87,6 +87,15 @@ struct ListsView: View {
                             Label("Delete", systemImage: "trash")
                         }
                     }
+                    // The swipe is invisible until it's tried, and macOS has
+                    // no swipe at all, so the same action gets a menu.
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            pendingDeletion = list.name
+                        } label: {
+                            Label("Delete List", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }

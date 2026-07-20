@@ -73,8 +73,9 @@ undated ones follow in the order you added them, and timed ones notify like
 any other task. List items never appear on the Tasks screen, and the Tasks
 screen's Clear All never touches them; each list has its own Clear All, in
 its Done header, that removes that list's completed items and leaves its open
-ones. Lists can be renamed, and deleting a
-list removes it and its items from `Tasks.md` after confirmation.
+ones. Lists can be renamed, and deleting a list — from its own Options menu,
+or by swiping or right-clicking its row in the overview — removes it and its
+items from `Tasks.md` after confirmation.
 The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same

@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kept out of the Tasks screen. Lists can be created, renamed, and deleted.
 - Each list can clear its own completed items from its Done header, the way
   the Tasks screen clears its completed tasks.
+- Deleting a list is reachable from the list itself (its Options menu) and
+  by right-clicking it in the Lists overview, not only by swiping its row.
 - iOS Today home-screen widget (Phase 11): a WidgetKit widget in small and
   medium showing the tasks due today, with a tappable checkbox that completes
   one in place. Overdue tasks read red, the count pill tracks what's left,

@@ -503,8 +503,12 @@ merged.
   runs those transforms inside one coordinated read-modify-write, the same
   guarantee every capture gets. Names match case-insensitively but display
   as the heading spells them. `TaskRow` is shared by both screens so a list
-  task and an ordinary task can't drift apart. Renaming a list dismisses its
-  detail view, since the navigation value is the name.
+  task and an ordinary task can't drift apart. Renaming *or deleting* a list
+  dismisses its detail view, since the navigation value is the name. Deletion
+  is offered from the overview's swipe action, the overview row's context
+  menu (macOS has no swipe, and the swipe is invisible until it's tried), and
+  the detail view's Options menu — all routing through
+  `VaultManager.deleteList` with the same confirmation dialog.
 * **Task notifications.** Split into a pure, unit-tested planner and a thin
   scheduler (both in `Cove/Core/Services/`). `TaskNotificationPlanner` turns
   the task list into `TaskNotificationPlan`s for incomplete tasks *with a

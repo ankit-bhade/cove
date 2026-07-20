@@ -12,6 +12,7 @@ struct TaskRow: View {
     let now: Date
     let onToggle: () -> Void
     let onDelete: () -> Void
+    var isProcessing = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -19,9 +20,17 @@ struct TaskRow: View {
         let overdue = task.isOverdue(at: now)
         return HStack(alignment: .center, spacing: 8) {
             Button(action: onToggle) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 21, weight: .medium))
-                    .foregroundStyle(task.isCompleted ? Color.secondary : CoveTheme.teal)
+                Group {
+                    if isProcessing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(CoveTheme.teal)
+                    } else {
+                        Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 21, weight: .medium))
+                            .foregroundStyle(task.isCompleted ? Color.secondary : CoveTheme.teal)
+                    }
+                }
                     // The glyph alone is a small target; padding brings the
                     // hit area up to the 44pt minimum without moving it.
                     .frame(width: 44, height: 44)
@@ -30,7 +39,9 @@ struct TaskRow: View {
             .buttonStyle(.plain)
             .offset(x: -8)
             .padding(.trailing, -8)
-            .accessibilityLabel(task.isCompleted ? "Mark incomplete"
+            .disabled(isProcessing)
+            .accessibilityLabel(isProcessing ? "Updating task"
+                                : task.isCompleted ? "Mark incomplete"
                                 : task.recurrence == nil ? "Mark complete"
                                 : "Complete and reschedule")
 

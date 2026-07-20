@@ -460,6 +460,10 @@ merged.
   controls (title, date, time toggle + picker, recurrence picker —
   presets plus the parsed rule when it isn't one) tweaks the draft
   directly, and a footer row states whether a notification will fire.
+  Both entry paths await the filesystem write before clearing or dismissing,
+  show an in-place progress indicator, and preserve the sentence plus the
+  review sheet after a failure so the user can retry. Their compact icon
+  treatments sit inside 44pt interaction targets.
   Both paths call `VaultManager.captureTask`, which writes
   `draft.markdownLine` into `Tasks.md` at the vault root via
   `VaultFileOperations.updateNote` (a single coordinated
@@ -503,7 +507,10 @@ merged.
   runs those transforms inside one coordinated read-modify-write, the same
   guarantee every capture gets. Names match case-insensitively but display
   as the heading spells them. `TaskRow` is shared by both screens so a list
-  task and an ordinary task can't drift apart. Renaming *or deleting* a list
+  task and an ordinary task can't drift apart. Tasks and list details track
+  updates by task id, replace the checkbox with progress while a toggle or
+  delete is in flight, and ignore duplicate actions until the coordinated
+  write finishes. Renaming *or deleting* a list
   dismisses its detail view, since the navigation value is the name. Deletion
   is offered from the overview's swipe action, the overview row's context
   menu (macOS has no swipe, and the swipe is invisible until it's tried), and

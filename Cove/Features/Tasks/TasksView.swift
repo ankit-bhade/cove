@@ -11,6 +11,7 @@ struct TasksView: View {
     @State private var errorMessage: String?
     @State private var isClearingCompleted = false
     @State private var showsClearCompletedConfirmation = false
+    @State private var pendingTaskIDs: Set<String> = []
     /// Ticks each minute so "Overdue" and "Today" stay accurate while the
     /// tab sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -70,7 +71,8 @@ struct TasksView: View {
                     ForEach(group.tasks) { task in
                         TaskRow(task: task, now: now,
                                 onToggle: { toggle(task) },
-                                onDelete: { delete(task) })
+                                onDelete: { delete(task) },
+                                isProcessing: pendingTaskIDs.contains(task.id))
                     }
                 } header: {
                     Label(group.title, systemImage: group.symbol)
@@ -83,7 +85,8 @@ struct TasksView: View {
                     ForEach(completed) { task in
                         TaskRow(task: task, now: now,
                                 onToggle: { toggle(task) },
-                                onDelete: { delete(task) })
+                                onDelete: { delete(task) },
+                                isProcessing: pendingTaskIDs.contains(task.id))
                     }
                 } header: {
                     HStack {
@@ -139,7 +142,7 @@ struct TasksView: View {
                 placeholder: "e.g. Get bread tomorrow at 3pm",
                 accessibilityHint: "Enter a task with an optional date, time, or repeat rule"
             ) { draft in
-                capture(draft)
+                try await vaultManager.captureTask(draft)
             }
         }
         .padding(14)
@@ -152,24 +155,13 @@ struct TasksView: View {
             .foregroundStyle(CoveTheme.teal)
     }
 
-    /// Writes the interpreted task straight to the capture note. There is no
-    /// confirmation step: the field showed the interpretation while it was
-    /// being typed, and the new row appearing is the receipt.
-    private func capture(_ draft: TaskDraft) {
-        Task {
-            do {
-                try await vaultManager.captureTask(draft)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
     /// Removes the task's line from its note. Deliberately not confirmed —
     /// a swipe (or a context-menu pick) is already a deliberate gesture, and
     /// the bulk Clear All is the destructive action worth a dialog.
     private func delete(_ task: TaskItem) {
+        guard pendingTaskIDs.insert(task.id).inserted else { return }
         Task {
+            defer { pendingTaskIDs.remove(task.id) }
             do {
                 try await vaultManager.deleteTask(task)
             } catch {
@@ -179,7 +171,9 @@ struct TasksView: View {
     }
 
     private func toggle(_ task: TaskItem) {
+        guard pendingTaskIDs.insert(task.id).inserted else { return }
         Task {
+            defer { pendingTaskIDs.remove(task.id) }
             do {
                 try await vaultManager.toggleTask(task)
             } catch {

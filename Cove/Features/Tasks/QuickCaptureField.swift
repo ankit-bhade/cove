@@ -17,11 +17,13 @@ struct QuickCaptureField: View {
     /// List items may stay undated; a task bound for the Tasks screen
     /// resolves to today, since `@due` is required outside a list.
     var listName: String?
-    let onCapture: (TaskDraft) -> Void
+    let onCapture: (TaskDraft) async throws -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var text = ""
     @State private var pendingDraft: PendingDraft?
+    @State private var isCapturing = false
+    @State private var errorMessage: String?
 
     /// The sentence and its interpretation, handed to the editing sheet
     /// together so the sheet always matches what the field showed.
@@ -50,9 +52,13 @@ struct QuickCaptureField: View {
             TaskDraftSheet(sentence: pending.sentence,
                            draft: pending.draft,
                            listName: listName) { draft in
-                capture(draft)
+                try await onCapture(draft)
+                if trimmedText == pending.sentence {
+                    text = ""
+                }
             }
         }
+        .coveErrorAlert($errorMessage)
     }
 
     private var entryRow: some View {
@@ -60,24 +66,39 @@ struct QuickCaptureField: View {
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
-                .onSubmit { capture(draft) }
+                .onSubmit { startCapture(draft) }
                 .submitLabel(.done)
                 .accessibilityHint(accessibilityHint)
-            Button { capture(draft) } label: {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
+                .disabled(isCapturing)
+            Button { startCapture(draft) } label: {
+                Group {
+                    if isCapturing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                    .frame(width: 30, height: 30)
                     .background(canCapture ? AnyShapeStyle(CoveTheme.brandGradient)
                                 : AnyShapeStyle(Color.secondary.opacity(0.4)),
                                 in: Circle())
+                    // The visible control stays compact while the outer
+                    // frame provides a full-size touch target.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(!canCapture)
+            .disabled(!canCapture || isCapturing)
             .animation(.easeInOut(duration: 0.15), value: canCapture)
-            .accessibilityLabel("Add task")
+            .accessibilityLabel(isCapturing ? "Adding task" : "Add task")
         }
-        .padding(9)
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .padding(.vertical, 4)
     }
 
     /// What the sentence currently means. Recomputed per keystroke — the
@@ -133,7 +154,7 @@ struct QuickCaptureField: View {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(CoveTheme.teal)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -168,13 +189,29 @@ struct QuickCaptureField: View {
         .background(CoveTheme.teal.opacity(0.10), in: Capsule())
     }
 
-    /// Hands the draft up and clears the field. A draft with an empty title
-    /// (a sentence that was nothing but a date) is not a task.
-    private func capture(_ draft: TaskDraft?) {
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Saves before clearing the sentence. A failed filesystem write leaves
+    /// the user's input intact so they can retry instead of reconstructing it.
+    private func startCapture(_ draft: TaskDraft?) {
         guard let draft,
-              !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !isCapturing
         else { return }
-        text = ""
-        onCapture(draft)
+        let submittedText = trimmedText
+        isCapturing = true
+        Task {
+            defer { isCapturing = false }
+            do {
+                try await onCapture(draft)
+                if trimmedText == submittedText {
+                    text = ""
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 }

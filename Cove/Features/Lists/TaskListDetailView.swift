@@ -72,13 +72,11 @@ struct TaskListDetailView: View {
                 }
                 if list.isEmpty {
                     Section {
-                        ContentUnavailableView {
-                            Label("Nothing Here Yet", systemImage: "tray")
-                        } description: {
-                            Text("Add an item above. A date is optional — “milk” is fine, and so is “order cake fri 3pm”.")
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
+                        CoveEmptyState(
+                            "Nothing Here Yet",
+                            systemName: "tray",
+                            description: "Add an item above. A date is optional — “milk” is fine, and so is “order cake fri 3pm”."
+                        )
                         .listRowBackground(Color.clear)
                     }
                 }
@@ -152,15 +150,27 @@ struct TaskListDetailView: View {
     /// List items stay undated unless the sentence actually names a date,
     /// which passing `listName` through to the field takes care of.
     private var captureCard: some View {
-        QuickCaptureField(
-            placeholder: "Add to \(listName)",
-            accessibilityHint: "Enter an item, optionally with a date, time, or repeat rule",
-            listName: listName
-        ) { draft in
-            try await vaultManager.captureTask(draft, into: listName)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                CoveHeroIcon(systemName: "plus", size: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Add an item")
+                        .font(.headline)
+                    Text("Dates and reminders are optional")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            QuickCaptureField(
+                placeholder: "Add to \(listName)",
+                accessibilityHint: "Enter an item, optionally with a date, time, or repeat rule",
+                listName: listName
+            ) { draft in
+                try await vaultManager.captureTask(draft, into: listName)
+            }
         }
-        .padding(14)
-        .background { CoveCardBackground() }
+        .padding(16)
+        .background { CoveHeroCardBackground() }
     }
 
     /// The navigation value is the list's name, so a rename makes this view

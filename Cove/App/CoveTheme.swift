@@ -14,6 +14,18 @@ enum CoveTheme {
         endPoint: .bottomTrailing
     )
 
+    /// A quieter wash for dashboard cards. It keeps the brand visible
+    /// without lowering text contrast or making every card feel like a button.
+    static func heroGradient(for scheme: ColorScheme) -> LinearGradient {
+        LinearGradient(
+            colors: scheme == .dark
+                ? [deepTeal.opacity(0.28), surface(for: scheme), teal.opacity(0.10)]
+                : [seaGlass.opacity(0.24), .white, teal.opacity(0.08)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     static func canvas(for scheme: ColorScheme) -> Color {
         scheme == .dark
             ? Color(red: 0.035, green: 0.055, blue: 0.070)
@@ -130,6 +142,106 @@ struct CoveCardBackground: View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(CoveTheme.border(for: colorScheme), lineWidth: 1)
             }
+            .overlay(alignment: .top) {
+                Capsule()
+                    .fill(.white.opacity(colorScheme == .dark ? 0.06 : 0.50))
+                    .frame(height: 1)
+                    .padding(.horizontal, cornerRadius)
+            }
+    }
+}
+
+/// The emphasized card used once at the top of a dashboard. The restrained
+/// gradient separates overview content from ordinary rows while staying
+/// equally legible in light and dark appearances.
+struct CoveHeroCardBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var cornerRadius: CGFloat = 22
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(CoveTheme.heroGradient(for: colorScheme))
+            .shadow(color: CoveTheme.navy.opacity(colorScheme == .dark ? 0.18 : 0.10),
+                    radius: 20, y: 9)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(CoveTheme.teal.opacity(colorScheme == .dark ? 0.20 : 0.12),
+                            lineWidth: 1)
+            }
+    }
+}
+
+/// A decorative symbol used at the leading edge of dashboard headlines and
+/// empty states. Its layered treatment gives the app a recognizable visual
+/// motif without relying on custom illustrations.
+struct CoveHeroIcon: View {
+    let systemName: String
+    var tint: Color = CoveTheme.teal
+    var size: CGFloat = 42
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.12), in: Circle())
+            .overlay {
+                Circle().stroke(tint.opacity(0.16), lineWidth: 1)
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// A warmer, more compact alternative to the platform's generic unavailable
+/// view. It is shared across the app so a new vault, an empty list, and a
+/// finished task day all feel like Cove states rather than system placeholders.
+struct CoveEmptyState<Actions: View>: View {
+    let title: String
+    let description: String
+    let systemName: String
+    @ViewBuilder let actions: () -> Actions
+
+    init(
+        _ title: String,
+        systemName: String,
+        description: String,
+        @ViewBuilder actions: @escaping () -> Actions
+    ) {
+        self.title = title
+        self.description = description
+        self.systemName = systemName
+        self.actions = actions
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            CoveHeroIcon(systemName: systemName, size: 54)
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.headline)
+                Text(description)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            actions()
+        }
+        .frame(maxWidth: 430)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 30)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension CoveEmptyState where Actions == EmptyView {
+    init(_ title: String, systemName: String, description: String) {
+        self.init(title, systemName: systemName, description: description) {
+            EmptyView()
+        }
     }
 }
 

@@ -196,13 +196,12 @@ struct VaultBrowserView: View {
 
             if nodes.isEmpty {
                 Section {
-                    ContentUnavailableView {
-                        Label("This Folder Is Ready", systemImage: "doc.badge.plus")
-                    } description: {
-                        Text("Create a Markdown note or folder with the + button above.")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 34)
+                    CoveEmptyState(
+                        "This Folder Is Ready",
+                        systemName: "doc.badge.plus",
+                        description: "Create a Markdown note or folder with the + button above."
+                    )
+                    .padding(.vertical, 8)
                     .listRowBackground(Color.clear)
                 }
             } else {
@@ -247,8 +246,16 @@ struct VaultBrowserView: View {
 
         return TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: 18) {
-                Text(Greeting.text(for: context.date, name: greetingName))
-                    .font(.title3.weight(.semibold))
+                HStack(spacing: 12) {
+                    CoveHeroIcon(systemName: "water.waves", size: 46)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Greeting.text(for: context.date, name: greetingName))
+                            .font(.title3.weight(.semibold))
+                        Text("Your vault at a glance")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(spacing: 12) {
@@ -273,8 +280,8 @@ struct VaultBrowserView: View {
                     .frame(height: 42)
                 }
             }
-            .padding(18)
-            .background { CoveCardBackground() }
+            .padding(20)
+            .background { CoveHeroCardBackground() }
         }
     }
 

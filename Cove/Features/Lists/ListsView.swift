@@ -60,11 +60,11 @@ struct ListsView: View {
         List {
             if lists.isEmpty {
                 Section {
-                    ContentUnavailableView {
-                        Label("No Lists Yet", systemImage: "list.bullet.rectangle")
-                    } description: {
-                        Text("Group tasks that belong together — groceries, subscriptions, packing. Each list is a section of Tasks.md.")
-                    } actions: {
+                    CoveEmptyState(
+                        "No Lists Yet",
+                        systemName: "list.bullet.rectangle",
+                        description: "Group things that belong together — groceries, subscriptions, or packing."
+                    ) {
                         Button("New List") {
                             newListName = ""
                             showsNewListPrompt = true
@@ -72,31 +72,41 @@ struct ListsView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(CoveTheme.teal)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 28)
                     .listRowBackground(Color.clear)
                 }
             } else {
-                ForEach(lists) { list in
-                    NavigationLink(value: list.name) {
-                        row(for: list)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            pendingDeletion = list.name
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                Section {
+                    listsOverview(lists)
+                        .listRowInsets(CoveTheme.dashboardRowInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+                Section {
+                    ForEach(lists) { list in
+                        NavigationLink(value: list.name) {
+                            row(for: list)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                pendingDeletion = list.name
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        // The swipe is invisible until it's tried, and macOS has
+                        // no swipe at all, so the same action gets a menu.
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                pendingDeletion = list.name
+                            } label: {
+                                Label("Delete List", systemImage: "trash")
+                            }
                         }
                     }
-                    // The swipe is invisible until it's tried, and macOS has
-                    // no swipe at all, so the same action gets a menu.
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            pendingDeletion = list.name
-                        } label: {
-                            Label("Delete List", systemImage: "trash")
-                        }
-                    }
+                } header: {
+                    Text("Collections")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -114,6 +124,54 @@ struct ListsView: View {
         } message: {
             Text("This removes the list and every task in it from Tasks.md.")
         }
+    }
+
+    private func listsOverview(_ lists: [TaskList]) -> some View {
+        let open = lists.reduce(0) { $0 + $1.openTasks.count }
+        let completed = lists.reduce(0) { $0 + $1.completedTasks.count }
+
+        return VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                CoveHeroIcon(systemName: "list.bullet.rectangle.fill", size: 46)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Everything in its place")
+                        .font(.title3.weight(.semibold))
+                    Text("Reusable lists for the things you keep track of")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 0) {
+                    listMetric(lists.count, label: lists.count == 1 ? "List" : "Lists")
+                    Divider().padding(.vertical, 2)
+                    listMetric(open, label: "Open")
+                    Divider().padding(.vertical, 2)
+                    listMetric(completed, label: "Done")
+                }
+                VStack(spacing: 10) {
+                    listMetric(lists.count, label: lists.count == 1 ? "List" : "Lists")
+                    listMetric(open, label: "Open")
+                    listMetric(completed, label: "Done")
+                }
+            }
+            .frame(minHeight: 42)
+        }
+        .padding(20)
+        .background { CoveHeroCardBackground() }
+    }
+
+    private func listMetric(_ value: Int, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value, format: .number)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(CoveTheme.teal)
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
     }
 
     private func row(for list: TaskList) -> some View {

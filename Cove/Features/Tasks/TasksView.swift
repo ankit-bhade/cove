@@ -105,13 +105,11 @@ struct TasksView: View {
             }
             if incomplete.isEmpty, completed.isEmpty {
                 Section {
-                    ContentUnavailableView {
-                        Label("A Clear Horizon", systemImage: "checkmark.circle")
-                    } description: {
-                        Text("Capture a task above, or add a due-task line to any note.")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 28)
+                    CoveEmptyState(
+                        "A Clear Horizon",
+                        systemName: "checkmark.circle",
+                        description: "Capture a task above, or add a due-task line to any note."
+                    )
                     .listRowBackground(Color.clear)
                 }
             }
@@ -126,15 +124,13 @@ struct TasksView: View {
     private func quickCaptureCard(openCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Quick Capture")
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 10) {
+                    captureHeading
                     openTaskCount(openCount)
                 }
             } else {
-                HStack {
-                    Text("Quick Capture")
-                        .font(.headline)
+                HStack(alignment: .center) {
+                    captureHeading
                     Spacer()
                     openTaskCount(openCount)
                 }
@@ -147,12 +143,25 @@ struct TasksView: View {
                 try await vaultManager.captureTask(draft)
             }
         }
-        .padding(14)
-        .background { CoveCardBackground() }
+        .padding(16)
+        .background { CoveHeroCardBackground() }
+    }
+
+    private var captureHeading: some View {
+        HStack(spacing: 10) {
+            CoveHeroIcon(systemName: "bolt.fill", size: 38)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Quick Capture")
+                    .font(.headline)
+                Text("Write it naturally")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func openTaskCount(_ count: Int) -> some View {
-        Label("\(count) open", systemImage: "circle")
+        Label("\(count) open", systemImage: "circle.fill")
             .font(.caption.weight(.semibold))
             .foregroundStyle(CoveTheme.teal)
     }

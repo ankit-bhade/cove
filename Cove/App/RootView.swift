@@ -46,9 +46,16 @@ struct RootView: View {
         #if os(macOS)
         NavigationSplitView {
             List(AppSection.allCases, selection: $selectedSection) { section in
-                Label(section.title, systemImage: section.symbol)
-                    .tag(section)
-                    .padding(.vertical, 3)
+                HStack(spacing: 10) {
+                    Image(systemName: section.symbol)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(selectedSection == section ? CoveTheme.teal : .secondary)
+                        .frame(width: 22)
+                    Text(section.title)
+                        .font(.body.weight(selectedSection == section ? .semibold : .regular))
+                }
+                .tag(section)
+                .padding(.vertical, 4)
             }
             .safeAreaInset(edge: .top) {
                 HStack(spacing: 10) {
@@ -68,6 +75,10 @@ struct RootView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
+                .background(.ultraThinMaterial)
+                .overlay(alignment: .bottom) {
+                    Divider().opacity(0.65)
+                }
                 .accessibilityElement(children: .combine)
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
@@ -83,6 +94,8 @@ struct RootView: View {
                     .tag(section)
             }
         }
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
         #endif
     }
 

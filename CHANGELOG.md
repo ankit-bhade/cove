@@ -157,6 +157,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Notes browser shows folders level by level and replaces its branded
   workspace card with a time-aware greeting plus scoped folder, subfolder, and
   note counts; the greeting is visually lighter and less prominent.
+- The Notes greeting, Quick Capture, and list-item capture cards now use a
+  shared hero-card treatment with a decorative leading icon, and the Lists tab
+  gained an overview card summarizing list, open, and done counts above its
+  Collections section. Empty states across Notes, Tasks, and Lists were
+  replaced with a shared `CoveEmptyState` view in place of the system's
+  `ContentUnavailableView`, matching the app's visual language. The macOS
+  sidebar rows now bold and tint their icon when selected, and both the
+  sidebar header and iOS tab bar gained a subtle material background.
 - The Tasks screen now offers a confirmed Clear All action that removes every
   completed Cove task line from its original Markdown note.
 - Trimmed the Tasks screen: task rows no longer repeat their source note's

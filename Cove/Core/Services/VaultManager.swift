@@ -554,8 +554,13 @@ final class VaultManager {
     /// may not be able to resolve the vault bookmark from its own process.
     /// Each one goes through the same re-find-then-rewrite path as an in-app
     /// toggle, so a line that changed meanwhile is left alone rather than
-    /// overwritten. The queue is cleared regardless: a toggle that no longer
-    /// matches is stale, and retrying it forever would be worse than dropping it.
+    /// overwritten.
+    ///
+    /// Operations are acknowledged individually, on success or against a
+    /// definitively stale target. A transient failure keeps the operation
+    /// queued but counts an attempt against it, so a tap survives an
+    /// unavailable vault without an unappliable one being retried on every
+    /// launch forever.
     private func applyPendingWidgetOperations() async {
         let pending: [PendingTaskOperation]
         do {
@@ -592,8 +597,17 @@ final class VaultManager {
                     CoveLog.widget.error("Stale operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
                 }
             } catch {
-                // Normal file/coordinator/iCloud failures stay queued.
-                CoveLog.widget.error("Pending operation retained after failure: \(error.localizedDescription, privacy: .private)")
+                // Normal file/coordinator/iCloud failures stay queued, up to
+                // the attempt ceiling.
+                do {
+                    if try widgetStore.recordFailure(operationID: operation.id) {
+                        CoveLog.widget.error("Pending operation dropped after \(PendingTaskOperation.maxAttempts, privacy: .public) attempts: \(error.localizedDescription, privacy: .private)")
+                    } else {
+                        CoveLog.widget.error("Pending operation retained after failure: \(error.localizedDescription, privacy: .private)")
+                    }
+                } catch {
+                    CoveLog.widget.error("Attempt bookkeeping failed: \(error.localizedDescription, privacy: .private)")
+                }
                 continue
             }
         }

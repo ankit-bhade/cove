@@ -721,9 +721,18 @@ merged.
   way the snapshot is updated optimistically, which is what makes the tap
   feel instant; completing a recurring task removes the row rather than
   striking it through, mirroring the app's roll-forward. A legacy
-  `PendingToggle` is decoded only to migrate an ephemeral pre-upgrade queue;
-  new `PendingTaskOperation`s carry UUID, semantic identity, desired final
-  completion, creation time, and attempt count, so replay cannot toggle back.
+  `PendingToggle` is decoded only to migrate an ephemeral pre-upgrade queue,
+  and that migration is *persisted* on first read before being returned:
+  conversion mints fresh ids, so left in the legacy file it would hand out
+  different ids on every read, and acknowledging one of them would address an
+  operation the file doesn't contain. New `PendingTaskOperation`s carry UUID,
+  semantic identity, desired final completion, creation time, and attempt
+  count, so replay cannot toggle back. Attempts are counted by
+  `WidgetSnapshotStore.recordFailure` and only by the app's drain — the
+  widget's own write failing is the expected case the queue exists for — and
+  an operation is dropped after `PendingTaskOperation.maxAttempts` (5). The
+  queue is durable, so without that ceiling an operation that can never apply
+  would be retried on every launch for the life of the vault.
 * **Widget target sources.** The app's `Cove` folder is a synchronized root
   group belonging to the app target alone, so the eight pure files the widget
   reuses (`RecurrenceRule`, `VaultIndex`, `VaultFileOperations`,
@@ -991,8 +1000,16 @@ problems as build warnings, not errors.
   simulator (the Home Screen can't be driven headlessly); confirm on device.
 * Pending widget operations are acknowledged individually after success or a
   definitive stale target. Coordinator/provider failures leave the operation
-  queued. A stale line that was semantically edited into a different task is
-  intentionally acknowledged rather than retried forever.
+  queued but count an attempt against it, and it is dropped after five. A tap
+  therefore survives a vault that is unavailable for a few launches, but one
+  that can never apply gives up instead of retrying forever. A stale line that
+  was semantically edited into a different task is acknowledged immediately,
+  without consuming attempts.
+* An attempt goes uncounted when the bookkeeping write itself fails, so a
+  queue that can't be written also can't be pruned. That is deliberate — the
+  alternative is dropping an operation on the strength of a failure we
+  couldn't record — but it does mean an unwritable App Group container leaves
+  retries unbounded.
 * The widget's 44×44pt checkbox targets are larger than the row pitch, so
   they overlap slightly between adjacent rows. That is the handoff's
   specified target (it matches the app's `TaskRow`); a tap landing in the

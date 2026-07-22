@@ -127,13 +127,16 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     }
 }
 
-/// One indexed note: its path, title, and due tasks.
+/// One indexed note: its path, title, and due tasks. Deliberately not its
+/// contents — search re-reads from disk by design (no persisted index), so
+/// holding the text here would keep a copy of the whole vault in memory that
+/// nothing ever reads. The modification date and size are what let an
+/// unchanged note reuse its entry across an incremental rebuild.
 struct NoteIndexEntry: Hashable, Sendable {
     let url: URL
     let title: String
     let tasks: [TaskItem]
     let listNames: [String]
-    let searchableText: String
     let modificationDate: Date?
     let fileSize: Int?
 
@@ -141,26 +144,15 @@ struct NoteIndexEntry: Hashable, Sendable {
          title: String,
          tasks: [TaskItem],
          listNames: [String] = [],
-         searchableText: String = "",
          modificationDate: Date? = nil,
          fileSize: Int? = nil) {
         self.url = url
         self.title = title
         self.tasks = tasks
         self.listNames = listNames
-        self.searchableText = searchableText
         self.modificationDate = modificationDate
         self.fileSize = fileSize
     }
-}
-
-/// The reusable in-memory representation requested by incremental indexing.
-/// It is never persisted into the vault.
-struct IndexedNote: Sendable {
-    let url: URL
-    let tasks: [TaskItem]
-    let lists: [String]
-    let searchableText: String
 }
 
 /// One named list from the capture note: its `##` heading and the tasks

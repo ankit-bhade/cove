@@ -196,10 +196,17 @@ struct PendingToggle: Codable, Hashable, Sendable {
 /// than an instruction to toggle, so applying it more than once cannot undo a
 /// successful first attempt.
 struct PendingTaskOperation: Codable, Hashable, Sendable, Identifiable {
+    /// How many drains an operation may fail before it is given up on. The
+    /// queue is durable, so without a ceiling an operation that can never
+    /// apply would be retried on every launch for the life of the vault.
+    static let maxAttempts = 5
+
     let id: UUID
     let taskIdentity: TaskIdentity
     let desiredCompletion: Bool
     let createdAt: Date
+    /// Failed drains so far. Only the app's drain counts attempts; the
+    /// widget's own write failing is the expected case the queue exists for.
     var attemptCount: Int
 
     init(id: UUID = UUID(),
@@ -301,6 +308,13 @@ struct WidgetSnapshotStore: Sendable {
 
     // MARK: - Pending task operations
 
+    /// The queue, migrating a pre-upgrade one on first read.
+    ///
+    /// Migration is persisted before it is returned. Converting a legacy
+    /// toggle mints a fresh id, so leaving the records in the legacy file
+    /// would hand out different ids on every read — and then acknowledging or
+    /// counting an attempt against one of them would address an operation the
+    /// file doesn't contain.
     func loadPendingOperations() throws -> [PendingTaskOperation] {
         guard let url = pendingOperationsURL else { throw CocoaError(.fileNoSuchFile) }
         if FileManager.default.fileExists(atPath: url.path) {
@@ -309,8 +323,13 @@ struct WidgetSnapshotStore: Sendable {
         guard let legacyURL = legacyPendingTogglesURL,
               FileManager.default.fileExists(atPath: legacyURL.path) else { return [] }
         let data = try Data(contentsOf: legacyURL)
-        return try JSONDecoder().decode([PendingToggle].self, from: data)
+        let migrated = try JSONDecoder().decode([PendingToggle].self, from: data)
             .map(\.pendingOperation)
+        try replace(migrated)
+        // The v2 file now supersedes it; a failed removal is harmless because
+        // the legacy file is never consulted again once v2 exists.
+        try? FileManager.default.removeItem(at: legacyURL)
+        return migrated
     }
 
     func append(_ operation: PendingTaskOperation) throws {
@@ -324,6 +343,28 @@ struct WidgetSnapshotStore: Sendable {
         try coordinatedQueueUpdate { operations in
             operations.removeAll { $0.id == operationID }
         }
+    }
+
+    /// Counts one failed drain against an operation, dropping it once it has
+    /// exhausted `maxAttempts`. Returns whether it was dropped.
+    ///
+    /// If this write itself fails the attempt goes uncounted — which is the
+    /// right outcome, since a queue that can't be written can't be pruned
+    /// either.
+    @discardableResult
+    func recordFailure(operationID: UUID,
+                       maxAttempts: Int = PendingTaskOperation.maxAttempts) throws -> Bool {
+        var dropped = false
+        try coordinatedQueueUpdate { operations in
+            guard let index = operations.firstIndex(where: { $0.id == operationID })
+            else { return }
+            operations[index].attemptCount += 1
+            if operations[index].attemptCount >= maxAttempts {
+                operations.remove(at: index)
+                dropped = true
+            }
+        }
+        return dropped
     }
 
     func replace(_ operations: [PendingTaskOperation]) throws {

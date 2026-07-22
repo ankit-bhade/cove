@@ -303,7 +303,16 @@ merged.
   use this API rather than a public read followed by save. Note and folder
   deletion moves items into a unique encoded name under `.cove-recovery`;
   immediate Undo restores them without overwriting a newly occupied path and
-  prompts for a replacement name when necessary.
+  prompts for a replacement name when necessary. A recovery entry is named
+  `<timestamp>--<uuid>--<encoded path>--<name>`, and
+  `VaultFileOperations.purgeRecovery` sweeps entries older than a week —
+  otherwise a delete never actually frees anything, and in an iCloud vault
+  every note ever deleted would sync and consume storage forever. The
+  timestamp has to be in the name: an item's own dates travel with it through
+  the move and say nothing about when it left the vault. `VaultManager` runs
+  the sweep detached once per vault open (not per refresh — the area only
+  grows through deletion), so it can neither race an Undo, which only ever
+  points at this session's entries, nor block the vault from opening.
 * **Editor.** `NoteDocument` (`@MainActor @Observable`) owns one open note:
   coordinated load, dirty tracking against the last saved text, debounced
   autosave (1 s after typing stops), and `saveNow()` flushes on view
@@ -798,6 +807,17 @@ problems as build warnings, not errors.
   Notes tab the next rescan additionally pops that editor off the path (its
   URL no longer resolves to a node); the Tasks tab's stack has no such
   pruning, so an editor opened from there stays put on the dead URL.
+* The recovery sweep is silent and has no UI: a deleted note is gone for good
+  a week later, with nothing in the app that lists or restores what is still
+  in `.cove-recovery`. Recovering by hand means decoding the base64 path
+  component in the entry's name.
+* The sweep runs once per vault open, so a session left running for weeks
+  keeps accumulating. Reopening the vault (or relaunching) clears the backlog.
+* Recovery entries written before the sweep existed carry no timestamp and are
+  swept on the first launch that includes it, regardless of age. That is
+  intended — a previous run of the app put them there, so no live Undo can
+  still point at them — but it does mean the upgrade empties whatever had
+  accumulated.
 * `UserDefaults`-stored bookmarks are per-device; each device runs the
   folder-selection flow once (expected — there is no custom sync).
 * On macOS, `NSOpenPanel` URLs are usable without starting scoped access in the

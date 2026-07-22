@@ -102,6 +102,7 @@ final class VaultManager {
             state = .recoveryNeeded
         case .resolved(let url):
             beginAccess(to: url)
+            purgeRecoveryArea(at: url)
             await loadTree(from: url)
         }
     }
@@ -115,7 +116,24 @@ final class VaultManager {
         } catch {
             lastErrorDescription = error.localizedDescription
         }
+        purgeRecoveryArea(at: url)
         await loadTree(from: url)
+    }
+
+    /// Sweeps the recovery area's expired entries once per vault open, rather
+    /// than on every refresh: the area only grows through deletion, and a
+    /// launch is the natural moment to take out the trash. Undo only ever
+    /// points at an entry deleted this session, so the sweep can't race it,
+    /// and a failure here must never keep the vault from opening.
+    private func purgeRecoveryArea(at url: URL) {
+        let operations = fileOperations
+        Task.detached(priority: .utility) {
+            do {
+                try operations.purgeRecovery(vaultRoot: url)
+            } catch {
+                CoveLog.vault.error("Recovery sweep failed: \(error.localizedDescription, privacy: .private)")
+            }
+        }
     }
 
     func refresh() async {

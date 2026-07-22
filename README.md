@@ -19,7 +19,10 @@ action or Command-Shift-Space. Notes and folders can be created, renamed,
 moved, and deleted from the browser (long-press or right-click a row, or use
 the + toolbar menu). Deletion moves content into a hidden Cove Recovery area
 and registers immediate Undo; if the original name has since been reused,
-Cove asks for a replacement name instead of overwriting it. For a
+Cove asks for a replacement name instead of overwriting it. Recovered items
+are kept for a week and then swept the next time the vault opens, so a
+deleted note eventually frees its space instead of sitting in the folder
+forever. For a
 vault in iCloud Drive, changes made outside the app — edits syncing in from
 another device, or files added or removed in Finder or the Files app — are
 detected while the app runs: the folder tree refreshes itself, and an open

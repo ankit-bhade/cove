@@ -232,9 +232,11 @@ struct VaultFileOperations: Sendable {
 
     /// Moves a note or folder into the vault's hidden recovery area. The
     /// encoded relative path makes recovery inspectable even after relaunch;
-    /// the UUID prevents collisions without ever replacing an older item.
-    func moveToRecovery(itemAt url: URL, vaultRoot: URL) throws -> RecoveryRecord {
-        let recoveryFolder = vaultRoot.appendingPathComponent(".cove-recovery",
+    /// the UUID prevents collisions without ever replacing an older item; the
+    /// leading timestamp is what `purgeRecovery` sweeps on.
+    func moveToRecovery(itemAt url: URL, vaultRoot: URL,
+                        now: Date = Date()) throws -> RecoveryRecord {
+        let recoveryFolder = vaultRoot.appendingPathComponent(Self.recoveryFolderName,
                                                               isDirectory: true)
         try coordinatedWrite(at: recoveryFolder, options: []) { folder in
             if !FileManager.default.fileExists(atPath: folder.path) {
@@ -252,11 +254,88 @@ struct VaultFileOperations: Sendable {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "=", with: "")
-        let recoveredName = "\(UUID().uuidString.lowercased())--\(encodedPath)--\(url.lastPathComponent)"
+        let recoveredName = "\(Self.recoveryTimestamp(now))--\(UUID().uuidString.lowercased())--\(encodedPath)--\(url.lastPathComponent)"
         let destination = recoveryFolder.appendingPathComponent(
             recoveredName, isDirectory: try isDirectory(url))
         try coordinatedMove(from: url, to: destination)
         return RecoveryRecord(originalURL: url, recoveryURL: destination)
+    }
+
+    /// Removes recovery entries older than `retention`, so deleting a note
+    /// eventually frees its space instead of parking it in the vault forever.
+    ///
+    /// Entries whose name carries no deletion timestamp were written before
+    /// this sweep existed, which means a previous run of the app put them
+    /// there and no live Undo can still point at them; they are swept too.
+    /// One unremovable entry must not abandon the rest of the sweep.
+    func purgeRecovery(vaultRoot: URL,
+                       retention: TimeInterval = recoveryRetention,
+                       now: Date = Date()) throws {
+        let folder = vaultRoot.appendingPathComponent(Self.recoveryFolderName,
+                                                      isDirectory: true)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return }
+
+        // Names, not URLs: the coordinator may hand back a different location
+        // for the folder, and each entry is coordinated again on its own.
+        let names = try coordinatedRead(at: folder) { url in
+            try FileManager.default.contentsOfDirectory(atPath: url.path)
+        }
+        let cutoff = now.addingTimeInterval(-retention)
+        for name in names {
+            let deletedAt = Self.recoveryDeletionDate(fromName: name)
+            guard deletedAt.map({ $0 < cutoff }) ?? true else { continue }
+            try? delete(itemAt: folder.appendingPathComponent(name))
+        }
+    }
+
+    // MARK: - Recovery naming
+
+    static let recoveryFolderName = ".cove-recovery"
+
+    /// How long a deleted item stays recoverable. Undo itself is a transient
+    /// affordance; this window is for the delete noticed a day later, and it
+    /// is what keeps the recovery area from growing without bound.
+    static let recoveryRetention: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Recovery entries are named
+    /// `<timestamp>--<uuid>--<encoded path>--<name>`. The timestamp records
+    /// when the item was deleted, which is what the sweep needs: an item's own
+    /// dates travel with it through the move and say nothing about when it
+    /// left the vault. Formatted by hand in UTC rather than with a
+    /// `DateFormatter`, which is neither `Sendable` nor locale-neutral.
+    static func recoveryTimestamp(_ date: Date,
+                                  calendar: Calendar = utcCalendar()) -> String {
+        let parts = calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second], from: date)
+        return String(format: "%04d%02d%02d-%02d%02d%02d",
+                      parts.year ?? 0, parts.month ?? 0, parts.day ?? 0,
+                      parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0)
+    }
+
+    /// The deletion moment encoded in a recovery entry's name, or nil if it
+    /// carries none. Only the span before the first `--` is read, and the
+    /// timestamp never contains one, so an encoded path is never mistaken
+    /// for it.
+    static func recoveryDeletionDate(fromName name: String,
+                                     calendar: Calendar = utcCalendar()) -> Date? {
+        guard let stamp = name.components(separatedBy: "--").first else { return nil }
+        let fields = stamp.split(separator: "-", omittingEmptySubsequences: false)
+        guard fields.count == 2, fields[0].count == 8, fields[1].count == 6,
+              let day = Int(fields[0]), let time = Int(fields[1]) else { return nil }
+        var parts = DateComponents()
+        parts.year = day / 10000
+        parts.month = (day / 100) % 100
+        parts.day = day % 100
+        parts.hour = time / 10000
+        parts.minute = (time / 100) % 100
+        parts.second = time % 100
+        return calendar.date(from: parts)
+    }
+
+    static func utcCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return calendar
     }
 
     @discardableResult

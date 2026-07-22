@@ -131,6 +131,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to Cove Recovery instead of permanently removing it. Immediate Undo restores
   the original path, or asks for a new name when that path is occupied.
 - Reminder text now follows the user’s locale instead of a fixed POSIX format.
+- `CLAUDE.md` is restructured around decisions rather than descriptions: the
+  fixed rules lead, the specification is condensed, architecture keeps the
+  rationale and drops narration the code already carries, and the known issues
+  are grouped by area with duplicates removed.
 
 - Quick capture now interprets as you type and adds on return. The Tasks and
   Lists entry fields show the title, due date, time, and repeat rule they read

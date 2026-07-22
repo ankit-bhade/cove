@@ -109,6 +109,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The vault index no longer keeps every note's full text in memory. It was
+  written on each rebuild and read by nothing — search re-reads from disk by
+  design — so the index held a complete in-memory duplicate of the vault for
+  no consumer.
 - The app, tests, and widget now compile in Swift 6 mode with complete strict
   concurrency checking enabled.
 - Note and folder deletion keeps the existing confirmation but moves content

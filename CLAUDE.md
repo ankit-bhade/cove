@@ -398,7 +398,11 @@ merged.
   tag is just text. `VaultIndexBuilder` (`Cove/Core/Services/`) walks
   the scanned tree's files with coordinated reads and produces `VaultIndex`
   (`Cove/Core/Models/`): one entry per file with path, title, `TaskItem`s,
-  list headings, searchable text, modification date, and file size. A vault
+  list headings, modification date, and file size — deliberately *not* the
+  note's contents, since search re-reads from disk by design and a copy held
+  here would be a full in-memory duplicate of the vault that nothing reads.
+  The modification date and size are what let an unchanged note reuse its
+  entry. A vault
   switch performs a full parse; later file-change refreshes reuse unchanged
   entries, reparse forced/metadata-changed Markdown files, and drop deleted
   files. Scanning and indexing check cancellation throughout. `VaultManager`

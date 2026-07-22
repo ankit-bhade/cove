@@ -60,7 +60,6 @@ struct VaultIndexBuilder: Sendable {
                                           title: node.displayName,
                                           tasks: tasks,
                                           listNames: noteListNames,
-                                          searchableText: text,
                                           modificationDate: values.contentModificationDate,
                                           fileSize: values.fileSize))
         }

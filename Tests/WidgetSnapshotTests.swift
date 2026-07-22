@@ -226,6 +226,86 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: queueURL), malformed)
     }
 
+    func testFailedAttemptsAreCountedAgainstTheOperation() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let operation = PendingTaskOperation(task: SnapshotTask(
+            task("Stuck", due: "2026-07-19", line: 1)), desiredCompletion: true)
+        try store.append(operation)
+
+        XCTAssertFalse(try store.recordFailure(operationID: operation.id, maxAttempts: 3))
+        XCTAssertFalse(try store.recordFailure(operationID: operation.id, maxAttempts: 3))
+
+        XCTAssertEqual(try store.loadPendingOperations().map(\.attemptCount), [2])
+    }
+
+    func testOperationIsDroppedOnceItExhaustsItsAttempts() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let stuck = PendingTaskOperation(task: SnapshotTask(
+            task("Stuck", due: "2026-07-19", line: 1)), desiredCompletion: true)
+        let healthy = PendingTaskOperation(task: SnapshotTask(
+            task("Healthy", due: "2026-07-19", line: 2)), desiredCompletion: true)
+        try store.append(stuck)
+        try store.append(healthy)
+
+        try store.recordFailure(operationID: stuck.id, maxAttempts: 2)
+        let dropped = try store.recordFailure(operationID: stuck.id, maxAttempts: 2)
+
+        XCTAssertTrue(dropped)
+        XCTAssertEqual(try store.loadPendingOperations().map(\.id), [healthy.id])
+    }
+
+    func testRecordingFailureForAnUnknownOperationLeavesTheQueueAlone() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let operation = PendingTaskOperation(task: SnapshotTask(
+            task("Queued", due: "2026-07-19", line: 1)), desiredCompletion: true)
+        try store.append(operation)
+
+        XCTAssertFalse(try store.recordFailure(operationID: UUID()))
+
+        XCTAssertEqual(try store.loadPendingOperations(), [operation])
+    }
+
+    func testLegacyQueueIsPersistedUnderStableIdentifiersOnMigration() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let legacyURL = root.appendingPathComponent("pending-toggles.json")
+        let legacy = [PendingToggle(SnapshotTask(task("First", due: "2026-07-19", line: 1))),
+                      PendingToggle(SnapshotTask(task("Second", due: "2026-07-19", line: 2)))]
+        try JSONEncoder().encode(legacy).write(to: legacyURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        let migrated = try store.loadPendingOperations()
+        // Acknowledging one must not take the other down with it: before the
+        // migration was persisted, the first acknowledgment wrote an empty v2
+        // file that then shadowed the legacy one forever.
+        try store.acknowledge(operationID: try XCTUnwrap(migrated.first).id)
+
+        XCTAssertEqual(migrated.count, 2)
+        XCTAssertEqual(try store.loadPendingOperations().map(\.id),
+                       [try XCTUnwrap(migrated.last).id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyURL.path))
+    }
+
+    func testMigratedOperationsKeepTheirIdentifiersAcrossReads() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let legacyURL = root.appendingPathComponent("pending-toggles.json")
+        let legacy = [PendingToggle(SnapshotTask(task("Only", due: "2026-07-19", line: 1)))]
+        try JSONEncoder().encode(legacy).write(to: legacyURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        let first = try store.loadPendingOperations()
+        let second = try store.loadPendingOperations()
+
+        XCTAssertEqual(first.map(\.id), second.map(\.id))
+    }
+
     private func temporaryContainer() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("cove-widget-store-\(UUID().uuidString)",

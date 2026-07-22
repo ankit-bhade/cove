@@ -75,6 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preserving IME composition, selection, and text undo behavior.
 - Widget queue corruption and bookmark/snapshot I/O failures are diagnosed
   instead of being silently replaced or discarded.
+- A widget checkbox that can never be written back is now given up on after
+  five failed attempts instead of being retried on every launch forever. A
+  pre-upgrade queue is also persisted as it is migrated, so acknowledging one
+  migrated operation no longer discards the rest.
 
 - Quick capture no longer clears the typed sentence before its Markdown write
   succeeds. The entry field and review sheet now show saving progress, keep

@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local `Logger` categories cover vault, document, widget, notification, and
   index failures without logging note contents or task titles.
 
+### Fixed
+
+- Sweep the deleted-item recovery area. Recovered notes and folders are kept
+  for a week and then removed the next time the vault opens, so deleting
+  something eventually frees its space instead of parking it in the vault
+  forever — which, in an iCloud vault, meant every note ever deleted kept
+  syncing and consuming storage invisibly.
+
 - Project scaffolding and repository documentation (Phase 0)
 - Folder picker, bookmark persistence, stale-bookmark recovery, and read-only vault tree browser (Phase 1)
 - Editor with autosave, and note and folder creation, rename, move, and delete (Phase 2)

@@ -349,6 +349,88 @@ final class VaultFileOperationsTests: XCTestCase {
         XCTAssertEqual(try ops.readNote(at: note), "occupied\n")
     }
 
+    // MARK: - Recovery sweep
+
+    func testRecoveryTimestampRoundTrips() {
+        let moment = Date(timeIntervalSince1970: 1_753_200_061)
+        let stamp = VaultFileOperations.recoveryTimestamp(moment)
+        let parsed = VaultFileOperations.recoveryDeletionDate(
+            fromName: "\(stamp)--abc--def--Note.md")
+        XCTAssertEqual(parsed?.timeIntervalSince1970, moment.timeIntervalSince1970)
+    }
+
+    func testRecoveryDeletionDateIgnoresAnUntimestampedName() {
+        // The pre-sweep format: a bare UUID first, no deletion timestamp.
+        XCTAssertNil(VaultFileOperations.recoveryDeletionDate(
+            fromName: "b8f1c2d3-4e5f--Rm9v--Note.md"))
+    }
+
+    func testMoveToRecoveryStampsTheDeletionMoment() throws {
+        let note = try ops.createNote(named: "Doomed", in: root)
+        let moment = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root, now: moment)
+
+        let stamped = VaultFileOperations.recoveryDeletionDate(
+            fromName: record.recoveryURL.lastPathComponent)
+        XCTAssertEqual(stamped?.timeIntervalSince1970, moment.timeIntervalSince1970)
+    }
+
+    func testPurgeRemovesEntriesPastTheRetentionWindow() throws {
+        let note = try ops.createNote(named: "Ancient", in: root)
+        let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root, now: deletedAt)
+
+        try ops.purgeRecovery(vaultRoot: root,
+                              retention: VaultFileOperations.recoveryRetention,
+                              now: deletedAt.addingTimeInterval(8 * 24 * 60 * 60))
+
+        XCTAssertFalse(fileManager.fileExists(atPath: record.recoveryURL.path))
+    }
+
+    func testPurgeKeepsEntriesInsideTheRetentionWindow() throws {
+        let note = try ops.createNote(named: "Recent", in: root)
+        let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root, now: deletedAt)
+
+        try ops.purgeRecovery(vaultRoot: root,
+                              retention: VaultFileOperations.recoveryRetention,
+                              now: deletedAt.addingTimeInterval(6 * 24 * 60 * 60))
+
+        XCTAssertTrue(fileManager.fileExists(atPath: record.recoveryURL.path))
+        try ops.restore(record)
+        XCTAssertTrue(exists("Recent.md"))
+    }
+
+    func testPurgeSweepsEntriesWrittenBeforeTimestampsExisted() throws {
+        let folder = root.appendingPathComponent(VaultFileOperations.recoveryFolderName,
+                                                 isDirectory: true)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let legacy = folder.appendingPathComponent(
+            "\(UUID().uuidString.lowercased())--Rm9v--Note.md")
+        try "orphaned\n".write(to: legacy, atomically: true, encoding: .utf8)
+
+        try ops.purgeRecovery(vaultRoot: root)
+
+        XCTAssertFalse(fileManager.fileExists(atPath: legacy.path))
+    }
+
+    func testPurgeRemovesRecoveredFoldersWholesale() throws {
+        let folder = try ops.createFolder(named: "Archive", in: root)
+        try ops.createNote(named: "Inside", in: folder)
+        let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let record = try ops.moveToRecovery(itemAt: folder, vaultRoot: root, now: deletedAt)
+
+        try ops.purgeRecovery(vaultRoot: root,
+                              now: deletedAt.addingTimeInterval(30 * 24 * 60 * 60))
+
+        XCTAssertFalse(fileManager.fileExists(atPath: record.recoveryURL.path))
+    }
+
+    func testPurgeIsANoOpWithoutARecoveryArea() throws {
+        XCTAssertNoThrow(try ops.purgeRecovery(vaultRoot: root))
+    }
+
     private func modificationDate(of url: URL) throws -> Date {
         try XCTUnwrap(fileManager.attributesOfItem(atPath: url.path)[.modificationDate] as? Date)
     }

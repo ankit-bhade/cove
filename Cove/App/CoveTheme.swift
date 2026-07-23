@@ -268,6 +268,29 @@ struct CoveIconTile: View {
     }
 }
 
+/// A tinted count, the shape the app uses everywhere a row or card reports
+/// "how many". Shared because the Tasks card and the Lists rows are read
+/// side by side — a bare `Label` with a `circle.fill` glyph read as a stray
+/// bullet next to its own text rather than as the badge beside it.
+struct CoveCountBadge: View {
+    let text: String
+    var tint: Color = CoveTheme.teal
+
+    init(_ text: String, tint: Color = CoveTheme.teal) {
+        self.text = text
+        self.tint = tint
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.12), in: Capsule())
+    }
+}
+
 /// A refresh action with real progress feedback. It prevents accidental
 /// duplicate scans and gives VoiceOver an accurate state while work runs.
 struct CoveRefreshButton: View {

@@ -468,6 +468,17 @@ new day or stretch still changes it.
 exist so every scrolling screen shares one definition instead of repeating an
 `#if os(iOS)` block. `CoveIconTile` is decorative, so it is
 `accessibilityHidden` (the row carries the label) and `@ScaledMetric`-sized.
+`CoveCountBadge` is the one shape for "how many": the Tasks card and the Lists
+rows sit a tab apart and get compared, and the Tasks count was previously a
+`Label` whose `circle.fill` glyph read as a bullet rather than a badge.
+
+**Section headers are text, never `Label`s.** Caption-size SF Symbols with
+fine detail — a sunrise, a calendar grid — render as smudges, and a header
+that already says "Tomorrow · 1" has nothing left for a glyph to add.
+
+**Tab and sidebar symbols are outline names.** The iOS tab bar substitutes
+the filled variant itself, so the choice only shows through on the macOS
+sidebar, where outline is the platform convention.
 The visual system is standard SwiftUI throughout — no assets beyond
 `LaunchIcon`, no dependencies, no persistence changes.
 

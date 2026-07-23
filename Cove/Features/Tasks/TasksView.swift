@@ -77,7 +77,11 @@ struct TasksView: View {
                                 isProcessing: pendingTaskIDs.contains(task.id))
                     }
                 } header: {
-                    Label(group.title, systemImage: group.symbol)
+                    // Plain text, like every other section header in the app.
+                    // The glyphs these headers used to carry — a sunrise, a
+                    // calendar — turned to mush at caption size and said
+                    // nothing the title didn't already say.
+                    Text(group.title)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(group.isOverdue ? Color.red : .secondary)
                 }
@@ -161,9 +165,8 @@ struct TasksView: View {
     }
 
     private func openTaskCount(_ count: Int) -> some View {
-        Label("\(count) open", systemImage: "circle.fill")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(CoveTheme.teal)
+        CoveCountBadge("\(count) open")
+            .accessibilityLabel("\(count) open tasks")
     }
 
     /// Removes the task's line from its note. Deliberately not confirmed —

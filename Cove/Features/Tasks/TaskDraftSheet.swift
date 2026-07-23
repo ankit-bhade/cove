@@ -53,7 +53,9 @@ struct TaskDraftSheet: View {
                 } header: {
                     Text("Task")
                 } footer: {
-                    Text("Dates, times, and repeats at the end of the sentence are understood — e.g. “tmr”, “next fri”, “6pm”, “every sun”.")
+                    Text(
+                        "Dates, times, and repeats at the end of the sentence are understood — e.g. “tmr”, “next fri”, “6pm”, “every sun”."
+                    )
                 }
 
                 Section("Details") {
@@ -76,8 +78,10 @@ struct TaskDraftSheet: View {
                             Label("Time", systemImage: "clock")
                         }
                         if draft.dueTimeString != nil {
-                            DatePicker(selection: timeBinding,
-                                       displayedComponents: .hourAndMinute) {
+                            DatePicker(
+                                selection: timeBinding,
+                                displayedComponents: .hourAndMinute
+                            ) {
                                 Label("At", systemImage: "bell")
                             }
                         }
@@ -97,17 +101,19 @@ struct TaskDraftSheet: View {
                 Section {
                     Label {
                         if draft.dueTimeString != nil {
-                            Text(draft.recurrence == nil
-                                 ? "Notification at the time above."
-                                 : "Notification at the time above, every occurrence.")
+                            Text(
+                                draft.recurrence == nil
+                                    ? "Notification at the time above."
+                                    : "Notification at the time above, every occurrence.")
                         } else if draft.dueDateString == nil {
                             Text("No due date, so no notification.")
                         } else {
                             Text("No time set, so no notification.")
                         }
                     } icon: {
-                        Image(systemName: draft.dueTimeString != nil
-                              ? "bell" : "bell.slash")
+                        Image(
+                            systemName: draft.dueTimeString != nil
+                                ? "bell" : "bell.slash")
                     }
                     .foregroundStyle(.secondary)
                     .font(.callout)
@@ -119,7 +125,7 @@ struct TaskDraftSheet: View {
             .coveReadableWidth(680)
             .navigationTitle("New Task")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -145,7 +151,7 @@ struct TaskDraftSheet: View {
         }
         .interactiveDismissDisabled(isAdding)
         #if os(macOS)
-        .frame(minWidth: 380, minHeight: 440)
+            .frame(minWidth: 380, minHeight: 440)
         #endif
     }
 
@@ -203,8 +209,9 @@ struct TaskDraftSheet: View {
         Binding {
             let parts = (draft.dueDateString ?? "").split(separator: "-").compactMap { Int($0) }
             guard parts.count == 3,
-                  let date = TaskCalendar.gregorian().date(from: DateComponents(
-                      year: parts[0], month: parts[1], day: parts[2], hour: 12))
+                let date = TaskCalendar.gregorian().date(
+                    from: DateComponents(
+                        year: parts[0], month: parts[1], day: parts[2], hour: 12))
             else { return .now }
             return date
         } set: { newValue in
@@ -224,12 +231,14 @@ struct TaskDraftSheet: View {
         Binding {
             let parts = (draft.dueTimeString ?? "09:00")
                 .split(separator: ":").compactMap { Int($0) }
-            let components = DateComponents(hour: parts.first ?? 9,
-                                            minute: parts.count > 1 ? parts[1] : 0)
+            let components = DateComponents(
+                hour: parts.first ?? 9,
+                minute: parts.count > 1 ? parts[1] : 0)
             return TaskCalendar.gregorian().date(from: components) ?? .now
         } set: { newValue in
-            let parts = TaskCalendar.gregorian().dateComponents([.hour, .minute],
-                                                                from: newValue)
+            let parts = TaskCalendar.gregorian().dateComponents(
+                [.hour, .minute],
+                from: newValue)
             draft.dueTimeString = String(format: "%02d:%02d", parts.hour!, parts.minute!)
         }
     }

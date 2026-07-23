@@ -12,12 +12,14 @@ final class VaultManagerRefreshTests: XCTestCase {
 
     override func setUp() async throws {
         root = fileManager.temporaryDirectory
-            .appendingPathComponent("cove-refresh-tests-\(UUID().uuidString)",
-                                    isDirectory: true)
+            .appendingPathComponent(
+                "cove-refresh-tests-\(UUID().uuidString)",
+                isDirectory: true)
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         try "- [ ] Buy milk @due(2026-07-20)\n"
-            .write(to: root.appendingPathComponent("Tasks.md"),
-                   atomically: true, encoding: .utf8)
+            .write(
+                to: root.appendingPathComponent("Tasks.md"),
+                atomically: true, encoding: .utf8)
 
         suiteName = "cove-refresh-defaults-\(UUID().uuidString)"
         defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -29,9 +31,10 @@ final class VaultManagerRefreshTests: XCTestCase {
     }
 
     private func makeManager(recorder: ScanRecorder) -> VaultManager {
-        let bookmarkStore = VaultBookmarkStore(defaults: defaults,
-                                               creationOptions: [],
-                                               resolutionOptions: [])
+        let bookmarkStore = VaultBookmarkStore(
+            defaults: defaults,
+            creationOptions: [],
+            resolutionOptions: [])
         return VaultManager(bookmarkStore: bookmarkStore) {
             url, previousIndex, changedURLs, existingTree in
             await recorder.record(reusedTree: existingTree != nil)
@@ -82,9 +85,10 @@ final class VaultManagerRefreshTests: XCTestCase {
 
         let reuse = await recorder.reuse
         XCTAssertEqual(reuse, [false, false])
-        XCTAssertTrue(manager.rootNode?.allFiles.contains {
-            $0.url.lastPathComponent == "Journal.md"
-        } == true)
+        XCTAssertTrue(
+            manager.rootNode?.allFiles.contains {
+                $0.url.lastPathComponent == "Journal.md"
+            } == true)
     }
 
     /// The capture note is created on demand, so the write that creates it
@@ -102,6 +106,28 @@ final class VaultManagerRefreshTests: XCTestCase {
         let reuse = await recorder.reuse
         XCTAssertEqual(reuse, [false, false])
         XCTAssertEqual(manager.index.allTasks.count, 1)
+    }
+
+    func testCaptureWithoutAnOpenVaultReportsAnError() async throws {
+        let manager = makeManager(recorder: ScanRecorder())
+
+        do {
+            try await manager.captureTask(TaskDraft(title: "Order cake"))
+            XCTFail("Expected capture to fail while no vault is open")
+        } catch is VaultManager.VaultUnavailableError {
+            // Expected.
+        }
+    }
+
+    func testListMutationWithoutAnOpenVaultReportsAnError() async throws {
+        let manager = makeManager(recorder: ScanRecorder())
+
+        do {
+            try await manager.createList(named: "Groceries")
+            XCTFail("Expected list creation to fail while no vault is open")
+        } catch is VaultManager.VaultUnavailableError {
+            // Expected.
+        }
     }
 }
 

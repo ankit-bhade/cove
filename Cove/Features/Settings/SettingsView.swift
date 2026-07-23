@@ -72,7 +72,7 @@ struct SettingsView: View {
                 TextField("Your name", text: $greetingName)
                     .textFieldStyle(.plain)
                     #if os(iOS)
-                    .textInputAutocapitalization(.words)
+                        .textInputAutocapitalization(.words)
                     #endif
                     .autocorrectionDisabled()
             }
@@ -149,14 +149,16 @@ struct SettingsView: View {
             Text("Task Reminders")
                 .font(.body.weight(.medium))
         } icon: {
-            CoveIconTile(systemName: notificationStatusIcon,
-                         tint: notificationsEnabled ? CoveTheme.accent : .secondary)
+            CoveIconTile(
+                systemName: notificationStatusIcon,
+                tint: notificationsEnabled ? CoveTheme.accent : .secondary)
         }
     }
 
     private var notificationBadge: some View {
-        CoveCountBadge(notificationStatusLabel,
-                       tint: notificationsEnabled ? CoveTheme.accent : .secondary)
+        CoveCountBadge(
+            notificationStatusLabel,
+            tint: notificationsEnabled ? CoveTheme.accent : .secondary)
     }
 
     private var notificationStatusLabel: String {
@@ -195,13 +197,13 @@ struct SettingsView: View {
 
     private func openNotificationSettings() {
         #if os(iOS)
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            openURL(url)
-        }
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                openURL(url)
+            }
         #else
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
-            openURL(url)
-        }
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+                openURL(url)
+            }
         #endif
     }
 

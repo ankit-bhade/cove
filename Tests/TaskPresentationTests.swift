@@ -8,26 +8,32 @@ final class TaskPresentationTests: XCTestCase {
 
     private let calendar = Calendar.current
 
-    private func now(_ year: Int, _ month: Int, _ day: Int,
-                     hour: Int = 9, minute: Int = 0) -> Date {
-        calendar.date(from: DateComponents(
-            year: year, month: month, day: day, hour: hour, minute: minute))!
+    private func now(
+        _ year: Int, _ month: Int, _ day: Int,
+        hour: Int = 9, minute: Int = 0
+    ) -> Date {
+        calendar.date(
+            from: DateComponents(
+                year: year, month: month, day: day, hour: hour, minute: minute))!
     }
 
-    private func task(text: String = "Task",
-                      due: String?,
-                      time: String? = nil,
-                      recurrence: RecurrenceRule? = nil,
-                      completed: Bool = false) -> TaskItem {
-        TaskItem(fileURL: URL(fileURLWithPath: "/vault/Note.md"),
-                 fileTitle: "Note",
-                 lineNumber: 0,
-                 text: text,
-                 dueDateString: due,
-                 dueTimeString: time,
-                 recurrence: recurrence,
-                 isCompleted: completed,
-                 listName: nil)
+    private func task(
+        text: String = "Task",
+        due: String?,
+        time: String? = nil,
+        recurrence: RecurrenceRule? = nil,
+        completed: Bool = false
+    ) -> TaskItem {
+        TaskItem(
+            fileURL: URL(fileURLWithPath: "/vault/Note.md"),
+            fileTitle: "Note",
+            lineNumber: 0,
+            text: text,
+            dueDateString: due,
+            dueTimeString: time,
+            recurrence: recurrence,
+            isCompleted: completed,
+            listName: nil)
     }
 
     // MARK: - Overdue
@@ -96,12 +102,16 @@ final class TaskPresentationTests: XCTestCase {
     /// or a task would change its words the moment it was saved.
     func testDraftShapedInputMatchesTheTaskRowWording() {
         let today = now(2026, 7, 19, hour: 8)
-        for (date, time) in [("2026-07-19", nil), ("2026-07-20", "15:30"),
-                             ("2026-07-22", nil), ("2027-09-14", "09:00")]
-            as [(String, String?)] {
+        for (date, time) in [
+            ("2026-07-19", nil), ("2026-07-20", "15:30"),
+            ("2026-07-22", nil), ("2027-09-14", "09:00"),
+        ]
+            as [(String, String?)]
+        {
             XCTAssertEqual(
-                DueDescription.text(dueDateString: date, dueTimeString: time,
-                                    at: today, calendar: calendar),
+                DueDescription.text(
+                    dueDateString: date, dueTimeString: time,
+                    at: today, calendar: calendar),
                 task(due: date, time: time).relativeDueDescription(at: today),
                 "\(date) \(time ?? "-")")
         }
@@ -111,8 +121,9 @@ final class TaskPresentationTests: XCTestCase {
     /// capsule, and neither does the capture preview.
     func testUndatedInputHasNoWording() {
         XCTAssertEqual(
-            DueDescription.text(dueDateString: nil, dueTimeString: nil,
-                                at: now(2026, 7, 19), calendar: calendar),
+            DueDescription.text(
+                dueDateString: nil, dueTimeString: nil,
+                at: now(2026, 7, 19), calendar: calendar),
             "")
     }
 
@@ -178,7 +189,8 @@ final class TaskPresentationTests: XCTestCase {
     }
 
     func testAnUndatedItemHasNoDueDescription() {
-        XCTAssertEqual(task(text: "Milk", due: nil)
-            .relativeDueDescription(at: now(2026, 7, 19, hour: 12)), "")
+        XCTAssertEqual(
+            task(text: "Milk", due: nil)
+                .relativeDueDescription(at: now(2026, 7, 19, hour: 12)), "")
     }
 }

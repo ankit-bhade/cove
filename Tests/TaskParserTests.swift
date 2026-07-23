@@ -15,10 +15,11 @@ final class TaskParserTests: XCTestCase {
     }
 
     func testParsesCompletedTaskWithEitherCase() {
-        let tasks = TaskParser.tasks(in: """
-            - [x] Done low @due(2026-01-01)
-            - [X] Done high @due(2026-01-02)
-            """)
+        let tasks = TaskParser.tasks(
+            in: """
+                - [x] Done low @due(2026-01-01)
+                - [X] Done high @due(2026-01-02)
+                """)
         XCTAssertEqual(tasks.map(\.isCompleted), [true, true])
         XCTAssertEqual(tasks.map(\.lineNumber), [0, 1])
     }
@@ -115,12 +116,14 @@ final class TaskParserTests: XCTestCase {
             - [ ] Doctor @due(2026-07-21 10:00) @repeat(every 2 weeks)
             """
         let tasks = TaskParser.tasks(in: text)
-        XCTAssertEqual(tasks.map(\.recurrence), [
-            RecurrenceRule(frequency: .weekly, byWeekday: [1]),
-            .everyWeekday,
-            RecurrenceRule(frequency: .daily),
-            RecurrenceRule(frequency: .weekly, interval: 2),
-        ])
+        XCTAssertEqual(
+            tasks.map(\.recurrence),
+            [
+                RecurrenceRule(frequency: .weekly, byWeekday: [1]),
+                .everyWeekday,
+                RecurrenceRule(frequency: .daily),
+                RecurrenceRule(frequency: .weekly, interval: 2),
+            ])
     }
 
     func testRejectsUnknownRepeatRuleOrTrailingText() {
@@ -140,15 +143,17 @@ final class TaskParserTests: XCTestCase {
 
     // MARK: - Toggling
 
-    private func toggling(_ text: String,
-                          taskText: String = "Buy milk",
-                          due: String? = "2026-07-20",
-                          time: String? = nil,
-                          recurrence: RecurrenceRule? = nil,
-                          isCompleted: Bool = false,
-                          list: String? = nil,
-                          line: Int = 0,
-                          today: String = "2026-07-18") -> String? {
+    private func toggling(
+        _ text: String,
+        taskText: String = "Buy milk",
+        due: String? = "2026-07-20",
+        time: String? = nil,
+        recurrence: RecurrenceRule? = nil,
+        isCompleted: Bool = false,
+        list: String? = nil,
+        line: Int = 0,
+        today: String = "2026-07-18"
+    ) -> String? {
         TaskParser.togglingTask(
             withText: taskText, dueDateString: due, dueTimeString: time,
             recurrence: recurrence, isCompleted: isCompleted, listName: list,
@@ -157,14 +162,16 @@ final class TaskParserTests: XCTestCase {
 
     func testTogglingIncompleteTaskChecksIt() {
         let text = "Intro\n- [ ] Buy milk @due(2026-07-20)\n"
-        XCTAssertEqual(toggling(text, line: 1),
-                       "Intro\n- [x] Buy milk @due(2026-07-20)\n")
+        XCTAssertEqual(
+            toggling(text, line: 1),
+            "Intro\n- [x] Buy milk @due(2026-07-20)\n")
     }
 
     func testTogglingCompletedTaskUnchecksIt() {
         let text = "- [X] Buy milk @due(2026-07-20)\n"
-        XCTAssertEqual(toggling(text, isCompleted: true),
-                       "- [ ] Buy milk @due(2026-07-20)\n")
+        XCTAssertEqual(
+            toggling(text, isCompleted: true),
+            "- [ ] Buy milk @due(2026-07-20)\n")
     }
 
     func testTogglingPrefersRememberedLineAmongDuplicates() {
@@ -172,7 +179,9 @@ final class TaskParserTests: XCTestCase {
             - [ ] Call mom @due(2026-07-20)
             - [ ] Call mom @due(2026-07-20)
             """
-        XCTAssertEqual(toggling(text, taskText: "Call mom", line: 1), """
+        XCTAssertEqual(
+            toggling(text, taskText: "Call mom", line: 1),
+            """
             - [ ] Call mom @due(2026-07-20)
             - [x] Call mom @due(2026-07-20)
             """)
@@ -180,8 +189,9 @@ final class TaskParserTests: XCTestCase {
 
     func testTogglingFallsBackWhenLinesShifted() {
         let text = "New first line\n- [ ] Buy milk @due(2026-07-20)\n"
-        XCTAssertEqual(toggling(text, line: 0),
-                       "New first line\n- [x] Buy milk @due(2026-07-20)\n")
+        XCTAssertEqual(
+            toggling(text, line: 0),
+            "New first line\n- [x] Buy milk @due(2026-07-20)\n")
     }
 
     func testTogglingReturnsNilWhenTaskIsGone() {
@@ -196,9 +206,10 @@ final class TaskParserTests: XCTestCase {
         // Sunday 2026-07-19 → next Sunday, checkbox stays open.
         let text = "- [ ] Laundry @due(2026-07-19 18:00) @repeat(every sunday)\n"
         XCTAssertEqual(
-            toggling(text, taskText: "Laundry", due: "2026-07-19", time: "18:00",
-                     recurrence: RecurrenceRule(frequency: .weekly, byWeekday: [1]),
-                     today: "2026-07-18"),
+            toggling(
+                text, taskText: "Laundry", due: "2026-07-19", time: "18:00",
+                recurrence: RecurrenceRule(frequency: .weekly, byWeekday: [1]),
+                today: "2026-07-18"),
             "- [ ] Laundry @due(2026-07-26 18:00) @repeat(every sunday)\n")
     }
 
@@ -207,9 +218,10 @@ final class TaskParserTests: XCTestCase {
         // period after the stale due date.
         let text = "- [ ] Stretch @due(2026-06-01) @repeat(daily)\n"
         XCTAssertEqual(
-            toggling(text, taskText: "Stretch", due: "2026-06-01",
-                     recurrence: RecurrenceRule(frequency: .daily),
-                     today: "2026-07-18"),
+            toggling(
+                text, taskText: "Stretch", due: "2026-06-01",
+                recurrence: RecurrenceRule(frequency: .daily),
+                today: "2026-07-18"),
             "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n")
     }
 
@@ -218,41 +230,47 @@ final class TaskParserTests: XCTestCase {
         let parsed = try XCTUnwrap(TaskParser.tasks(in: text).first)
         let identity = taskIdentity(parsed)
 
-        XCTAssertEqual(TaskParser.settingTaskCompleted(
-            identity, to: true, todayDateString: "2026-07-19", in: text), text)
+        XCTAssertEqual(
+            TaskParser.settingTaskCompleted(
+                identity, to: true, todayDateString: "2026-07-19", in: text), text)
     }
 
     func testSetCompletedReturnsNilAfterTargetWasDeleted() throws {
         let text = "- [ ] Buy milk @due(2026-07-20)\n"
         let parsed = try XCTUnwrap(TaskParser.tasks(in: text).first)
 
-        XCTAssertNil(TaskParser.settingTaskCompleted(
-            taskIdentity(parsed), to: true,
-            todayDateString: "2026-07-19", in: "Nothing here\n"))
+        XCTAssertNil(
+            TaskParser.settingTaskCompleted(
+                taskIdentity(parsed), to: true,
+                todayDateString: "2026-07-19", in: "Nothing here\n"))
     }
 
     func testRecurringDesiredCompletionRetryDoesNotAdvanceTwice() throws {
         let text = "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n"
         let parsed = try XCTUnwrap(TaskParser.tasks(in: text).first)
         let identity = taskIdentity(parsed)
-        let once = try XCTUnwrap(TaskParser.settingTaskCompleted(
-            identity, to: true, todayDateString: "2026-07-19", in: text))
+        let once = try XCTUnwrap(
+            TaskParser.settingTaskCompleted(
+                identity, to: true, todayDateString: "2026-07-19", in: text))
 
         XCTAssertEqual(once, "- [ ] Stretch @due(2026-07-20) @repeat(daily)\n")
-        XCTAssertNil(TaskParser.settingTaskCompleted(
-            identity, to: true, todayDateString: "2026-07-19", in: once))
+        XCTAssertNil(
+            TaskParser.settingTaskCompleted(
+                identity, to: true, todayDateString: "2026-07-19", in: once))
     }
 
     // MARK: - Removing one task
 
-    private func removing(_ text: String,
-                          taskText: String = "Buy milk",
-                          due: String? = "2026-07-20",
-                          time: String? = nil,
-                          recurrence: RecurrenceRule? = nil,
-                          isCompleted: Bool = false,
-                          list: String? = nil,
-                          line: Int = 0) -> String? {
+    private func removing(
+        _ text: String,
+        taskText: String = "Buy milk",
+        due: String? = "2026-07-20",
+        time: String? = nil,
+        recurrence: RecurrenceRule? = nil,
+        isCompleted: Bool = false,
+        list: String? = nil,
+        line: Int = 0
+    ) -> String? {
         TaskParser.removingTask(
             withText: taskText, dueDateString: due, dueTimeString: time,
             recurrence: recurrence, isCompleted: isCompleted, listName: list,
@@ -260,13 +278,14 @@ final class TaskParserTests: XCTestCase {
     }
 
     private func taskIdentity(_ task: TaskParser.ParsedTask) -> TaskIdentity {
-        TaskIdentity(filePath: "/vault/Tasks.md",
-                     lineNumber: task.lineNumber,
-                     text: task.text,
-                     dueDateString: task.dueDateString,
-                     dueTimeString: task.dueTimeString,
-                     recurrenceTag: task.recurrence?.tagText,
-                     listName: task.listName)
+        TaskIdentity(
+            filePath: "/vault/Tasks.md",
+            lineNumber: task.lineNumber,
+            text: task.text,
+            dueDateString: task.dueDateString,
+            dueTimeString: task.dueTimeString,
+            recurrenceTag: task.recurrence?.tagText,
+            listName: task.listName)
     }
 
     func testRemovingTaskDropsItsWholeLine() {
@@ -281,7 +300,9 @@ final class TaskParserTests: XCTestCase {
             - [ ] Call mom @due(2026-07-21)
             Some prose.
             """
-        XCTAssertEqual(removing(text, line: 1), """
+        XCTAssertEqual(
+            removing(text, line: 1),
+            """
             # Tasks
             - [ ] Call mom @due(2026-07-21)
             Some prose.
@@ -301,7 +322,9 @@ final class TaskParserTests: XCTestCase {
             """
         // Both lines are identical, so either removal leaves the same text —
         // what matters is that exactly one goes.
-        XCTAssertEqual(removing(text, taskText: "Call mom", line: 1), """
+        XCTAssertEqual(
+            removing(text, taskText: "Call mom", line: 1),
+            """
             - [ ] Call mom @due(2026-07-20)
             Tail
             """)
@@ -314,8 +337,10 @@ final class TaskParserTests: XCTestCase {
 
     func testRemovingRecurringTaskMatchesOnItsRule() {
         let text = "- [ ] Stretch @due(2026-07-20) @repeat(daily)\n"
-        XCTAssertEqual(removing(text, taskText: "Stretch",
-                                recurrence: RecurrenceRule(frequency: .daily)), "")
+        XCTAssertEqual(
+            removing(
+                text, taskText: "Stretch",
+                recurrence: RecurrenceRule(frequency: .daily)), "")
         // A task whose rule differs on disk is not the indexed one.
         XCTAssertNil(removing(text, taskText: "Stretch"))
     }
@@ -338,7 +363,9 @@ final class TaskParserTests: XCTestCase {
             - [X] Also finished @due(2026-07-20 08:30)
             - [x] Plain Markdown checkbox
             """
-        XCTAssertEqual(TaskParser.clearingCompletedTasks(in: text), """
+        XCTAssertEqual(
+            TaskParser.clearingCompletedTasks(in: text),
+            """
             # Tasks
             - [ ] Still open @due(2026-07-19)
             - [x] Plain Markdown checkbox

@@ -29,28 +29,33 @@ enum TaskNotificationPlanner {
     /// stay under it and let the soonest-due tasks win.
     static let maximumPlans = 60
 
-    static func plans(for tasks: [TaskItem],
-                      now: Date,
-                      calendar: Calendar = TaskCalendar.gregorian()) -> [TaskNotificationPlan] {
+    static func plans(
+        for tasks: [TaskItem],
+        now: Date,
+        calendar: Calendar = TaskCalendar.gregorian()
+    ) -> [TaskNotificationPlan] {
         let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         // The cap is applied before the bodies are worded: the tasks past it
         // are never scheduled, so formatting a date for each of them is work
         // thrown away.
-        return tasks
+        return
+            tasks
             .filter { !$0.isCompleted && $0.dueTimeString != nil }
             .sorted(by: VaultIndex.byDueDate)
             .compactMap { task -> (task: TaskItem, fireDate: Date, components: DateComponents)? in
                 // A time can only exist alongside a date, so the undated
                 // list items never reach here — but the model allows nil.
                 guard let time = task.timeComponents,
-                      let dueDateString = task.dueDateString else { return nil }
+                    let dueDateString = task.dueDateString
+                else { return nil }
                 let parts = dueDateString.split(separator: "-").compactMap { Int($0) }
                 guard parts.count == 3 else { return nil }
                 let components = DateComponents(
                     year: parts[0], month: parts[1], day: parts[2],
                     hour: time.hour, minute: time.minute)
                 guard let fireDate = calendar.date(from: components),
-                      fireDate > now else { return nil }
+                    fireDate > now
+                else { return nil }
                 return (task, fireDate, components)
             }
             .prefix(maximumPlans)
@@ -66,8 +71,9 @@ enum TaskNotificationPlanner {
     /// A compact, human-readable reminder date, for example
     /// `Jul 18, 8:00pm` or `Jul 18, 8:30pm`.
     private static func formattedDueMoment(_ date: Date, calendar: Calendar) -> String {
-        TemplateDateFormatters.shared.string(from: date,
-                                             template: "MMM d, h:mm a",
-                                             calendar: calendar)
+        TemplateDateFormatters.shared.string(
+            from: date,
+            template: "MMM d, h:mm a",
+            calendar: calendar)
     }
 }

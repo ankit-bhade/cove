@@ -38,8 +38,9 @@ struct SearchResultsView: View {
                         }
                     }
                 } header: {
-                    CoveSectionHeader(results.count == 1 ? "Result" : "Results",
-                                      count: results.count)
+                    CoveSectionHeader(
+                        results.count == 1 ? "Result" : "Results",
+                        count: results.count)
                 }
             }
         }

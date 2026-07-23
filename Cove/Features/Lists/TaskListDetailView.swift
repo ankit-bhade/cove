@@ -39,10 +39,11 @@ struct TaskListDetailView: View {
                 if !list.openTasks.isEmpty {
                     Section {
                         ForEach(list.openTasks) { task in
-                            TaskRow(task: task, now: now,
-                                    onToggle: { toggle(task) },
-                                    onDelete: { delete(task) },
-                                    isProcessing: pendingTaskIDs.contains(task.id))
+                            TaskRow(
+                                task: task, now: now,
+                                onToggle: { toggle(task) },
+                                onDelete: { delete(task) },
+                                isProcessing: pendingTaskIDs.contains(task.id))
                         }
                     } header: {
                         CoveSectionHeader("To Do", count: list.openTasks.count)
@@ -51,10 +52,11 @@ struct TaskListDetailView: View {
                 if !list.completedTasks.isEmpty {
                     Section {
                         ForEach(list.completedTasks) { task in
-                            TaskRow(task: task, now: now,
-                                    onToggle: { toggle(task) },
-                                    onDelete: { delete(task) },
-                                    isProcessing: pendingTaskIDs.contains(task.id))
+                            TaskRow(
+                                task: task, now: now,
+                                onToggle: { toggle(task) },
+                                onDelete: { delete(task) },
+                                isProcessing: pendingTaskIDs.contains(task.id))
                         }
                     } header: {
                         CoveSectionHeader(title: "Done", count: list.completedTasks.count) {
@@ -72,7 +74,8 @@ struct TaskListDetailView: View {
                         CoveEmptyState(
                             "Nothing Here Yet",
                             systemName: "tray",
-                            description: "Add an item above. A date is optional — “milk” is fine, and so is “order cake fri 3pm”."
+                            description:
+                                "Add an item above. A date is optional — “milk” is fine, and so is “order cake fri 3pm”."
                         )
                         .listRowBackground(Color.clear)
                     }
@@ -81,12 +84,12 @@ struct TaskListDetailView: View {
         }
         .coveListStyle()
         #if os(iOS)
-        .listSectionSpacing(.compact)
+            .listSectionSpacing(.compact)
         #endif
         .coveReadableWidth()
         .navigationTitle(listName)
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem {
@@ -212,9 +215,9 @@ struct TaskListDetailView: View {
                 let previousCompletion = task.isCompleted
                 undoManager?.registerUndo(withTarget: vaultManager) { manager in
                     Task {
-                        do { try await manager.setTaskCompleted(task, to: previousCompletion) }
-                        catch {
-                            CoveLog.vault.error("Checkbox undo failed: \(error.localizedDescription, privacy: .private)")
+                        do { try await manager.setTaskCompleted(task, to: previousCompletion) } catch {
+                            CoveLog.vault.error(
+                                "Checkbox undo failed: \(error.localizedDescription, privacy: .private)")
                         }
                     }
                 }
@@ -245,8 +248,7 @@ struct TaskListDetailView: View {
                 let record = try await vaultManager.deleteTask(task)
                 undoManager?.registerUndo(withTarget: vaultManager) { manager in
                     Task {
-                        do { try await manager.restoreDeletedTask(record) }
-                        catch {
+                        do { try await manager.restoreDeletedTask(record) } catch {
                             CoveLog.vault.error("Task undo failed: \(error.localizedDescription, privacy: .private)")
                         }
                     }

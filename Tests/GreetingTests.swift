@@ -10,8 +10,9 @@ final class GreetingTests: XCTestCase {
     }()
 
     private func date(_ year: Int, _ month: Int, _ day: Int, hour: Int) -> Date {
-        calendar.date(from: DateComponents(
-            year: year, month: month, day: day, hour: hour))!
+        calendar.date(
+            from: DateComponents(
+                year: year, month: month, day: day, hour: hour))!
     }
 
     private func text(_ date: Date, name: String? = nil) -> String {
@@ -20,8 +21,9 @@ final class GreetingTests: XCTestCase {
 
     func testEveryHourProducesAGreeting() {
         for hour in 0..<24 {
-            XCTAssertFalse(text(date(2026, 7, 19, hour: hour)).isEmpty,
-                           "hour \(hour) produced no greeting")
+            XCTAssertFalse(
+                text(date(2026, 7, 19, hour: hour)).isEmpty,
+                "hour \(hour) produced no greeting")
         }
     }
 
@@ -48,8 +50,9 @@ final class GreetingTests: XCTestCase {
 
     func testGreetingIsStableWithinAStretchOfTheSameDay() {
         // The browser re-renders every minute; the phrase must not reshuffle.
-        XCTAssertEqual(text(date(2026, 7, 19, hour: 9)),
-                       text(date(2026, 7, 19, hour: 10)))
+        XCTAssertEqual(
+            text(date(2026, 7, 19, hour: 9)),
+            text(date(2026, 7, 19, hour: 10)))
     }
 
     func testGreetingChangesAcrossStretches() {

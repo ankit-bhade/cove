@@ -15,21 +15,23 @@ struct VaultBookmarkStore {
     static let bookmarkKey = "vaultBookmark"
 
     #if os(macOS)
-    static let platformCreationOptions: URL.BookmarkCreationOptions = [.withSecurityScope]
-    static let platformResolutionOptions: URL.BookmarkResolutionOptions = [.withSecurityScope]
+        static let platformCreationOptions: URL.BookmarkCreationOptions = [.withSecurityScope]
+        static let platformResolutionOptions: URL.BookmarkResolutionOptions = [.withSecurityScope]
     #else
-    // iOS document-picker URLs produce implicitly security-scoped bookmarks.
-    static let platformCreationOptions: URL.BookmarkCreationOptions = []
-    static let platformResolutionOptions: URL.BookmarkResolutionOptions = []
+        // iOS document-picker URLs produce implicitly security-scoped bookmarks.
+        static let platformCreationOptions: URL.BookmarkCreationOptions = []
+        static let platformResolutionOptions: URL.BookmarkResolutionOptions = []
     #endif
 
     private let defaults: UserDefaults
     private let creationOptions: URL.BookmarkCreationOptions
     private let resolutionOptions: URL.BookmarkResolutionOptions
 
-    init(defaults: UserDefaults = .standard,
-         creationOptions: URL.BookmarkCreationOptions = Self.platformCreationOptions,
-         resolutionOptions: URL.BookmarkResolutionOptions = Self.platformResolutionOptions) {
+    init(
+        defaults: UserDefaults = .standard,
+        creationOptions: URL.BookmarkCreationOptions = Self.platformCreationOptions,
+        resolutionOptions: URL.BookmarkResolutionOptions = Self.platformResolutionOptions
+    ) {
         self.defaults = defaults
         self.creationOptions = creationOptions
         self.resolutionOptions = resolutionOptions
@@ -47,9 +49,10 @@ struct VaultBookmarkStore {
 
     /// The URL must be within an active security scope when this is called.
     func saveBookmark(for url: URL) throws {
-        let data = try url.bookmarkData(options: creationOptions,
-                                        includingResourceValuesForKeys: nil,
-                                        relativeTo: nil)
+        let data = try url.bookmarkData(
+            options: creationOptions,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil)
         defaults.set(data, forKey: Self.bookmarkKey)
     }
 
@@ -64,10 +67,11 @@ struct VaultBookmarkStore {
         var isStale = false
         let url: URL
         do {
-            url = try URL(resolvingBookmarkData: data,
-                          options: resolutionOptions,
-                          relativeTo: nil,
-                          bookmarkDataIsStale: &isStale)
+            url = try URL(
+                resolvingBookmarkData: data,
+                options: resolutionOptions,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale)
         } catch {
             bookmarkLogger.error("Bookmark restoration failed: \(error.localizedDescription, privacy: .private)")
             return .stale

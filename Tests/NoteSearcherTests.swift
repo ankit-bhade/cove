@@ -14,8 +14,9 @@ final class NoteSearcherTests: XCTestCase {
         //     Plan.md        ("Ship the ROADMAP by June")
         //   Groceries.md     ("- [ ] Milk\n- [ ] Eggs")
         //   Journal.md       ("Café visit today")
-        try fileManager.createDirectory(at: root.appendingPathComponent("Projects"),
-                                        withIntermediateDirectories: true)
+        try fileManager.createDirectory(
+            at: root.appendingPathComponent("Projects"),
+            withIntermediateDirectories: true)
         try makeFile("Projects/Plan.md", contents: "# Plan\nShip the ROADMAP by June\n")
         try makeFile("Groceries.md", contents: "- [ ] Milk\n- [ ] Eggs\n")
         try makeFile("Journal.md", contents: "Café visit today\n")
@@ -26,8 +27,9 @@ final class NoteSearcherTests: XCTestCase {
     }
 
     private func makeFile(_ path: String, contents: String) throws {
-        try contents.write(to: root.appendingPathComponent(path),
-                           atomically: true, encoding: .utf8)
+        try contents.write(
+            to: root.appendingPathComponent(path),
+            atomically: true, encoding: .utf8)
     }
 
     private func scannedTree() throws -> VaultNode {
@@ -48,8 +50,9 @@ final class NoteSearcherTests: XCTestCase {
 
     func testFirstMatchingLineReturnsTrimmedFirstHit() {
         let text = "# Plan\n   Ship the ROADMAP by June\nroadmap again\n"
-        XCTAssertEqual(NoteSearcher.firstMatchingLine(for: "roadmap", in: text),
-                       "Ship the ROADMAP by June")
+        XCTAssertEqual(
+            NoteSearcher.firstMatchingLine(for: "roadmap", in: text),
+            "Ship the ROADMAP by June")
     }
 
     func testFirstMatchingLineReturnsNilWithoutMatch() {

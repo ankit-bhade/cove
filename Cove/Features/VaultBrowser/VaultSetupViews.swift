@@ -10,7 +10,8 @@ struct WelcomeView: View {
                     setupCard(
                         title: "Welcome to Cove",
                         message: "A quiet home for the Markdown notes you already own.",
-                        detail: "Choose any folder to begin. Cove keeps your files local and saves every edit automatically."
+                        detail:
+                            "Choose any folder to begin. Cove keeps your files local and saves every edit automatically."
                     ) {
                         VaultPickerButton(title: "Choose a Notes Folder")
                     }
@@ -95,13 +96,18 @@ struct VaultRecoveryView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(12)
                                 .frame(maxWidth: .infinity)
-                                .background(CoveTheme.canvas,
-                                            in: RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
-                                                                 style: .continuous))
+                                .background(
+                                    CoveTheme.canvas,
+                                    in: RoundedRectangle(
+                                        cornerRadius: CoveTheme.fieldRadius,
+                                        style: .continuous)
+                                )
                                 .overlay {
-                                    RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
-                                                     style: .continuous)
-                                        .stroke(CoveTheme.hairline, lineWidth: 1)
+                                    RoundedRectangle(
+                                        cornerRadius: CoveTheme.fieldRadius,
+                                        style: .continuous
+                                    )
+                                    .stroke(CoveTheme.hairline, lineWidth: 1)
                                 }
                         }
                         VaultPickerButton(title: "Choose Vault Folder")
@@ -128,26 +134,26 @@ struct VaultPickerButton: View {
     var prominent = true
 
     #if os(iOS)
-    @State private var isPickerPresented = false
+        @State private var isPickerPresented = false
 
-    var body: some View {
-        pickerButton {
-            isPickerPresented = true
-        }
-        .sheet(isPresented: $isPickerPresented) {
-            FolderPickerView { url in
-                Task { await vaultManager.openVault(at: url) }
+        var body: some View {
+            pickerButton {
+                isPickerPresented = true
+            }
+            .sheet(isPresented: $isPickerPresented) {
+                FolderPickerView { url in
+                    Task { await vaultManager.openVault(at: url) }
+                }
             }
         }
-    }
     #else
-    var body: some View {
-        pickerButton {
-            if let url = FolderPicker.chooseFolder() {
-                Task { await vaultManager.openVault(at: url) }
+        var body: some View {
+            pickerButton {
+                if let url = FolderPicker.chooseFolder() {
+                    Task { await vaultManager.openVault(at: url) }
+                }
             }
         }
-    }
     #endif
 
     @ViewBuilder

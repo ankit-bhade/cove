@@ -31,16 +31,20 @@ struct TodayProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayEntry>) -> Void) {
         let now = Date()
         let snapshot = store.readSnapshot().valid(at: now)
-        completion(Timeline(entries: Self.entries(for: snapshot, from: now),
-                            policy: .after(Self.nextRefresh(after: now))))
+        completion(
+            Timeline(
+                entries: Self.entries(for: snapshot, from: now),
+                policy: .after(Self.nextRefresh(after: now))))
     }
 
     /// An entry now, one at each future due moment (so a task turns red the
     /// minute it slips), and one at midnight (so the day rolls over even if
     /// the app never runs). Capped well under WidgetKit's per-day budget.
-    static func entries(for snapshot: TodaySnapshot,
-                        from now: Date,
-                        calendar: Calendar = TaskCalendar.gregorian()) -> [TodayEntry] {
+    static func entries(
+        for snapshot: TodaySnapshot,
+        from now: Date,
+        calendar: Calendar = TaskCalendar.gregorian()
+    ) -> [TodayEntry] {
         let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let dueMoments = snapshot.openTasks
             .compactMap { $0.taskItem.dueDateTime(in: calendar) }
@@ -60,8 +64,10 @@ struct TodayProvider: TimelineProvider {
 
     /// Tomorrow's first refresh once the day is spent, otherwise a periodic
     /// nudge so a snapshot written while the widget slept is picked up.
-    static func nextRefresh(after now: Date,
-                            calendar: Calendar = TaskCalendar.gregorian()) -> Date {
+    static func nextRefresh(
+        after now: Date,
+        calendar: Calendar = TaskCalendar.gregorian()
+    ) -> Date {
         let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let midnight = TaskCalendar.nextMidnight(after: now, calendar: calendar)
         return min(now.addingTimeInterval(30 * 60), midnight)
@@ -70,8 +76,10 @@ struct TodayProvider: TimelineProvider {
 
 struct TodayWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: CoveSharedContainer.todayWidgetKind,
-                            provider: TodayProvider()) { entry in
+        StaticConfiguration(
+            kind: CoveSharedContainer.todayWidgetKind,
+            provider: TodayProvider()
+        ) { entry in
             TodayWidgetView(entry: entry)
         }
         .configurationDisplayName("Today")
@@ -87,23 +95,26 @@ extension TodaySnapshot {
     /// picker shows the widget doing its job rather than sitting empty.
     static var placeholder: TodaySnapshot {
         let day = QuickTaskParser.ymdString(from: Date())
-        let sample: [(String, String?)] = [("Reply to Maya", "08:30"),
-                                           ("Team stand-up", "10:30"),
-                                           ("Pharmacy pickup", "15:00"),
-                                           ("Water the plants", nil)]
+        let sample: [(String, String?)] = [
+            ("Reply to Maya", "08:30"),
+            ("Team stand-up", "10:30"),
+            ("Pharmacy pickup", "15:00"),
+            ("Water the plants", nil),
+        ]
         return TodaySnapshot(
             dayString: day,
             generatedAt: Date(),
             // Distinct line numbers: the row identity is path + line, and a
             // repeated id would collapse the rows in `ForEach`.
             tasks: sample.enumerated().map { line, sample in
-                SnapshotTask(filePath: "/Tasks.md",
-                             lineNumber: line,
-                             text: sample.0,
-                             dueDateString: day,
-                             dueTimeString: sample.1,
-                             recurrenceTag: nil,
-                             isCompleted: false)
+                SnapshotTask(
+                    filePath: "/Tasks.md",
+                    lineNumber: line,
+                    text: sample.0,
+                    dueDateString: day,
+                    dueTimeString: sample.1,
+                    recurrenceTag: nil,
+                    isCompleted: false)
             })
     }
 }

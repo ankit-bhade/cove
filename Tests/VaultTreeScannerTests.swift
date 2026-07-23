@@ -46,20 +46,23 @@ final class VaultTreeScannerTests: XCTestCase {
     }
 
     private func makeDir(_ path: String) throws {
-        try fileManager.createDirectory(at: root.appendingPathComponent(path),
-                                        withIntermediateDirectories: true)
+        try fileManager.createDirectory(
+            at: root.appendingPathComponent(path),
+            withIntermediateDirectories: true)
     }
 
     private func makeFile(_ path: String, contents: String = "# Note\n") throws {
-        try contents.write(to: root.appendingPathComponent(path),
-                           atomically: true, encoding: .utf8)
+        try contents.write(
+            to: root.appendingPathComponent(path),
+            atomically: true, encoding: .utf8)
     }
 
     func testRootListsFoldersFirstThenFilesAlphabetically() throws {
         let tree = try VaultTreeScanner().scanTree(at: root)
         XCTAssertTrue(tree.isDirectory)
-        XCTAssertEqual(tree.children?.map(\.name),
-                       ["Archive", "Projects", "apple.md", "Zebra.md"])
+        XCTAssertEqual(
+            tree.children?.map(\.name),
+            ["Archive", "Projects", "apple.md", "Zebra.md"])
     }
 
     func testHiddenFilesAndFoldersAreIgnored() throws {

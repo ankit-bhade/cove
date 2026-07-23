@@ -35,8 +35,9 @@ final class TaskListDocumentTests: XCTestCase {
     // MARK: - Section names
 
     func testSectionNamesAreListedInFileOrder() {
-        XCTAssertEqual(TaskListDocument.sectionNames(in: note),
-                       ["Groceries", "Subscriptions"])
+        XCTAssertEqual(
+            TaskListDocument.sectionNames(in: note),
+            ["Groceries", "Subscriptions"])
     }
 
     func testSectionNamesSkipsTopLevelHeadingsAndDuplicates() {
@@ -52,8 +53,9 @@ final class TaskListDocumentTests: XCTestCase {
     }
 
     func testAddingSectionToAnEmptyNoteOmitsTheLeadingBlankLine() {
-        XCTAssertEqual(TaskListDocument.addingSection(named: "Packing", to: ""),
-                       "## Packing\n")
+        XCTAssertEqual(
+            TaskListDocument.addingSection(named: "Packing", to: ""),
+            "## Packing\n")
     }
 
     func testAddingAnExistingSectionReturnsNil() {
@@ -63,10 +65,13 @@ final class TaskListDocumentTests: XCTestCase {
     // MARK: - Inserting
 
     func testInsertingLineAppendsToTheEndOfItsSection() {
-        let result = TaskListDocument.insertingLine("- [ ] Eggs",
-                                                    inSection: "Groceries",
-                                                    in: note)
-        XCTAssertEqual(result, """
+        let result = TaskListDocument.insertingLine(
+            "- [ ] Eggs",
+            inSection: "Groceries",
+            in: note)
+        XCTAssertEqual(
+            result,
+            """
             - [ ] Renew passport @due(2026-07-25)
 
             ## Groceries
@@ -81,32 +86,38 @@ final class TaskListDocumentTests: XCTestCase {
     }
 
     func testInsertingLineMatchesTheSectionCaseInsensitively() {
-        let result = TaskListDocument.insertingLine("- [ ] Eggs",
-                                                    inSection: "groceries",
-                                                    in: note)
+        let result = TaskListDocument.insertingLine(
+            "- [ ] Eggs",
+            inSection: "groceries",
+            in: note)
         XCTAssertTrue(result.contains("- [ ] Bread\n- [ ] Eggs\n"))
     }
 
     func testInsertingIntoTheLastSectionKeepsTheTrailingNewline() {
-        let result = TaskListDocument.insertingLine("- [ ] Spotify",
-                                                    inSection: "Subscriptions",
-                                                    in: note)
+        let result = TaskListDocument.insertingLine(
+            "- [ ] Spotify",
+            inSection: "Subscriptions",
+            in: note)
         XCTAssertTrue(result.hasSuffix("@repeat(monthly)\n- [ ] Spotify\n"))
     }
 
     func testInsertingIntoAMissingSectionCreatesIt() {
-        let result = TaskListDocument.insertingLine("- [ ] Sunscreen",
-                                                    inSection: "Packing",
-                                                    in: note)
+        let result = TaskListDocument.insertingLine(
+            "- [ ] Sunscreen",
+            inSection: "Packing",
+            in: note)
         XCTAssertEqual(result, note + "\n## Packing\n- [ ] Sunscreen\n")
     }
 
     // MARK: - Inserting outside every list
 
     func testUnlistedLineGoesAboveTheFirstListRatherThanTheEndOfTheNote() {
-        let result = TaskListDocument.insertingUnlistedLine("- [ ] Call bank @due(2026-07-19)",
-                                                            in: note)
-        XCTAssertEqual(result, """
+        let result = TaskListDocument.insertingUnlistedLine(
+            "- [ ] Call bank @due(2026-07-19)",
+            in: note)
+        XCTAssertEqual(
+            result,
+            """
             - [ ] Renew passport @due(2026-07-25)
             - [ ] Call bank @due(2026-07-19)
 
@@ -122,16 +133,20 @@ final class TaskListDocumentTests: XCTestCase {
 
     func testUnlistedLineAppendsWhenTheNoteHasNoLists() {
         let plain = "- [ ] Old @due(2026-07-18)\n"
-        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)",
-                                                              in: plain),
-                       plain + "- [ ] New @due(2026-07-19)\n")
+        XCTAssertEqual(
+            TaskListDocument.insertingUnlistedLine(
+                "- [ ] New @due(2026-07-19)",
+                in: plain),
+            plain + "- [ ] New @due(2026-07-19)\n")
     }
 
     func testUnlistedLineStartsANoteThatIsNothingButLists() {
         let listsOnly = "## Groceries\n- [ ] Milk\n"
-        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)",
-                                                              in: listsOnly),
-                       "- [ ] New @due(2026-07-19)\n" + listsOnly)
+        XCTAssertEqual(
+            TaskListDocument.insertingUnlistedLine(
+                "- [ ] New @due(2026-07-19)",
+                in: listsOnly),
+            "- [ ] New @due(2026-07-19)\n" + listsOnly)
     }
 
     func testUnlistedLineFollowsFreeSpaceReopenedByATopLevelHeading() {
@@ -143,21 +158,26 @@ final class TaskListDocumentTests: XCTestCase {
             - [ ] Old @due(2026-07-18)
 
             """
-        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)",
-                                                              in: reopened),
-                       reopened + "- [ ] New @due(2026-07-19)\n")
+        XCTAssertEqual(
+            TaskListDocument.insertingUnlistedLine(
+                "- [ ] New @due(2026-07-19)",
+                in: reopened),
+            reopened + "- [ ] New @due(2026-07-19)\n")
     }
 
     func testUnlistedLineIntoAnEmptyNote() {
-        XCTAssertEqual(TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)", in: ""),
-                       "- [ ] New @due(2026-07-19)\n")
+        XCTAssertEqual(
+            TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-19)", in: ""),
+            "- [ ] New @due(2026-07-19)\n")
     }
 
     // MARK: - Removing
 
     func testRemovingSectionDropsItsHeadingAndItems() {
         let result = TaskListDocument.removingSection(named: "Groceries", from: note)
-        XCTAssertEqual(result, """
+        XCTAssertEqual(
+            result,
+            """
             - [ ] Renew passport @due(2026-07-25)
 
             ## Subscriptions
@@ -170,8 +190,10 @@ final class TaskListDocumentTests: XCTestCase {
         // The blank line that separated the two sections belongs to
         // Groceries and stays behind.
         let result = TaskListDocument.removingSection(named: "Subscriptions", from: note)
-        XCTAssertEqual(result, "- [ ] Renew passport @due(2026-07-25)\n\n"
-                       + "## Groceries\n- [ ] Milk\n- [ ] Bread\n\n")
+        XCTAssertEqual(
+            result,
+            "- [ ] Renew passport @due(2026-07-25)\n\n"
+                + "## Groceries\n- [ ] Milk\n- [ ] Bread\n\n")
     }
 
     func testRemovingAMissingSectionChangesNothing() {
@@ -181,28 +203,38 @@ final class TaskListDocumentTests: XCTestCase {
     // MARK: - Renaming
 
     func testRenamingSectionKeepsItsItems() {
-        let result = TaskListDocument.renamingSection(named: "Groceries",
-                                                      to: "Shopping",
-                                                      in: note)
-        XCTAssertEqual(result, note.replacingOccurrences(of: "## Groceries",
-                                                         with: "## Shopping"))
+        let result = TaskListDocument.renamingSection(
+            named: "Groceries",
+            to: "Shopping",
+            in: note)
+        XCTAssertEqual(
+            result,
+            note.replacingOccurrences(
+                of: "## Groceries",
+                with: "## Shopping"))
     }
 
     func testRenamingToAnExistingListNameFails() {
-        XCTAssertNil(TaskListDocument.renamingSection(named: "Groceries",
-                                                      to: "subscriptions",
-                                                      in: note))
+        XCTAssertNil(
+            TaskListDocument.renamingSection(
+                named: "Groceries",
+                to: "subscriptions",
+                in: note))
     }
 
     func testRenamingChangingOnlyCaseIsAllowed() {
-        XCTAssertNotNil(TaskListDocument.renamingSection(named: "Groceries",
-                                                         to: "GROCERIES",
-                                                         in: note))
+        XCTAssertNotNil(
+            TaskListDocument.renamingSection(
+                named: "Groceries",
+                to: "GROCERIES",
+                in: note))
     }
 
     func testRenamingAMissingSectionFails() {
-        XCTAssertNil(TaskListDocument.renamingSection(named: "Packing",
-                                                      to: "Trip",
-                                                      in: note))
+        XCTAssertNil(
+            TaskListDocument.renamingSection(
+                named: "Packing",
+                to: "Trip",
+                in: note))
     }
 }

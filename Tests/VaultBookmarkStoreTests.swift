@@ -43,8 +43,9 @@ final class VaultBookmarkStoreTests: XCTestCase {
         guard case .resolved(let url) = store.resolve() else {
             return XCTFail("Expected .resolved, got \(store.resolve())")
         }
-        XCTAssertEqual(url.resolvingSymlinksInPath().standardizedFileURL.path,
-                       tempDirectory.resolvingSymlinksInPath().standardizedFileURL.path)
+        XCTAssertEqual(
+            url.resolvingSymlinksInPath().standardizedFileURL.path,
+            tempDirectory.resolvingSymlinksInPath().standardizedFileURL.path)
     }
 
     func testResolveAfterFolderDeletedReturnsStale() throws {

@@ -146,6 +146,9 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 
 # Run the tests
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
+
+# Check Swift formatting
+xcrun swift-format lint --configuration .swift-format --recursive Cove CoveWidgets Tests
 ```
 
 ## Creating and selecting a development vault

@@ -62,22 +62,25 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
     var fileURL: URL { URL(fileURLWithPath: filePath) }
     var recurrence: RecurrenceRule? { recurrenceTag.flatMap(RecurrenceRule.init(tagText:)) }
     var identity: TaskIdentity {
-        TaskIdentity(filePath: filePath,
-                     lineNumber: lineNumber,
-                     text: text,
-                     dueDateString: dueDateString,
-                     dueTimeString: dueTimeString,
-                     recurrenceTag: recurrenceTag,
-                     listName: nil)
+        TaskIdentity(
+            filePath: filePath,
+            lineNumber: lineNumber,
+            text: text,
+            dueDateString: dueDateString,
+            dueTimeString: dueTimeString,
+            recurrenceTag: recurrenceTag,
+            listName: nil)
     }
 
-    init(filePath: String,
-         lineNumber: Int,
-         text: String,
-         dueDateString: String?,
-         dueTimeString: String?,
-         recurrenceTag: String?,
-         isCompleted: Bool) {
+    init(
+        filePath: String,
+        lineNumber: Int,
+        text: String,
+        dueDateString: String?,
+        dueTimeString: String?,
+        recurrenceTag: String?,
+        isCompleted: Bool
+    ) {
         self.filePath = filePath
         self.lineNumber = lineNumber
         self.text = text
@@ -88,40 +91,43 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
     }
 
     init(_ task: TaskItem) {
-        self.init(filePath: task.fileURL.path,
-                  lineNumber: task.lineNumber,
-                  text: task.text,
-                  dueDateString: task.dueDateString,
-                  dueTimeString: task.dueTimeString,
-                  recurrenceTag: task.recurrence?.tagText,
-                  isCompleted: task.isCompleted)
+        self.init(
+            filePath: task.fileURL.path,
+            lineNumber: task.lineNumber,
+            text: task.text,
+            dueDateString: task.dueDateString,
+            dueTimeString: task.dueTimeString,
+            recurrenceTag: task.recurrence?.tagText,
+            isCompleted: task.isCompleted)
     }
 
     /// Back to a `TaskItem`, so the widget can reuse the app's own display
     /// logic (`isOverdue(at:)`, `relativeDueDescription(at:)`) rather than
     /// wording a date its own way.
     var taskItem: TaskItem {
-        TaskItem(fileURL: fileURL,
-                 fileTitle: fileURL.deletingPathExtension().lastPathComponent,
-                 lineNumber: lineNumber,
-                 text: text,
-                 dueDateString: dueDateString,
-                 dueTimeString: dueTimeString,
-                 recurrence: recurrence,
-                 isCompleted: isCompleted,
-                 listName: nil)
+        TaskItem(
+            fileURL: fileURL,
+            fileTitle: fileURL.deletingPathExtension().lastPathComponent,
+            lineNumber: lineNumber,
+            text: text,
+            dueDateString: dueDateString,
+            dueTimeString: dueTimeString,
+            recurrence: recurrence,
+            isCompleted: isCompleted,
+            listName: nil)
     }
 
     /// The same task with its checkbox flipped, for the widget's optimistic
     /// redraw before the note has been re-indexed.
     func toggled() -> SnapshotTask {
-        SnapshotTask(filePath: filePath,
-                     lineNumber: lineNumber,
-                     text: text,
-                     dueDateString: dueDateString,
-                     dueTimeString: dueTimeString,
-                     recurrenceTag: recurrenceTag,
-                     isCompleted: !isCompleted)
+        SnapshotTask(
+            filePath: filePath,
+            lineNumber: lineNumber,
+            text: text,
+            dueDateString: dueDateString,
+            dueTimeString: dueTimeString,
+            recurrenceTag: recurrenceTag,
+            isCompleted: !isCompleted)
     }
 }
 
@@ -141,7 +147,8 @@ struct TodaySnapshot: Codable, Sendable {
     /// Tasks due today, incomplete first so a just-checked row settles below
     /// the work that is left rather than holding its place.
     static func tasks(dueToday dayString: String, from allTasks: [TaskItem]) -> [SnapshotTask] {
-        let today = allTasks
+        let today =
+            allTasks
             .filter { $0.listName == nil && $0.dueDateString == dayString }
             .sorted(by: VaultIndex.byDueDate)
         return (today.filter { !$0.isCompleted } + today.filter(\.isCompleted))
@@ -149,18 +156,23 @@ struct TodaySnapshot: Codable, Sendable {
     }
 
     /// The snapshot for a day, built from the whole index.
-    static func building(for now: Date,
-                         from allTasks: [TaskItem],
-                         calendar: Calendar = TaskCalendar.gregorian()) -> TodaySnapshot {
+    static func building(
+        for now: Date,
+        from allTasks: [TaskItem],
+        calendar: Calendar = TaskCalendar.gregorian()
+    ) -> TodaySnapshot {
         let dayString = QuickTaskParser.ymdString(from: now, calendar: calendar)
-        return TodaySnapshot(dayString: dayString,
-                             generatedAt: now,
-                             tasks: tasks(dueToday: dayString, from: allTasks))
+        return TodaySnapshot(
+            dayString: dayString,
+            generatedAt: now,
+            tasks: tasks(dueToday: dayString, from: allTasks))
     }
 
     /// The snapshot as of `now`, emptied if it was built for another day.
-    func valid(at now: Date,
-               calendar: Calendar = TaskCalendar.gregorian()) -> TodaySnapshot {
+    func valid(
+        at now: Date,
+        calendar: Calendar = TaskCalendar.gregorian()
+    ) -> TodaySnapshot {
         dayString == QuickTaskParser.ymdString(from: now, calendar: calendar) ? self : .empty
     }
 }
@@ -209,11 +221,13 @@ struct PendingTaskOperation: Codable, Hashable, Sendable, Identifiable {
     /// widget's own write failing is the expected case the queue exists for.
     var attemptCount: Int
 
-    init(id: UUID = UUID(),
-         taskIdentity: TaskIdentity,
-         desiredCompletion: Bool,
-         createdAt: Date = Date(),
-         attemptCount: Int = 0) {
+    init(
+        id: UUID = UUID(),
+        taskIdentity: TaskIdentity,
+        desiredCompletion: Bool,
+        createdAt: Date = Date(),
+        attemptCount: Int = 0
+    ) {
         self.id = id
         self.taskIdentity = taskIdentity
         self.desiredCompletion = desiredCompletion
@@ -222,8 +236,9 @@ struct PendingTaskOperation: Codable, Hashable, Sendable, Identifiable {
     }
 
     init(task: SnapshotTask, desiredCompletion: Bool) {
-        self.init(taskIdentity: task.identity,
-                  desiredCompletion: desiredCompletion)
+        self.init(
+            taskIdentity: task.identity,
+            desiredCompletion: desiredCompletion)
     }
 }
 
@@ -274,7 +289,8 @@ struct WidgetSnapshotStore: Sendable {
 
     func readSnapshot() -> TodaySnapshot {
         guard let url = snapshotURL,
-              FileManager.default.fileExists(atPath: url.path) else { return .empty }
+            FileManager.default.fileExists(atPath: url.path)
+        else { return .empty }
         do {
             let data = try Data(contentsOf: url)
             return try JSONDecoder().decode(TodaySnapshot.self, from: data)
@@ -297,7 +313,8 @@ struct WidgetSnapshotStore: Sendable {
 
     func readBookmark() -> Data? {
         guard let url = bookmarkURL,
-              FileManager.default.fileExists(atPath: url.path) else { return nil }
+            FileManager.default.fileExists(atPath: url.path)
+        else { return nil }
         do {
             return try Data(contentsOf: url)
         } catch {
@@ -321,7 +338,8 @@ struct WidgetSnapshotStore: Sendable {
             return try coordinatedQueueRead(at: url)
         }
         guard let legacyURL = legacyPendingTogglesURL,
-              FileManager.default.fileExists(atPath: legacyURL.path) else { return [] }
+            FileManager.default.fileExists(atPath: legacyURL.path)
+        else { return [] }
         let data = try Data(contentsOf: legacyURL)
         let migrated = try JSONDecoder().decode([PendingToggle].self, from: data)
             .map(\.pendingOperation)
@@ -352,8 +370,10 @@ struct WidgetSnapshotStore: Sendable {
     /// right outcome, since a queue that can't be written can't be pruned
     /// either.
     @discardableResult
-    func recordFailure(operationID: UUID,
-                       maxAttempts: Int = PendingTaskOperation.maxAttempts) throws -> Bool {
+    func recordFailure(
+        operationID: UUID,
+        maxAttempts: Int = PendingTaskOperation.maxAttempts
+    ) throws -> Bool {
         var dropped = false
         try coordinatedQueueUpdate { operations in
             guard let index = operations.firstIndex(where: { $0.id == operationID })
@@ -394,8 +414,10 @@ struct WidgetSnapshotStore: Sendable {
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var result: Result<Void, Error>?
-        coordinator.coordinate(writingItemAt: url, options: .forMerging,
-                               error: &coordinationError) { coordinatedURL in
+        coordinator.coordinate(
+            writingItemAt: url, options: .forMerging,
+            error: &coordinationError
+        ) { coordinatedURL in
             result = Result {
                 var operations: [PendingTaskOperation]
                 if FileManager.default.fileExists(atPath: coordinatedURL.path) {

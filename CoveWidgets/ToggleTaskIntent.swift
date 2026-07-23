@@ -47,8 +47,9 @@ struct TaskToggleWriter {
         guard let index = snapshot.tasks.firstIndex(where: { $0.id == taskID }) else { return }
         let task = snapshot.tasks[index]
         let desiredCompletion = !task.isCompleted
-        let operation = PendingTaskOperation(task: task,
-                                             desiredCompletion: desiredCompletion)
+        let operation = PendingTaskOperation(
+            task: task,
+            desiredCompletion: desiredCompletion)
 
         // Queue first. If the note write succeeds but acknowledgment fails,
         // the retained desired-state operation is safe to apply again.
@@ -58,7 +59,8 @@ struct TaskToggleWriter {
             do {
                 try store.acknowledge(operationID: operation.id)
             } catch {
-                widgetChannelLogger.error("Operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
+                widgetChannelLogger.error(
+                    "Operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
             }
         }
 
@@ -116,10 +118,11 @@ struct TaskToggleWriter {
         guard let data = store.readBookmark() else { return nil }
         var isStale = false
         do {
-            return try URL(resolvingBookmarkData: data,
-                           options: VaultBookmarkStore.platformResolutionOptions,
-                           relativeTo: nil,
-                           bookmarkDataIsStale: &isStale)
+            return try URL(
+                resolvingBookmarkData: data,
+                options: VaultBookmarkStore.platformResolutionOptions,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale)
         } catch {
             return nil
         }

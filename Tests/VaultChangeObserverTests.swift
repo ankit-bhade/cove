@@ -13,8 +13,12 @@ final class VaultChangeObserverTests: XCTestCase {
 
     func testKeepsItemsUnderTheVault() {
         let result = relevant(["/Vault/Note.md", "/Vault/Sub/Deep.md"])
-        XCTAssertEqual(result, [URL(fileURLWithPath: "/Vault/Note.md"),
-                                URL(fileURLWithPath: "/Vault/Sub/Deep.md")])
+        XCTAssertEqual(
+            result,
+            [
+                URL(fileURLWithPath: "/Vault/Note.md"),
+                URL(fileURLWithPath: "/Vault/Sub/Deep.md"),
+            ])
     }
 
     func testKeepsTheVaultRootItself() {

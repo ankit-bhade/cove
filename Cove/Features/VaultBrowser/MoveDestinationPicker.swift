@@ -61,14 +61,16 @@ struct MoveDestinationPicker: View {
                     .padding(.leading, CGFloat(min(destination.depth, 4)) * 16)
                 }
                 .disabled(isCurrent)
-                .accessibilityHint(isCurrent ? "Already contains this item"
-                                   : "Moves the item into this folder")
+                .accessibilityHint(
+                    isCurrent
+                        ? "Already contains this item"
+                        : "Moves the item into this folder")
             }
             .coveListStyle()
             .coveReadableWidth(620)
             .navigationTitle("Move “\(node.displayName)”")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -77,7 +79,7 @@ struct MoveDestinationPicker: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 360, minHeight: 420)
+            .frame(minWidth: 360, minHeight: 420)
         #endif
     }
 }

@@ -116,7 +116,6 @@
 				C0DE00000000000000000021 /* CoveWidgets */,
 				C0DE00000000000000000039 /* Shared with CoveWidgets */,
 				C0DE00000000000000000007 /* Products */,
-				FC1C6CDA300D8C6700B96A57 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -144,17 +143,6 @@
 				C0DE00000000000000000038 /* TaskListDocument.swift */,
 			);
 			name = "Shared with CoveWidgets";
-			sourceTree = "<group>";
-		};
-		FC1C6CDA300D8C6700B96A57 /* Recovered References */ = {
-			isa = PBXGroup;
-			children = (
-				C0DE00000000000000000050 /* WidgetPalette.swift */,
-				C0DE00000000000000000051 /* TodayWidgetView.swift */,
-				C0DE00000000000000000052 /* TodayWidget.swift */,
-				C0DE00000000000000000053 /* ToggleTaskIntent.swift */,
-			);
-			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -590,8 +578,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U6UXL4X6P2;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Cove;
 				INFOPLIST_FILE = "CoveWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Cove;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -619,8 +607,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U6UXL4X6P2;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Cove;
 				INFOPLIST_FILE = "CoveWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Cove;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

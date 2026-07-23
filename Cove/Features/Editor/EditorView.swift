@@ -62,20 +62,20 @@ struct EditorView: View {
         }
         .navigationTitle(document.fileURL.deletingPathExtension().lastPathComponent)
         #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem {
                 saveStatusIndicator
             }
             #if os(iOS)
-            // A UITextView has no return key to dismiss with, so without an
-            // explicit action the keyboard covers the note with no way out.
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { dismissKeyboard() }
-                    .fontWeight(.semibold)
-            }
+                // A UITextView has no return key to dismiss with, so without an
+                // explicit action the keyboard covers the note with no way out.
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { dismissKeyboard() }
+                        .fontWeight(.semibold)
+                }
             #endif
         }
         .task {
@@ -116,10 +116,11 @@ struct EditorView: View {
     }
 
     #if os(iOS)
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                        to: nil, from: nil, for: nil)
-    }
+        private func dismissKeyboard() {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil, from: nil, for: nil)
+        }
     #endif
 }
 
@@ -133,9 +134,12 @@ private struct EditorBanner: ViewModifier {
             .font(.footnote)
             .foregroundStyle(.primary)
             .padding(11)
-            .background(tint.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
-                                             style: .continuous))
+            .background(
+                tint.opacity(0.12),
+                in: RoundedRectangle(
+                    cornerRadius: CoveTheme.fieldRadius,
+                    style: .continuous)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: CoveTheme.fieldRadius, style: .continuous)
                     .stroke(tint.opacity(0.22), lineWidth: 1)

@@ -47,7 +47,9 @@ enum TaskParser {
     }
 
     private static let taskLineRegex = try! NSRegularExpression(
-        pattern: #"^- \[([ xX])\] (\S(?:.*\S)?) @due\(((\d{4})-(\d{2})-(\d{2}))( (\d{2}):(\d{2}))?\)( @repeat\(([a-z0-9 ]+)\))?[ \t]*$"#)
+        pattern:
+            #"^- \[([ xX])\] (\S(?:.*\S)?) @due\(((\d{4})-(\d{2})-(\d{2}))( (\d{2}):(\d{2}))?\)( @repeat\(([a-z0-9 ]+)\))?[ \t]*$"#
+    )
 
     /// Same marker, no tags — only honored inside a list section, and only
     /// when the text carries no `@due(` of its own (so a line with a
@@ -63,8 +65,10 @@ enum TaskParser {
         var tasks: [ParsedTask] = []
         var lineNumber = 0
         var listName: String?
-        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length),
-                               options: [.byLines, .substringNotRequired]) {
+        ns.enumerateSubstrings(
+            in: NSRange(location: 0, length: ns.length),
+            options: [.byLines, .substringNotRequired]
+        ) {
             _, lineRange, enclosingRange, _ in
             defer { lineNumber += 1 }
             let line = ns.substring(with: lineRange)
@@ -79,10 +83,12 @@ enum TaskParser {
 
             guard let match = taskLineRegex.firstMatch(in: line, range: wholeLine) else {
                 if sectioned, let list = listName,
-                   let undated = undatedTask(in: line, lineNumber: lineNumber,
-                                             lineRange: lineRange,
-                                             enclosingRange: enclosingRange,
-                                             listName: list) {
+                    let undated = undatedTask(
+                        in: line, lineNumber: lineNumber,
+                        lineRange: lineRange,
+                        enclosingRange: enclosingRange,
+                        listName: list)
+                {
                     tasks.append(undated)
                 }
                 return
@@ -91,8 +97,10 @@ enum TaskParser {
             let year = Int((line as NSString).substring(with: match.range(at: 4)))!
             let month = Int((line as NSString).substring(with: match.range(at: 5)))!
             let day = Int((line as NSString).substring(with: match.range(at: 6)))!
-            guard DateComponents(year: year, month: month, day: day)
-                .isValidDate(in: gregorian) else { return }
+            guard
+                DateComponents(year: year, month: month, day: day)
+                    .isValidDate(in: gregorian)
+            else { return }
 
             var timeString: String?
             if match.range(at: 7).location != NSNotFound {
@@ -112,32 +120,37 @@ enum TaskParser {
             let statusInLine = match.range(at: 1)
             let status = (line as NSString).substring(with: statusInLine)
             let dateInLine = match.range(at: 3)
-            tasks.append(ParsedTask(
-                lineNumber: lineNumber,
-                lineRange: enclosingRange,
-                statusRange: NSRange(location: lineRange.location + statusInLine.location,
-                                     length: statusInLine.length),
-                dueDateRange: NSRange(location: lineRange.location + dateInLine.location,
-                                      length: dateInLine.length),
-                text: (line as NSString).substring(with: match.range(at: 2)),
-                dueDateString: String(format: "%04d-%02d-%02d", year, month, day),
-                dueTimeString: timeString,
-                recurrence: recurrence,
-                isCompleted: status.lowercased() == "x",
-                listName: listName))
+            tasks.append(
+                ParsedTask(
+                    lineNumber: lineNumber,
+                    lineRange: enclosingRange,
+                    statusRange: NSRange(
+                        location: lineRange.location + statusInLine.location,
+                        length: statusInLine.length),
+                    dueDateRange: NSRange(
+                        location: lineRange.location + dateInLine.location,
+                        length: dateInLine.length),
+                    text: (line as NSString).substring(with: match.range(at: 2)),
+                    dueDateString: String(format: "%04d-%02d-%02d", year, month, day),
+                    dueTimeString: timeString,
+                    recurrence: recurrence,
+                    isCompleted: status.lowercased() == "x",
+                    listName: listName))
         }
         return tasks
     }
 
     /// A bare `- [ ] text` line inside a list section.
-    private static func undatedTask(in line: String,
-                                    lineNumber: Int,
-                                    lineRange: NSRange,
-                                    enclosingRange: NSRange,
-                                    listName: String) -> ParsedTask? {
+    private static func undatedTask(
+        in line: String,
+        lineNumber: Int,
+        lineRange: NSRange,
+        enclosingRange: NSRange,
+        listName: String
+    ) -> ParsedTask? {
         let ns = line as NSString
         guard !line.contains("@due("),
-              let match = undatedTaskLineRegex.firstMatch(
+            let match = undatedTaskLineRegex.firstMatch(
                 in: line, range: NSRange(location: 0, length: ns.length))
         else { return nil }
 
@@ -145,8 +158,9 @@ enum TaskParser {
         return ParsedTask(
             lineNumber: lineNumber,
             lineRange: enclosingRange,
-            statusRange: NSRange(location: lineRange.location + statusInLine.location,
-                                 length: statusInLine.length),
+            statusRange: NSRange(
+                location: lineRange.location + statusInLine.location,
+                length: statusInLine.length),
             dueDateRange: nil,
             text: ns.substring(with: match.range(at: 2)),
             dueDateString: nil,
@@ -167,26 +181,32 @@ enum TaskParser {
     /// and `todayDateString`, leaving the checkbox open — the line is the
     /// task's single home, so recurrence rolls it forward instead of
     /// checking it off. Every other toggle flips the status character.
-    static func togglingTask(withText taskText: String,
-                             dueDateString: String?,
-                             dueTimeString: String?,
-                             recurrence: RecurrenceRule?,
-                             isCompleted: Bool,
-                             listName: String?,
-                             preferredLineNumber: Int,
-                             todayDateString: String,
-                             in fileText: String) -> String? {
-        guard let match = matchingTask(withText: taskText,
-                                       dueDateString: dueDateString,
-                                       dueTimeString: dueTimeString,
-                                       recurrence: recurrence,
-                                       isCompleted: isCompleted,
-                                       listName: listName,
-                                       preferredLineNumber: preferredLineNumber,
-                                       in: fileText) else { return nil }
+    static func togglingTask(
+        withText taskText: String,
+        dueDateString: String?,
+        dueTimeString: String?,
+        recurrence: RecurrenceRule?,
+        isCompleted: Bool,
+        listName: String?,
+        preferredLineNumber: Int,
+        todayDateString: String,
+        in fileText: String
+    ) -> String? {
+        guard
+            let match = matchingTask(
+                withText: taskText,
+                dueDateString: dueDateString,
+                dueTimeString: dueTimeString,
+                recurrence: recurrence,
+                isCompleted: isCompleted,
+                listName: listName,
+                preferredLineNumber: preferredLineNumber,
+                in: fileText)
+        else { return nil }
 
         if let rule = match.recurrence, !match.isCompleted,
-           let currentDate = match.dueDateString, let dateRange = match.dueDateRange {
+            let currentDate = match.dueDateString, let dateRange = match.dueDateRange
+        {
             let base = max(currentDate, todayDateString)
             guard let next = rule.nextDueDateString(after: base) else { return nil }
             return (fileText as NSString)
@@ -211,9 +231,10 @@ enum TaskParser {
         if match.isCompleted == desiredCompletion { return fileText }
 
         if desiredCompletion,
-           let rule = match.recurrence,
-           let currentDate = match.dueDateString,
-           let dateRange = match.dueDateRange {
+            let rule = match.recurrence,
+            let currentDate = match.dueDateString,
+            let dateRange = match.dueDateRange
+        {
             let base = max(currentDate, todayDateString)
             guard let next = rule.nextDueDateString(after: base) else { return nil }
             return (fileText as NSString).replacingCharacters(in: dateRange, with: next)
@@ -228,22 +249,27 @@ enum TaskParser {
     /// if no task in the text matches. Re-finds the task the same way
     /// `togglingTask` does, so a line that changed on disk is left alone and
     /// the caller can report it instead of deleting the wrong task.
-    static func removingTask(withText taskText: String,
-                             dueDateString: String?,
-                             dueTimeString: String?,
-                             recurrence: RecurrenceRule?,
-                             isCompleted: Bool,
-                             listName: String?,
-                             preferredLineNumber: Int,
-                             in fileText: String) -> String? {
-        guard let match = matchingTask(withText: taskText,
-                                       dueDateString: dueDateString,
-                                       dueTimeString: dueTimeString,
-                                       recurrence: recurrence,
-                                       isCompleted: isCompleted,
-                                       listName: listName,
-                                       preferredLineNumber: preferredLineNumber,
-                                       in: fileText) else { return nil }
+    static func removingTask(
+        withText taskText: String,
+        dueDateString: String?,
+        dueTimeString: String?,
+        recurrence: RecurrenceRule?,
+        isCompleted: Bool,
+        listName: String?,
+        preferredLineNumber: Int,
+        in fileText: String
+    ) -> String? {
+        guard
+            let match = matchingTask(
+                withText: taskText,
+                dueDateString: dueDateString,
+                dueTimeString: dueTimeString,
+                recurrence: recurrence,
+                isCompleted: isCompleted,
+                listName: listName,
+                preferredLineNumber: preferredLineNumber,
+                in: fileText)
+        else { return nil }
         return (fileText as NSString).replacingCharacters(in: match.lineRange, with: "")
     }
 
@@ -255,8 +281,10 @@ enum TaskParser {
         return (fileText as NSString).replacingCharacters(in: match.lineRange, with: "")
     }
 
-    static func matchingTask(_ identity: TaskIdentity,
-                             in fileText: String) -> ParsedTask? {
+    static func matchingTask(
+        _ identity: TaskIdentity,
+        in fileText: String
+    ) -> ParsedTask? {
         let candidates = tasks(in: fileText, sectioned: identity.listName != nil).filter {
             $0.text == identity.text
                 && $0.dueDateString == identity.dueDateString
@@ -271,14 +299,16 @@ enum TaskParser {
     /// Re-finds one indexed task in a fresh read of its file: among tasks with
     /// the same text, schedule, and state, the one on the remembered line wins
     /// (in case of duplicates), falling back to the first if lines shifted.
-    private static func matchingTask(withText taskText: String,
-                                     dueDateString: String?,
-                                     dueTimeString: String?,
-                                     recurrence: RecurrenceRule?,
-                                     isCompleted: Bool,
-                                     listName: String?,
-                                     preferredLineNumber: Int,
-                                     in fileText: String) -> ParsedTask? {
+    private static func matchingTask(
+        withText taskText: String,
+        dueDateString: String?,
+        dueTimeString: String?,
+        recurrence: RecurrenceRule?,
+        isCompleted: Bool,
+        listName: String?,
+        preferredLineNumber: Int,
+        in fileText: String
+    ) -> ParsedTask? {
         // An undated task only exists in a sectioned parse, and the list a
         // task belongs to is part of its identity — two lists can hold the
         // same item text.
@@ -299,9 +329,11 @@ enum TaskParser {
     /// screen clears only what it shows: with no `inList` name, tasks that
     /// belong to a list are left alone (the Tasks screen's Clear All), and
     /// with one, only that list's items go (a list's own Clear Completed).
-    static func clearingCompletedTasks(in fileText: String,
-                                       sectioned: Bool = false,
-                                       inList listName: String? = nil) -> String {
+    static func clearingCompletedTasks(
+        in fileText: String,
+        sectioned: Bool = false,
+        inList listName: String? = nil
+    ) -> String {
         let completedRanges = tasks(in: fileText, sectioned: sectioned)
             .filter { $0.isCompleted && belongsToList(listName, $0.listName) }
             .map(\.lineRange)

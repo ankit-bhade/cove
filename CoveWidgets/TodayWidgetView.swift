@@ -63,11 +63,16 @@ struct TodayWidgetView: View {
     private var header: some View {
         HStack(spacing: isSmall ? 7 : 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(entry.date.formatted(
-                    .dateTime.weekday(isSmall ? .abbreviated : .wide)))
-                    .font(.system(size: headerSize + 1, weight: .semibold,
-                                  design: .serif))
-                    .foregroundStyle(palette.primaryText)
+                Text(
+                    entry.date.formatted(
+                        .dateTime.weekday(isSmall ? .abbreviated : .wide))
+                )
+                .font(
+                    .system(
+                        size: headerSize + 1, weight: .semibold,
+                        design: .serif)
+                )
+                .foregroundStyle(palette.primaryText)
                 Text(entry.date.formatted(.dateTime.month(.abbreviated).day()))
                     .font(.system(size: headerSize))
                     .foregroundStyle(palette.secondaryText)
@@ -86,8 +91,11 @@ struct TodayWidgetView: View {
             .foregroundStyle(palette.accent)
             .padding(.vertical, isSmall ? 2 : 3)
             .padding(.horizontal, isSmall ? 7 : 8)
-            .background(palette.accentSoft, in: RoundedRectangle(cornerRadius: 8,
-                                                                 style: .continuous))
+            .background(
+                palette.accentSoft,
+                in: RoundedRectangle(
+                    cornerRadius: 8,
+                    style: .continuous))
     }
 
     // MARK: - Rows
@@ -101,9 +109,11 @@ struct TodayWidgetView: View {
                     title(for: task)
                     if task.dueTimeString != nil {
                         HStack(spacing: 3) {
-                            Image(systemName: isOverdue(task)
-                                  ? "exclamationmark.circle.fill" : "clock")
-                                .font(.system(size: 11, weight: .semibold))
+                            Image(
+                                systemName: isOverdue(task)
+                                    ? "exclamationmark.circle.fill" : "clock"
+                            )
+                            .font(.system(size: 11, weight: .semibold))
                             timeText(for: task)
                         }
                         .foregroundStyle(dueColor(for: task))
@@ -215,7 +225,7 @@ extension SnapshotTask {
     /// so the day half of `DueDescription` would say "Today" on every one.
     var timeOfDayDescription: String {
         guard let components = taskItem.timeComponents,
-              let moment = TaskCalendar.gregorian().date(
+            let moment = TaskCalendar.gregorian().date(
                 bySettingHour: components.hour,
                 minute: components.minute,
                 second: 0,
@@ -229,9 +239,11 @@ extension SnapshotTask {
     TodayWidget()
 } timeline: {
     TodayEntry(date: .now, snapshot: .placeholder)
-    TodayEntry(date: .now, snapshot: TodaySnapshot(
-        dayString: QuickTaskParser.ymdString(from: .now),
-        generatedAt: .now, tasks: []))
+    TodayEntry(
+        date: .now,
+        snapshot: TodaySnapshot(
+            dayString: QuickTaskParser.ymdString(from: .now),
+            generatedAt: .now, tasks: []))
 }
 
 #Preview("Medium", as: .systemMedium) {

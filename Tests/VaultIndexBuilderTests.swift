@@ -14,17 +14,22 @@ final class VaultIndexBuilderTests: XCTestCase {
         //     Plan.md      (one incomplete task, one completed)
         //   Groceries.md   (two incomplete tasks, later due date first in file)
         //   Journal.md     (no tasks)
-        try fileManager.createDirectory(at: root.appendingPathComponent("Projects"),
-                                        withIntermediateDirectories: true)
-        try makeFile("Projects/Plan.md", contents: """
-            # Plan
-            - [ ] Ship the roadmap @due(2026-08-01)
-            - [x] Draft outline @due(2026-07-01)
-            """)
-        try makeFile("Groceries.md", contents: """
-            - [ ] Order cake @due(2026-09-15)
-            - [ ] Buy milk @due(2026-07-20)
-            """)
+        try fileManager.createDirectory(
+            at: root.appendingPathComponent("Projects"),
+            withIntermediateDirectories: true)
+        try makeFile(
+            "Projects/Plan.md",
+            contents: """
+                # Plan
+                - [ ] Ship the roadmap @due(2026-08-01)
+                - [x] Draft outline @due(2026-07-01)
+                """)
+        try makeFile(
+            "Groceries.md",
+            contents: """
+                - [ ] Order cake @due(2026-09-15)
+                - [ ] Buy milk @due(2026-07-20)
+                """)
         try makeFile("Journal.md", contents: "Nothing due today.\n")
     }
 
@@ -33,8 +38,9 @@ final class VaultIndexBuilderTests: XCTestCase {
     }
 
     private func makeFile(_ path: String, contents: String) throws {
-        try contents.write(to: root.appendingPathComponent(path),
-                           atomically: true, encoding: .utf8)
+        try contents.write(
+            to: root.appendingPathComponent(path),
+            atomically: true, encoding: .utf8)
     }
 
     private func builtIndex() throws -> VaultIndex {
@@ -58,8 +64,9 @@ final class VaultIndexBuilderTests: XCTestCase {
 
     func testIncompleteTasksSortByDueDateAcrossFiles() throws {
         let incomplete = try builtIndex().incompleteTasks
-        XCTAssertEqual(incomplete.map(\.text),
-                       ["Buy milk", "Ship the roadmap", "Order cake"])
+        XCTAssertEqual(
+            incomplete.map(\.text),
+            ["Buy milk", "Ship the roadmap", "Order cake"])
         XCTAssertTrue(incomplete.allSatisfy { !$0.isCompleted })
     }
 
@@ -106,10 +113,12 @@ final class VaultIndexBuilderTests: XCTestCase {
     }
 
     func testRecoveryDirectoryNeverEntersTreeOrIndex() throws {
-        try fileManager.createDirectory(at: root.appendingPathComponent(".cove-recovery"),
-                                        withIntermediateDirectories: true)
-        try makeFile(".cove-recovery/Deleted.md",
-                     contents: "- [ ] Hidden @due(2026-07-20)\n")
+        try fileManager.createDirectory(
+            at: root.appendingPathComponent(".cove-recovery"),
+            withIntermediateDirectories: true)
+        try makeFile(
+            ".cove-recovery/Deleted.md",
+            contents: "- [ ] Hidden @due(2026-07-20)\n")
 
         let tree = try VaultTreeScanner().scanTree(at: root)
         let index = try VaultIndexBuilder().buildCancellableIndex(from: tree)
@@ -144,12 +153,15 @@ final class VaultIndexBuilderTests: XCTestCase {
         let first = try VaultIndexBuilder().buildCancellableIndex(from: tree)
         XCTAssertNil(first.entries.first { $0.title == "Broken" }?.modificationDate)
 
-        try "- [ ] Fixed now @due(2026-08-02)\n".write(to: brokenURL,
-                                                       atomically: true,
-                                                       encoding: .utf8)
-        let second = try VaultIndexBuilder().buildCancellableIndex(from: tree,
-                                                                  previous: first)
-        XCTAssertEqual(second.entries.first { $0.title == "Broken" }?.tasks.first?.text,
-                       "Fixed now")
+        try "- [ ] Fixed now @due(2026-08-02)\n".write(
+            to: brokenURL,
+            atomically: true,
+            encoding: .utf8)
+        let second = try VaultIndexBuilder().buildCancellableIndex(
+            from: tree,
+            previous: first)
+        XCTAssertEqual(
+            second.entries.first { $0.title == "Broken" }?.tasks.first?.text,
+            "Fixed now")
     }
 }

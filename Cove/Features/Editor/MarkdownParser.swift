@@ -63,19 +63,21 @@ enum MarkdownParser {
         headerRegex.enumerateMatches(in: text, range: fullRange) { match, _, _ in
             guard let match else { return }
             let marker = match.range(at: 1)
-            result.headers.append(Header(
-                level: marker.length,
-                lineRange: match.range,
-                markerRange: marker))
+            result.headers.append(
+                Header(
+                    level: marker.length,
+                    lineRange: match.range,
+                    markerRange: marker))
         }
 
         boldRegex.enumerateMatches(in: text, range: fullRange) { match, _, _ in
             guard let match else { return }
             let range = match.range
-            result.boldSpans.append(Bold(
-                range: range,
-                leadingDelimiterRange: NSRange(location: range.location, length: 2),
-                trailingDelimiterRange: NSRange(location: NSMaxRange(range) - 2, length: 2)))
+            result.boldSpans.append(
+                Bold(
+                    range: range,
+                    leadingDelimiterRange: NSRange(location: range.location, length: 2),
+                    trailingDelimiterRange: NSRange(location: NSMaxRange(range) - 2, length: 2)))
         }
 
         checkboxRegex.enumerateMatches(in: text, range: fullRange) { match, _, _ in
@@ -88,13 +90,14 @@ enum MarkdownParser {
             ns.getLineStart(&lineStart, end: &lineEnd, contentsEnd: &contentsEnd, for: marker)
             var textStart = NSMaxRange(marker)
             if textStart < contentsEnd {
-                textStart += 1 // skip the space/tab after "]"
+                textStart += 1  // skip the space/tab after "]"
             }
-            result.checkboxes.append(Checkbox(
-                markerRange: marker,
-                statusRange: status,
-                isChecked: ns.substring(with: status).lowercased() == "x",
-                textRange: NSRange(location: textStart, length: max(0, contentsEnd - textStart))))
+            result.checkboxes.append(
+                Checkbox(
+                    markerRange: marker,
+                    statusRange: status,
+                    isChecked: ns.substring(with: status).lowercased() == "x",
+                    textRange: NSRange(location: textStart, length: max(0, contentsEnd - textStart))))
         }
 
         return result

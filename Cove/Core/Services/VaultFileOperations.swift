@@ -115,8 +115,9 @@ struct VaultFileOperations: Sendable {
                 var preservedURL: URL?
                 if diskText != expectedDiskText, diskText != text {
                     if FileManager.default.fileExists(atPath: coordinatedConflictURL.path) {
-                        let preserved = try String(contentsOf: coordinatedConflictURL,
-                                                   encoding: .utf8)
+                        let preserved = try String(
+                            contentsOf: coordinatedConflictURL,
+                            encoding: .utf8)
                         guard preserved == diskText else {
                             throw OperationError.itemAlreadyExists(
                                 coordinatedConflictURL.lastPathComponent)
@@ -145,9 +146,11 @@ struct VaultFileOperations: Sendable {
     /// screen's section surgery safe against a syncing external copy.
     /// Returning nil from `transform` leaves the file untouched.
     @discardableResult
-    func updateNote(named name: String,
-                    in folder: URL,
-                    transform: @Sendable (String) throws -> String?) throws -> URL {
+    func updateNote(
+        named name: String,
+        in folder: URL,
+        transform: @Sendable (String) throws -> String?
+    ) throws -> URL {
         let fileName = try noteFileName(from: name)
         let destination = folder.appendingPathComponent(fileName, isDirectory: false)
         try coordinatedWrite(at: destination, options: .forMerging) { url in
@@ -202,8 +205,9 @@ struct VaultFileOperations: Sendable {
         // A case-only rename collides with itself on case-insensitive
         // filesystems (APFS default), so skip the existence check there.
         let isCaseOnlyRename = name.lowercased() == url.lastPathComponent.lowercased()
-        try coordinatedMove(from: url, to: destination,
-                            checkDestinationExists: !isCaseOnlyRename)
+        try coordinatedMove(
+            from: url, to: destination,
+            checkDestinationExists: !isCaseOnlyRename)
         return destination
     }
 
@@ -217,8 +221,9 @@ struct VaultFileOperations: Sendable {
                 throw OperationError.cannotMoveIntoItself
             }
         }
-        let destination = folder.appendingPathComponent(url.lastPathComponent,
-                                                        isDirectory: isDirectory)
+        let destination = folder.appendingPathComponent(
+            url.lastPathComponent,
+            isDirectory: isDirectory)
         guard destination.path != url.path else { return url }
         try coordinatedMove(from: url, to: destination)
         return destination
@@ -234,27 +239,33 @@ struct VaultFileOperations: Sendable {
     /// encoded relative path makes recovery inspectable even after relaunch;
     /// the UUID prevents collisions without ever replacing an older item; the
     /// leading timestamp is what `purgeRecovery` sweeps on.
-    func moveToRecovery(itemAt url: URL, vaultRoot: URL,
-                        now: Date = Date()) throws -> RecoveryRecord {
-        let recoveryFolder = vaultRoot.appendingPathComponent(Self.recoveryFolderName,
-                                                              isDirectory: true)
+    func moveToRecovery(
+        itemAt url: URL, vaultRoot: URL,
+        now: Date = Date()
+    ) throws -> RecoveryRecord {
+        let recoveryFolder = vaultRoot.appendingPathComponent(
+            Self.recoveryFolderName,
+            isDirectory: true)
         try coordinatedWrite(at: recoveryFolder, options: []) { folder in
             if !FileManager.default.fileExists(atPath: folder.path) {
-                try FileManager.default.createDirectory(at: folder,
-                                                        withIntermediateDirectories: false)
+                try FileManager.default.createDirectory(
+                    at: folder,
+                    withIntermediateDirectories: false)
             }
         }
 
         let rootPath = vaultRoot.standardizedFileURL.path
         let itemPath = url.standardizedFileURL.path
-        let relative = itemPath.hasPrefix(rootPath + "/")
+        let relative =
+            itemPath.hasPrefix(rootPath + "/")
             ? String(itemPath.dropFirst(rootPath.count + 1))
             : url.lastPathComponent
         let encodedPath = Data(relative.utf8).base64EncodedString()
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "=", with: "")
-        let recoveredName = "\(Self.recoveryTimestamp(now))--\(UUID().uuidString.lowercased())--\(encodedPath)--\(url.lastPathComponent)"
+        let recoveredName =
+            "\(Self.recoveryTimestamp(now))--\(UUID().uuidString.lowercased())--\(encodedPath)--\(url.lastPathComponent)"
         let destination = recoveryFolder.appendingPathComponent(
             recoveredName, isDirectory: try isDirectory(url))
         try coordinatedMove(from: url, to: destination)
@@ -268,11 +279,14 @@ struct VaultFileOperations: Sendable {
     /// this sweep existed, which means a previous run of the app put them
     /// there and no live Undo can still point at them; they are swept too.
     /// One unremovable entry must not abandon the rest of the sweep.
-    func purgeRecovery(vaultRoot: URL,
-                       retention: TimeInterval = recoveryRetention,
-                       now: Date = Date()) throws {
-        let folder = vaultRoot.appendingPathComponent(Self.recoveryFolderName,
-                                                      isDirectory: true)
+    func purgeRecovery(
+        vaultRoot: URL,
+        retention: TimeInterval = recoveryRetention,
+        now: Date = Date()
+    ) throws {
+        let folder = vaultRoot.appendingPathComponent(
+            Self.recoveryFolderName,
+            isDirectory: true)
         guard FileManager.default.fileExists(atPath: folder.path) else { return }
 
         // Names, not URLs: the coordinator may hand back a different location
@@ -303,25 +317,31 @@ struct VaultFileOperations: Sendable {
     /// dates travel with it through the move and say nothing about when it
     /// left the vault. Formatted by hand in UTC rather than with a
     /// `DateFormatter`, which is neither `Sendable` nor locale-neutral.
-    static func recoveryTimestamp(_ date: Date,
-                                  calendar: Calendar = utcCalendar()) -> String {
+    static func recoveryTimestamp(
+        _ date: Date,
+        calendar: Calendar = utcCalendar()
+    ) -> String {
         let parts = calendar.dateComponents(
             [.year, .month, .day, .hour, .minute, .second], from: date)
-        return String(format: "%04d%02d%02d-%02d%02d%02d",
-                      parts.year ?? 0, parts.month ?? 0, parts.day ?? 0,
-                      parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0)
+        return String(
+            format: "%04d%02d%02d-%02d%02d%02d",
+            parts.year ?? 0, parts.month ?? 0, parts.day ?? 0,
+            parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0)
     }
 
     /// The deletion moment encoded in a recovery entry's name, or nil if it
     /// carries none. Only the span before the first `--` is read, and the
     /// timestamp never contains one, so an encoded path is never mistaken
     /// for it.
-    static func recoveryDeletionDate(fromName name: String,
-                                     calendar: Calendar = utcCalendar()) -> Date? {
+    static func recoveryDeletionDate(
+        fromName name: String,
+        calendar: Calendar = utcCalendar()
+    ) -> Date? {
         guard let stamp = name.components(separatedBy: "--").first else { return nil }
         let fields = stamp.split(separator: "-", omittingEmptySubsequences: false)
         guard fields.count == 2, fields[0].count == 8, fields[1].count == 6,
-              let day = Int(fields[0]), let time = Int(fields[1]) else { return nil }
+            let day = Int(fields[0]), let time = Int(fields[1])
+        else { return nil }
         var parts = DateComponents()
         parts.year = day / 10000
         parts.month = (day / 100) % 100
@@ -369,9 +389,10 @@ struct VaultFileOperations: Sendable {
     private func validated(_ name: String) throws -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
-              !trimmed.hasPrefix("."),
-              !trimmed.contains("/"),
-              !trimmed.contains(":") else {
+            !trimmed.hasPrefix("."),
+            !trimmed.contains("/"),
+            !trimmed.contains(":")
+        else {
             throw OperationError.invalidName(name)
         }
         return trimmed
@@ -400,9 +421,11 @@ struct VaultFileOperations: Sendable {
         return try result.get()
     }
 
-    private func coordinatedWrite(at url: URL,
-                                  options: NSFileCoordinator.WritingOptions,
-                                  _ body: (URL) throws -> Void) throws {
+    private func coordinatedWrite(
+        at url: URL,
+        options: NSFileCoordinator.WritingOptions,
+        _ body: (URL) throws -> Void
+    ) throws {
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var result: Result<Void, Error>?
@@ -414,17 +437,22 @@ struct VaultFileOperations: Sendable {
         try result.get()
     }
 
-    private func coordinatedMove(from source: URL, to destination: URL,
-                                 checkDestinationExists: Bool = true) throws {
+    private func coordinatedMove(
+        from source: URL, to destination: URL,
+        checkDestinationExists: Bool = true
+    ) throws {
         let coordinator = NSFileCoordinator()
         var coordinationError: NSError?
         var result: Result<Void, Error>?
-        coordinator.coordinate(writingItemAt: source, options: .forMoving,
-                               writingItemAt: destination, options: .forReplacing,
-                               error: &coordinationError) { source, destination in
+        coordinator.coordinate(
+            writingItemAt: source, options: .forMoving,
+            writingItemAt: destination, options: .forReplacing,
+            error: &coordinationError
+        ) { source, destination in
             result = Result {
                 if checkDestinationExists,
-                   FileManager.default.fileExists(atPath: destination.path) {
+                    FileManager.default.fileExists(atPath: destination.path)
+                {
                     throw OperationError.itemAlreadyExists(destination.lastPathComponent)
                 }
                 try FileManager.default.moveItem(at: source, to: destination)

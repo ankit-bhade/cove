@@ -20,8 +20,9 @@ enum TaskListDocument {
     /// returns an empty-named result the parser reads as "no list".
     static func headingName(in line: String) -> String? {
         let ns = line as NSString
-        guard let match = headingRegex.firstMatch(
-            in: line, range: NSRange(location: 0, length: ns.length))
+        guard
+            let match = headingRegex.firstMatch(
+                in: line, range: NSRange(location: 0, length: ns.length))
         else { return nil }
         // `#` is a document title, not a list: it ends the current section.
         guard ns.substring(with: match.range(at: 1)).count >= 2 else { return "" }
@@ -35,7 +36,8 @@ enum TaskListDocument {
         var names: [String] = []
         for line in lines(of: fileText) {
             if let name = headingName(in: line.text), !name.isEmpty,
-               !names.contains(where: { matches($0, name) }) {
+                !names.contains(where: { matches($0, name) })
+            {
                 names.append(name)
             }
         }
@@ -61,9 +63,11 @@ enum TaskListDocument {
 
     /// Inserts a task line at the end of the named list's items, creating
     /// the list at the end of the note when it doesn't exist yet.
-    static func insertingLine(_ line: String,
-                              inSection name: String,
-                              in fileText: String) -> String {
+    static func insertingLine(
+        _ line: String,
+        inSection name: String,
+        in fileText: String
+    ) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let bounds = sectionBounds(named: trimmed, in: fileText) else {
             let withSection = addingSection(named: trimmed, to: fileText) ?? fileText
@@ -125,9 +129,11 @@ enum TaskListDocument {
 
     /// Rewrites a list's heading, keeping its items. Returns nil when the
     /// list is missing or the new name is already taken by another list.
-    static func renamingSection(named name: String,
-                                to newName: String,
-                                in fileText: String) -> String? {
+    static func renamingSection(
+        named name: String,
+        to newName: String,
+        in fileText: String
+    ) -> String? {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let bounds = sectionBounds(named: name, in: fileText) else {
             return nil
@@ -154,10 +160,12 @@ enum TaskListDocument {
 
     private static func sectionBounds(named name: String, in fileText: String) -> SectionBounds? {
         let all = lines(of: fileText)
-        guard let headingIndex = all.firstIndex(where: {
-            guard let heading = headingName(in: $0.text) else { return false }
-            return !heading.isEmpty && matches(heading, name)
-        }) else { return nil }
+        guard
+            let headingIndex = all.firstIndex(where: {
+                guard let heading = headingName(in: $0.text) else { return false }
+                return !heading.isEmpty && matches(heading, name)
+            })
+        else { return nil }
 
         let heading = all[headingIndex]
         var end = heading.enclosingRange.location + heading.enclosingRange.length
@@ -171,10 +179,11 @@ enum TaskListDocument {
                 insertionPoint = end
             }
         }
-        return SectionBounds(headingStart: heading.enclosingRange.location,
-                             headingLineRange: heading.range,
-                             end: end,
-                             insertionPoint: insertionPoint)
+        return SectionBounds(
+            headingStart: heading.enclosingRange.location,
+            headingLineRange: heading.range,
+            end: end,
+            insertionPoint: insertionPoint)
     }
 
     // MARK: - Line helpers
@@ -190,12 +199,16 @@ enum TaskListDocument {
     private static func lines(of text: String) -> [Line] {
         let ns = text as NSString
         var result: [Line] = []
-        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length),
-                               options: [.byLines, .substringNotRequired]) {
+        ns.enumerateSubstrings(
+            in: NSRange(location: 0, length: ns.length),
+            options: [.byLines, .substringNotRequired]
+        ) {
             _, range, enclosingRange, _ in
-            result.append(Line(text: ns.substring(with: range),
-                               range: range,
-                               enclosingRange: enclosingRange))
+            result.append(
+                Line(
+                    text: ns.substring(with: range),
+                    range: range,
+                    enclosingRange: enclosingRange))
         }
         return result
     }

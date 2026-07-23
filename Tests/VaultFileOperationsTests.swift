@@ -30,8 +30,9 @@ final class VaultFileOperationsTests: XCTestCase {
         let destination = try ops.updateNote(named: "Tasks.md", in: root) { text in
             TaskListDocument.addingSection(named: "Groceries", to: text)
         }
-        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8),
-                       "## Groceries\n")
+        XCTAssertEqual(
+            try String(contentsOf: destination, encoding: .utf8),
+            "## Groceries\n")
     }
 
     func testUpdateNoteRewritesExistingContent() throws {
@@ -40,8 +41,9 @@ final class VaultFileOperationsTests: XCTestCase {
         try ops.updateNote(named: "Tasks", in: root) { text in
             TaskListDocument.insertingLine("- [ ] Eggs", inSection: "Groceries", in: text)
         }
-        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8),
-                       "## Groceries\n- [ ] Milk\n- [ ] Eggs\n")
+        XCTAssertEqual(
+            try String(contentsOf: file, encoding: .utf8),
+            "## Groceries\n- [ ] Milk\n- [ ] Eggs\n")
     }
 
     func testUpdateNoteLeavesTheFileAloneWhenTheTransformReturnsNil() throws {
@@ -53,12 +55,15 @@ final class VaultFileOperationsTests: XCTestCase {
 
     func testUpdateNoteAddsAMissingTrailingNewline() throws {
         let file = url("Tasks.md")
-        try "# Tasks\n- [ ] Old @due(2026-07-19)".write(to: file, atomically: true,
-                                                        encoding: .utf8)
+        try "# Tasks\n- [ ] Old @due(2026-07-19)".write(
+            to: file, atomically: true,
+            encoding: .utf8)
         try ops.updateNote(named: "Tasks", in: root) { text in
             TaskListDocument.insertingUnlistedLine("- [ ] New @due(2026-07-20)", in: text)
         }
-        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), """
+        XCTAssertEqual(
+            try String(contentsOf: file, encoding: .utf8),
+            """
             # Tasks
             - [ ] Old @due(2026-07-19)
             - [ ] New @due(2026-07-20)
@@ -75,10 +80,12 @@ final class VaultFileOperationsTests: XCTestCase {
     }
 
     func testCreateNoteKeepsExplicitExtensionCaseInsensitively() throws {
-        XCTAssertEqual(try ops.createNote(named: "Plan.MD", in: root).lastPathComponent,
-                       "Plan.MD")
-        XCTAssertEqual(try ops.createNote(named: "Notes.md", in: root).lastPathComponent,
-                       "Notes.md")
+        XCTAssertEqual(
+            try ops.createNote(named: "Plan.MD", in: root).lastPathComponent,
+            "Plan.MD")
+        XCTAssertEqual(
+            try ops.createNote(named: "Notes.md", in: root).lastPathComponent,
+            "Notes.md")
     }
 
     func testCreateNoteTrimsWhitespace() throws {
@@ -89,15 +96,17 @@ final class VaultFileOperationsTests: XCTestCase {
     func testCreateNoteRejectsDuplicate() throws {
         try ops.createNote(named: "Ideas", in: root)
         XCTAssertThrowsError(try ops.createNote(named: "Ideas", in: root)) { error in
-            XCTAssertEqual(error as? VaultFileOperations.OperationError,
-                           .itemAlreadyExists("Ideas.md"))
+            XCTAssertEqual(
+                error as? VaultFileOperations.OperationError,
+                .itemAlreadyExists("Ideas.md"))
         }
     }
 
     func testCreateNoteRejectsInvalidNames() {
         for name in ["", "   ", ".hidden", "a/b", "a:b"] {
-            XCTAssertThrowsError(try ops.createNote(named: name, in: root),
-                                 "expected \"\(name)\" to be rejected")
+            XCTAssertThrowsError(
+                try ops.createNote(named: name, in: root),
+                "expected \"\(name)\" to be rejected")
         }
     }
 
@@ -124,8 +133,9 @@ final class VaultFileOperationsTests: XCTestCase {
 
     func testSaveNoteToMissingFileThrows() {
         XCTAssertThrowsError(try ops.saveNote("text", to: url("gone.md"))) { error in
-            XCTAssertEqual(error as? VaultFileOperations.OperationError,
-                           .fileMissing("gone.md"))
+            XCTAssertEqual(
+                error as? VaultFileOperations.OperationError,
+                .fileMissing("gone.md"))
         }
     }
 
@@ -155,17 +165,20 @@ final class VaultFileOperationsTests: XCTestCase {
         let repository = VaultRepository()
 
         async let first = repository.updateNote(at: note) { text in
-            TaskParser.settingTaskCompleted(alpha, to: true,
-                                            todayDateString: "2026-07-19", in: text)
+            TaskParser.settingTaskCompleted(
+                alpha, to: true,
+                todayDateString: "2026-07-19", in: text)
         }
         async let second = repository.updateNote(at: note) { text in
-            TaskParser.settingTaskCompleted(beta, to: true,
-                                            todayDateString: "2026-07-19", in: text)
+            TaskParser.settingTaskCompleted(
+                beta, to: true,
+                todayDateString: "2026-07-19", in: text)
         }
         _ = try await (first, second)
 
-        XCTAssertEqual(try ops.readNote(at: note),
-                       "- [x] Alpha @due(2026-07-20)\n- [x] Beta @due(2026-07-21)\n")
+        XCTAssertEqual(
+            try ops.readNote(at: note),
+            "- [x] Alpha @due(2026-07-20)\n- [x] Beta @due(2026-07-21)\n")
     }
 
     func testConcurrentToggleAndDeletePreserveBothValidChanges() async throws {
@@ -179,16 +192,18 @@ final class VaultFileOperationsTests: XCTestCase {
         let widgetRepository = VaultRepository()
 
         async let toggle = appRepository.updateNote(at: note) { text in
-            TaskParser.settingTaskCompleted(keep, to: true,
-                                            todayDateString: "2026-07-19", in: text)
+            TaskParser.settingTaskCompleted(
+                keep, to: true,
+                todayDateString: "2026-07-19", in: text)
         }
         async let delete = widgetRepository.updateNote(at: note) { text in
             TaskParser.removingTask(remove, in: text)
         }
         _ = try await (toggle, delete)
 
-        XCTAssertEqual(try ops.readNote(at: note),
-                       "- [x] Keep @due(2026-07-20)\n")
+        XCTAssertEqual(
+            try ops.readNote(at: note),
+            "- [x] Keep @due(2026-07-20)\n")
     }
 
     func testRepeatedDesiredCompletionIsIdempotent() async throws {
@@ -201,13 +216,15 @@ final class VaultFileOperationsTests: XCTestCase {
 
         for _ in 0..<3 {
             _ = try await repository.updateNote(at: note) { text in
-                TaskParser.settingTaskCompleted(identity, to: true,
-                                                todayDateString: "2026-07-19", in: text)
+                TaskParser.settingTaskCompleted(
+                    identity, to: true,
+                    todayDateString: "2026-07-19", in: text)
             }
         }
 
-        XCTAssertEqual(try ops.readNote(at: note),
-                       "- [x] Retry me @due(2026-07-20)\n")
+        XCTAssertEqual(
+            try ops.readNote(at: note),
+            "- [x] Retry me @due(2026-07-20)\n")
     }
 
     // MARK: - Rename
@@ -274,8 +291,9 @@ final class VaultFileOperationsTests: XCTestCase {
     func testMoveFolderIntoItselfThrows() throws {
         let folder = try ops.createFolder(named: "Loop", in: root)
         XCTAssertThrowsError(try ops.move(itemAt: folder, into: folder)) { error in
-            XCTAssertEqual(error as? VaultFileOperations.OperationError,
-                           .cannotMoveIntoItself)
+            XCTAssertEqual(
+                error as? VaultFileOperations.OperationError,
+                .cannotMoveIntoItself)
         }
     }
 
@@ -283,8 +301,9 @@ final class VaultFileOperationsTests: XCTestCase {
         let outer = try ops.createFolder(named: "Outer", in: root)
         let inner = try ops.createFolder(named: "Inner", in: outer)
         XCTAssertThrowsError(try ops.move(itemAt: outer, into: inner)) { error in
-            XCTAssertEqual(error as? VaultFileOperations.OperationError,
-                           .cannotMoveIntoItself)
+            XCTAssertEqual(
+                error as? VaultFileOperations.OperationError,
+                .cannotMoveIntoItself)
         }
     }
 
@@ -329,8 +348,9 @@ final class VaultFileOperationsTests: XCTestCase {
         try "replacement\n".write(to: note, atomically: true, encoding: .utf8)
 
         XCTAssertThrowsError(try ops.restore(record)) { error in
-            XCTAssertEqual(error as? VaultFileOperations.OperationError,
-                           .itemAlreadyExists("Recoverable.md"))
+            XCTAssertEqual(
+                error as? VaultFileOperations.OperationError,
+                .itemAlreadyExists("Recoverable.md"))
         }
         XCTAssertEqual(try ops.readNote(at: note), "replacement\n")
         XCTAssertTrue(fileManager.fileExists(atPath: record.recoveryURL.path))
@@ -361,8 +381,9 @@ final class VaultFileOperationsTests: XCTestCase {
 
     func testRecoveryDeletionDateIgnoresAnUntimestampedName() {
         // The pre-sweep format: a bare UUID first, no deletion timestamp.
-        XCTAssertNil(VaultFileOperations.recoveryDeletionDate(
-            fromName: "b8f1c2d3-4e5f--Rm9v--Note.md"))
+        XCTAssertNil(
+            VaultFileOperations.recoveryDeletionDate(
+                fromName: "b8f1c2d3-4e5f--Rm9v--Note.md"))
     }
 
     func testMoveToRecoveryStampsTheDeletionMoment() throws {
@@ -381,9 +402,10 @@ final class VaultFileOperationsTests: XCTestCase {
         let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
         let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root, now: deletedAt)
 
-        try ops.purgeRecovery(vaultRoot: root,
-                              retention: VaultFileOperations.recoveryRetention,
-                              now: deletedAt.addingTimeInterval(8 * 24 * 60 * 60))
+        try ops.purgeRecovery(
+            vaultRoot: root,
+            retention: VaultFileOperations.recoveryRetention,
+            now: deletedAt.addingTimeInterval(8 * 24 * 60 * 60))
 
         XCTAssertFalse(fileManager.fileExists(atPath: record.recoveryURL.path))
     }
@@ -393,9 +415,10 @@ final class VaultFileOperationsTests: XCTestCase {
         let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
         let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root, now: deletedAt)
 
-        try ops.purgeRecovery(vaultRoot: root,
-                              retention: VaultFileOperations.recoveryRetention,
-                              now: deletedAt.addingTimeInterval(6 * 24 * 60 * 60))
+        try ops.purgeRecovery(
+            vaultRoot: root,
+            retention: VaultFileOperations.recoveryRetention,
+            now: deletedAt.addingTimeInterval(6 * 24 * 60 * 60))
 
         XCTAssertTrue(fileManager.fileExists(atPath: record.recoveryURL.path))
         try ops.restore(record)
@@ -403,8 +426,9 @@ final class VaultFileOperationsTests: XCTestCase {
     }
 
     func testPurgeSweepsEntriesWrittenBeforeTimestampsExisted() throws {
-        let folder = root.appendingPathComponent(VaultFileOperations.recoveryFolderName,
-                                                 isDirectory: true)
+        let folder = root.appendingPathComponent(
+            VaultFileOperations.recoveryFolderName,
+            isDirectory: true)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         let legacy = folder.appendingPathComponent(
             "\(UUID().uuidString.lowercased())--Rm9v--Note.md")
@@ -421,8 +445,9 @@ final class VaultFileOperationsTests: XCTestCase {
         let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
         let record = try ops.moveToRecovery(itemAt: folder, vaultRoot: root, now: deletedAt)
 
-        try ops.purgeRecovery(vaultRoot: root,
-                              now: deletedAt.addingTimeInterval(30 * 24 * 60 * 60))
+        try ops.purgeRecovery(
+            vaultRoot: root,
+            now: deletedAt.addingTimeInterval(30 * 24 * 60 * 60))
 
         XCTAssertFalse(fileManager.fileExists(atPath: record.recoveryURL.path))
     }
@@ -436,12 +461,13 @@ final class VaultFileOperationsTests: XCTestCase {
     }
 
     private func identity(for task: TaskParser.ParsedTask, in note: URL) -> TaskIdentity {
-        TaskIdentity(filePath: note.path,
-                     lineNumber: task.lineNumber,
-                     text: task.text,
-                     dueDateString: task.dueDateString,
-                     dueTimeString: task.dueTimeString,
-                     recurrenceTag: task.recurrence?.tagText,
-                     listName: task.listName)
+        TaskIdentity(
+            filePath: note.path,
+            lineNumber: task.lineNumber,
+            text: task.text,
+            dueDateString: task.dueDateString,
+            dueTimeString: task.dueTimeString,
+            recurrenceTag: task.recurrence?.tagText,
+            listName: task.listName)
     }
 }

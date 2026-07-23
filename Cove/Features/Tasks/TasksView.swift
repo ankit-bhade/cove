@@ -70,10 +70,11 @@ struct TasksView: View {
             ForEach(TaskGroup.grouping(incomplete, now: now)) { group in
                 Section {
                     ForEach(group.tasks) { task in
-                        TaskRow(task: task, now: now,
-                                onToggle: { toggle(task) },
-                                onDelete: { delete(task) },
-                                isProcessing: pendingTaskIDs.contains(task.id))
+                        TaskRow(
+                            task: task, now: now,
+                            onToggle: { toggle(task) },
+                            onDelete: { delete(task) },
+                            isProcessing: pendingTaskIDs.contains(task.id))
                     }
                 } header: {
                     // Tracked capitals with the count set apart, like every
@@ -81,18 +82,20 @@ struct TasksView: View {
                     // headers used to carry — a sunrise, a calendar — turned
                     // to mush at caption size and said nothing the title
                     // didn't already say.
-                    CoveSectionHeader(group.name,
-                                      count: group.tasks.count,
-                                      tint: group.isOverdue ? CoveTheme.alert : nil)
+                    CoveSectionHeader(
+                        group.name,
+                        count: group.tasks.count,
+                        tint: group.isOverdue ? CoveTheme.alert : nil)
                 }
             }
             if !completed.isEmpty {
                 Section {
                     ForEach(completed) { task in
-                        TaskRow(task: task, now: now,
-                                onToggle: { toggle(task) },
-                                onDelete: { delete(task) },
-                                isProcessing: pendingTaskIDs.contains(task.id))
+                        TaskRow(
+                            task: task, now: now,
+                            onToggle: { toggle(task) },
+                            onDelete: { delete(task) },
+                            isProcessing: pendingTaskIDs.contains(task.id))
                     }
                 } header: {
                     CoveSectionHeader(title: "Completed", count: completed.count) {
@@ -118,7 +121,7 @@ struct TasksView: View {
         }
         .coveListStyle()
         #if os(iOS)
-        .listSectionSpacing(.compact)
+            .listSectionSpacing(.compact)
         #endif
         .coveReadableWidth()
     }
@@ -152,8 +155,7 @@ struct TasksView: View {
                 let record = try await vaultManager.deleteTask(task)
                 undoManager?.registerUndo(withTarget: vaultManager) { manager in
                     Task {
-                        do { try await manager.restoreDeletedTask(record) }
-                        catch {
+                        do { try await manager.restoreDeletedTask(record) } catch {
                             CoveLog.vault.error("Task undo failed: \(error.localizedDescription, privacy: .private)")
                         }
                     }
@@ -174,9 +176,9 @@ struct TasksView: View {
                 let previousCompletion = task.isCompleted
                 undoManager?.registerUndo(withTarget: vaultManager) { manager in
                     Task {
-                        do { try await manager.setTaskCompleted(task, to: previousCompletion) }
-                        catch {
-                            CoveLog.vault.error("Task toggle undo failed: \(error.localizedDescription, privacy: .private)")
+                        do { try await manager.setTaskCompleted(task, to: previousCompletion) } catch {
+                            CoveLog.vault.error(
+                                "Task toggle undo failed: \(error.localizedDescription, privacy: .private)")
                         }
                     }
                 }

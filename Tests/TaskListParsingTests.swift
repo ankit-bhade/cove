@@ -27,8 +27,9 @@ final class TaskListParsingTests: XCTestCase {
 
     func testTasksUnderAHeadingCarryItsName() {
         let tasks = TaskParser.tasks(in: note, sectioned: true)
-        XCTAssertEqual(tasks.map(\.listName),
-                       [nil, "Groceries", "Groceries", "Groceries", "Subscriptions"])
+        XCTAssertEqual(
+            tasks.map(\.listName),
+            [nil, "Groceries", "Groceries", "Groceries", "Subscriptions"])
     }
 
     func testUndatedListItemsAreParsed() {
@@ -91,8 +92,11 @@ final class TaskListParsingTests: XCTestCase {
             withText: "Milk", dueDateString: nil, dueTimeString: nil,
             recurrence: nil, isCompleted: false, listName: "Groceries",
             preferredLineNumber: 3, todayDateString: "2026-07-19", in: note)
-        XCTAssertEqual(result, note.replacingOccurrences(of: "- [ ] Milk",
-                                                         with: "- [x] Milk"))
+        XCTAssertEqual(
+            result,
+            note.replacingOccurrences(
+                of: "- [ ] Milk",
+                with: "- [x] Milk"))
     }
 
     func testTogglingDoesNotCrossListBoundaries() {
@@ -106,7 +110,9 @@ final class TaskListParsingTests: XCTestCase {
             withText: "Milk", dueDateString: nil, dueTimeString: nil,
             recurrence: nil, isCompleted: false, listName: "Pantry",
             preferredLineNumber: 3, todayDateString: "2026-07-19", in: text)
-        XCTAssertEqual(result, """
+        XCTAssertEqual(
+            result,
+            """
             ## Groceries
             - [ ] Milk
             ## Pantry
@@ -132,7 +138,9 @@ final class TaskListParsingTests: XCTestCase {
             - [x] Bread
             - [x] Butter @due(2026-07-02)
             """
-        XCTAssertEqual(TaskParser.clearingCompletedTasks(in: text, sectioned: true), """
+        XCTAssertEqual(
+            TaskParser.clearingCompletedTasks(in: text, sectioned: true),
+            """
 
             ## Groceries
             - [x] Bread

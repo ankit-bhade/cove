@@ -52,13 +52,16 @@ actor TaskNotificationScheduler {
             let trigger = UNCalendarNotificationTrigger(
                 dateMatching: plan.fireDateComponents, repeats: false)
             do {
-                try await center.add(UNNotificationRequest(
-                    identifier: plan.identifier, content: content, trigger: trigger))
+                try await center.add(
+                    UNNotificationRequest(
+                        identifier: plan.identifier, content: content, trigger: trigger))
             } catch {
                 CoveLog.notifications.error("Scheduling failed: \(error.localizedDescription, privacy: .private)")
             }
         }
-        CoveLog.notifications.info("Notification diff removed \(removals.count, privacy: .public) and added \(additions.count, privacy: .public)")
+        CoveLog.notifications.info(
+            "Notification diff removed \(removals.count, privacy: .public) and added \(additions.count, privacy: .public)"
+        )
     }
 
     /// Scheduling never owns the permission prompt. Settings is the only
@@ -78,8 +81,9 @@ actor TaskNotificationScheduler {
 private extension UNNotificationRequest {
     func matches(_ plan: TaskNotificationPlan) -> Bool {
         guard content.title == plan.title,
-              content.body == plan.body,
-              let trigger = trigger as? UNCalendarNotificationTrigger else { return false }
+            content.body == plan.body,
+            let trigger = trigger as? UNCalendarNotificationTrigger
+        else { return false }
         return trigger.dateComponents == plan.fireDateComponents && !trigger.repeats
     }
 }

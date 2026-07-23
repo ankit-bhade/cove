@@ -6,7 +6,7 @@ struct CoveApp: App {
 
     init() {
         #if os(iOS)
-        NavigationBarAppearance.apply()
+            NavigationBarAppearance.apply()
         #endif
     }
 
@@ -17,7 +17,7 @@ struct CoveApp: App {
                 .tint(CoveTheme.accent)
         }
         #if os(macOS)
-        .defaultSize(width: 980, height: 700)
+            .defaultSize(width: 980, height: 700)
         #endif
     }
 }

@@ -9,8 +9,10 @@ enum TaskCalendar {
         return calendar
     }
 
-    static func nextMidnight(after date: Date,
-                             calendar: Calendar = gregorian()) -> Date {
+    static func nextMidnight(
+        after date: Date,
+        calendar: Calendar = gregorian()
+    ) -> Date {
         let calendar = gregorian(timeZone: calendar.timeZone)
         let start = calendar.startOfDay(for: date)
         return calendar.date(byAdding: .day, value: 1, to: start)!
@@ -47,19 +49,21 @@ struct TaskIdentity: Codable, Hashable, Sendable {
         let resolved = url.resolvingSymlinksInPath().pathComponents
         let root = vaultRoot.standardizedFileURL.resolvingSymlinksInPath().pathComponents
         guard resolved.count > root.count,
-              Array(resolved.prefix(root.count)) == root,
-              !resolved.dropFirst(root.count).contains(where: { $0.hasPrefix(".") })
+            Array(resolved.prefix(root.count)) == root,
+            !resolved.dropFirst(root.count).contains(where: { $0.hasPrefix(".") })
         else { return nil }
         return url
     }
 
-    init(filePath: String,
-         lineNumber: Int,
-         text: String,
-         dueDateString: String?,
-         dueTimeString: String?,
-         recurrenceTag: String?,
-         listName: String?) {
+    init(
+        filePath: String,
+        lineNumber: Int,
+        text: String,
+        dueDateString: String?,
+        dueTimeString: String?,
+        recurrenceTag: String?,
+        listName: String?
+    ) {
         self.filePath = filePath
         self.lineNumber = lineNumber
         self.text = text
@@ -70,13 +74,14 @@ struct TaskIdentity: Codable, Hashable, Sendable {
     }
 
     init(_ task: TaskItem) {
-        self.init(filePath: task.fileURL.path,
-                  lineNumber: task.lineNumber,
-                  text: task.text,
-                  dueDateString: task.dueDateString,
-                  dueTimeString: task.dueTimeString,
-                  recurrenceTag: task.recurrence?.tagText,
-                  listName: task.listName)
+        self.init(
+            filePath: task.fileURL.path,
+            lineNumber: task.lineNumber,
+            text: task.text,
+            dueDateString: task.dueDateString,
+            dueTimeString: task.dueTimeString,
+            recurrenceTag: task.recurrence?.tagText,
+            listName: task.listName)
     }
 }
 
@@ -160,12 +165,14 @@ struct NoteIndexEntry: Hashable, Sendable {
     let modificationDate: Date?
     let fileSize: Int?
 
-    init(url: URL,
-         title: String,
-         tasks: [TaskItem],
-         listNames: [String] = [],
-         modificationDate: Date? = nil,
-         fileSize: Int? = nil) {
+    init(
+        url: URL,
+        title: String,
+        tasks: [TaskItem],
+        listNames: [String] = [],
+        modificationDate: Date? = nil,
+        fileSize: Int? = nil
+    ) {
         self.url = url
         self.title = title
         self.tasks = tasks

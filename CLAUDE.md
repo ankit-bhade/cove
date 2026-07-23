@@ -159,10 +159,11 @@ separate file.
 ### Project structure
 
 The spec's layout lives under `Cove/` (the app target's synchronized folder):
-`App/`, `Core/Models/`, `Core/Services/`, `Features/{VaultBrowser, Editor,
-Search, Tasks, Lists, Settings}/`, `Platform/{iOS, macOS}/`. Tests are in
-top-level `Tests/`. The widget extension is in top-level `CoveWidgets/`,
-outside `Cove/`, because it is a separate build target.
+`App/`, `DesignSystem/`, `Core/Models/`, `Core/Services/`,
+`Features/{VaultBrowser, Editor, Search, Tasks, Lists, Settings}/`, and
+`Platform/{iOS, macOS}/`. Tests are in top-level `Tests/`. The widget
+extension is in top-level `CoveWidgets/`, outside `Cove/`, because it is a
+separate build target.
 
 ---
 

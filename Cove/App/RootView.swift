@@ -44,58 +44,60 @@ struct RootView: View {
     @ViewBuilder
     private var appNavigation: some View {
         #if os(macOS)
-        NavigationSplitView {
-            List(AppSection.allCases, selection: $selectedSection) { section in
-                HStack(spacing: 10) {
-                    Image(systemName: section.symbol)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(selectedSection == section
-                                         ? CoveTheme.accent : .secondary)
-                        .frame(width: 20)
-                    Text(section.title)
-                        .font(.body.weight(selectedSection == section ? .semibold : .regular))
-                }
-                .tag(section)
-                .padding(.vertical, 5)
-            }
-            .safeAreaInset(edge: .top) {
-                HStack(spacing: 11) {
-                    CoveMark(size: 32)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Cove")
-                            .font(.coveHeadline)
-                        Text("Markdown, at home")
-                            .coveEyebrow()
+            NavigationSplitView {
+                List(AppSection.allCases, selection: $selectedSection) { section in
+                    HStack(spacing: 10) {
+                        Image(systemName: section.symbol)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(
+                                selectedSection == section
+                                    ? CoveTheme.accent : .secondary
+                            )
+                            .frame(width: 20)
+                        Text(section.title)
+                            .font(.body.weight(selectedSection == section ? .semibold : .regular))
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 11)
-                .background(.ultraThinMaterial)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(CoveTheme.hairline)
-                        .frame(height: 1)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Cove")
-            }
-            .navigationSplitViewColumnWidth(min: 196, ideal: 224, max: 300)
-        } detail: {
-            sectionView(selectedSection)
-        }
-        .navigationSplitViewStyle(.balanced)
-        #else
-        TabView(selection: $selectedSection) {
-            ForEach(AppSection.allCases) { section in
-                sectionView(section)
-                    .tabItem { Label(section.title, systemImage: section.symbol) }
                     .tag(section)
+                    .padding(.vertical, 5)
+                }
+                .safeAreaInset(edge: .top) {
+                    HStack(spacing: 11) {
+                        CoveMark(size: 32)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Cove")
+                                .font(.coveHeadline)
+                            Text("Markdown, at home")
+                                .coveEyebrow()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 11)
+                    .background(.ultraThinMaterial)
+                    .overlay(alignment: .bottom) {
+                        Rectangle()
+                            .fill(CoveTheme.hairline)
+                            .frame(height: 1)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Cove")
+                }
+                .navigationSplitViewColumnWidth(min: 196, ideal: 224, max: 300)
+            } detail: {
+                sectionView(selectedSection)
             }
-        }
-        .toolbarBackground(.visible, for: .tabBar)
-        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+            .navigationSplitViewStyle(.balanced)
+        #else
+            TabView(selection: $selectedSection) {
+                ForEach(AppSection.allCases) { section in
+                    sectionView(section)
+                        .tabItem { Label(section.title, systemImage: section.symbol) }
+                        .tag(section)
+                }
+            }
+            .toolbarBackground(.visible, for: .tabBar)
+            .toolbarBackground(.ultraThinMaterial, for: .tabBar)
         #endif
     }
 

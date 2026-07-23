@@ -8,13 +8,14 @@ final class TaskIdentityPathTests: XCTestCase {
     private let vault = URL(fileURLWithPath: "/Users/someone/Vault", isDirectory: true)
 
     private func identity(path: String) -> TaskIdentity {
-        TaskIdentity(filePath: path,
-                     lineNumber: 0,
-                     text: "Buy milk",
-                     dueDateString: "2026-07-23",
-                     dueTimeString: nil,
-                     recurrenceTag: nil,
-                     listName: nil)
+        TaskIdentity(
+            filePath: path,
+            lineNumber: 0,
+            text: "Buy milk",
+            dueDateString: "2026-07-23",
+            dueTimeString: nil,
+            recurrenceTag: nil,
+            listName: nil)
     }
 
     func testNoteInsideTheVaultResolves() {
@@ -29,8 +30,9 @@ final class TaskIdentityPathTests: XCTestCase {
     func testNoteOutsideTheVaultIsRejected() {
         XCTAssertNil(identity(path: "/Users/someone/Other/Tasks.md").fileURL(within: vault))
         XCTAssertNil(identity(path: "/Users/someone/Tasks.md").fileURL(within: vault))
-        XCTAssertNil(identity(path: "/Users/someone/Vault/../Secrets.md")
-            .fileURL(within: vault))
+        XCTAssertNil(
+            identity(path: "/Users/someone/Vault/../Secrets.md")
+                .fileURL(within: vault))
     }
 
     /// A sibling folder whose name merely starts with the vault's must not
@@ -47,8 +49,9 @@ final class TaskIdentityPathTests: XCTestCase {
     func testNonMarkdownAndHiddenPathsAreRejected() {
         XCTAssertNil(identity(path: "/Users/someone/Vault/Tasks.txt").fileURL(within: vault))
         XCTAssertNil(identity(path: "/Users/someone/Vault/Tasks").fileURL(within: vault))
-        XCTAssertNil(identity(path: "/Users/someone/Vault/.cove-recovery/Tasks.md")
-            .fileURL(within: vault))
+        XCTAssertNil(
+            identity(path: "/Users/someone/Vault/.cove-recovery/Tasks.md")
+                .fileURL(within: vault))
         XCTAssertNil(identity(path: "/Users/someone/Vault/.hidden.md").fileURL(within: vault))
     }
 }

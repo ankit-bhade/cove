@@ -38,7 +38,8 @@ struct VaultBrowserView: View {
             // Return to the closest ancestor that still exists. Notes are on
             // this path too, so an open editor whose file is gone pops as well.
             while let currentURL = folderPath.last,
-                  node(at: currentURL) == nil {
+                node(at: currentURL) == nil
+            {
                 folderPath.removeLast()
             }
         }
@@ -49,7 +50,7 @@ struct VaultBrowserView: View {
         ) { prompt in
             TextField(prompt.placeholder, text: $nameInput)
                 #if os(iOS)
-                .textInputAutocapitalization(.words)
+                    .textInputAutocapitalization(.words)
                 #endif
                 .autocorrectionDisabled()
             Button("Cancel", role: .cancel) {}
@@ -73,9 +74,10 @@ struct VaultBrowserView: View {
                 delete(node)
             }
         } message: { node in
-            Text(node.isDirectory
-                 ? "The folder and everything inside it will move to Cove Recovery."
-                 : "The note will move to Cove Recovery.")
+            Text(
+                node.isDirectory
+                    ? "The folder and everything inside it will move to Cove Recovery."
+                    : "The note will move to Cove Recovery.")
         }
         .alert(
             "Original Name In Use",
@@ -84,7 +86,7 @@ struct VaultBrowserView: View {
         ) { record in
             TextField("New name", text: $nameInput)
                 #if os(iOS)
-                .textInputAutocapitalization(.words)
+                    .textInputAutocapitalization(.words)
                 #endif
                 .autocorrectionDisabled()
             Button("Cancel", role: .cancel) {}
@@ -115,7 +117,8 @@ struct VaultBrowserView: View {
                             nameInput = record.originalURL.deletingPathExtension().lastPathComponent
                             recoveryNeedingName = record
                         } catch {
-                            CoveLog.vault.error("Recovery restore failed: \(error.localizedDescription, privacy: .private)")
+                            CoveLog.vault.error(
+                                "Recovery restore failed: \(error.localizedDescription, privacy: .private)")
                             errorMessage = error.localizedDescription
                         }
                     }
@@ -270,14 +273,15 @@ struct VaultBrowserView: View {
     }
 
     /// Direct folders, deeper folders, and all notes within this level.
-    private func overviewCounts(for folder: VaultNode) ->
-        (folders: Int, subfolders: Int, notes: Int) {
+    private func overviewCounts(for folder: VaultNode) -> (folders: Int, subfolders: Int, notes: Int) {
         let children = folder.children ?? []
         let directFolders = children.filter(\.isDirectory).count
         let allFolders = countFolders(in: children)
-        return (directFolders,
-                max(0, allFolders - directFolders),
-                children.flatMap(\.allFiles).count)
+        return (
+            directFolders,
+            max(0, allFolders - directFolders),
+            children.flatMap(\.allFiles).count
+        )
     }
 
     private func countFolders(in nodes: [VaultNode]) -> Int {
@@ -305,8 +309,9 @@ struct VaultBrowserView: View {
     /// row are told apart by color before the glyph inside them is read.
     private func nodeLabel(_ node: VaultNode) -> some View {
         HStack(spacing: 12) {
-            CoveIconTile(systemName: node.isDirectory ? "folder.fill" : "doc.text.fill",
-                         tint: node.isDirectory ? CoveTheme.moss : CoveTheme.accent)
+            CoveIconTile(
+                systemName: node.isDirectory ? "folder.fill" : "doc.text.fill",
+                tint: node.isDirectory ? CoveTheme.moss : CoveTheme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(node.displayName)
                     .font(.body.weight(.medium))

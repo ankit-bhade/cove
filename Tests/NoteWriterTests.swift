@@ -76,14 +76,16 @@ final class NoteWriterTests: XCTestCase {
 
     func testExternalDiskVersionIsPreservedBeforeLocalSave() async throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cove-writer-conflict-\(UUID().uuidString)",
-                                    isDirectory: true)
+            .appendingPathComponent(
+                "cove-writer-conflict-\(UUID().uuidString)",
+                isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let note = root.appendingPathComponent("Note.md")
         try "external".write(to: note, atomically: true, encoding: .utf8)
-        let writer = NoteWriter(fileURL: note,
-                                sessionID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!)
+        let writer = NoteWriter(
+            fileURL: note,
+            sessionID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!)
 
         let result = try await writer.submit(
             revision(1, "local", expected: "original"))
@@ -93,9 +95,11 @@ final class NoteWriterTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: conflictURL, encoding: .utf8), "external")
     }
 
-    private func revision(_ number: UInt64,
-                          _ text: String,
-                          expected: String = "original") -> NoteWriter.Revision {
+    private func revision(
+        _ number: UInt64,
+        _ text: String,
+        expected: String = "original"
+    ) -> NoteWriter.Revision {
         NoteWriter.Revision(number: number, text: text, expectedDiskText: expected)
     }
 
@@ -129,9 +133,10 @@ private actor RevisionProbe {
             throw ProbeError.injected
         }
         persisted.append(revision.number)
-        return NoteWriter.PersistedRevision(number: revision.number,
-                                            text: revision.text,
-                                            conflictCopyURL: nil)
+        return NoteWriter.PersistedRevision(
+            number: revision.number,
+            text: revision.text,
+            conflictCopyURL: nil)
     }
 
     func waitUntilStarted(_ number: UInt64) async {

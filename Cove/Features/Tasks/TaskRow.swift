@@ -27,26 +27,34 @@ struct TaskRow: View {
                     } else {
                         Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 21, weight: .medium))
-                            .foregroundStyle(task.isCompleted
-                                             ? AnyShapeStyle(.tertiary)
-                                             : AnyShapeStyle(overdue ? CoveTheme.alert
-                                                             : CoveTheme.accent))
+                            .foregroundStyle(
+                                task.isCompleted
+                                    ? AnyShapeStyle(.tertiary)
+                                    : AnyShapeStyle(
+                                        overdue
+                                            ? CoveTheme.alert
+                                            : CoveTheme.accent)
+                            )
                             .contentTransition(.symbolEffect(.replace))
                     }
                 }
-                    // The glyph alone is a small target; padding brings the
-                    // hit area up to the 44pt minimum without moving it.
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                // The glyph alone is a small target; padding brings the
+                // hit area up to the 44pt minimum without moving it.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .offset(x: -8)
             .padding(.trailing, -8)
             .disabled(isProcessing)
-            .accessibilityLabel(isProcessing ? "Updating task"
-                                : task.isCompleted ? "Mark incomplete"
-                                : task.recurrence == nil ? "Mark complete"
-                                : "Complete and reschedule")
+            .accessibilityLabel(
+                isProcessing
+                    ? "Updating task"
+                    : task.isCompleted
+                        ? "Mark incomplete"
+                        : task.recurrence == nil
+                            ? "Mark complete"
+                            : "Complete and reschedule")
 
             NavigationLink(value: task.fileURL) {
                 // The source note is deliberately not shown: tasks nearly
@@ -115,12 +123,17 @@ struct TaskRow: View {
     /// further out is quiet — a list where every capsule is colored tells the
     /// reader nothing about which one to look at first.
     private func dueLabel(overdue: Bool) -> some View {
-        let tint: Color = overdue ? CoveTheme.alert
-            : task.isDue(onSameDayAs: now) ? CoveTheme.accent
-            : .secondary
+        let tint: Color =
+            overdue
+            ? CoveTheme.alert
+            : task.isDue(onSameDayAs: now)
+                ? CoveTheme.accent
+                : .secondary
         return HStack(spacing: 5) {
-            Image(systemName: overdue ? "exclamationmark.circle.fill"
-                  : task.dueTimeString != nil ? "clock" : "calendar")
+            Image(
+                systemName: overdue
+                    ? "exclamationmark.circle.fill"
+                    : task.dueTimeString != nil ? "clock" : "calendar")
             Text(task.relativeDueDescription(at: now))
         }
         .font(.caption.weight(.semibold))

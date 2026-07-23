@@ -26,9 +26,11 @@ actor NoteWriter {
     private var idleWaiters: [CheckedContinuation<PersistedRevision, Error>] = []
     private let persist: Persist
 
-    init(fileURL: URL,
-         fileOperations: VaultFileOperations = VaultFileOperations(),
-         sessionID: UUID = UUID()) {
+    init(
+        fileURL: URL,
+        fileOperations: VaultFileOperations = VaultFileOperations(),
+        sessionID: UUID = UUID()
+    ) {
         let conflictPrefix = sessionID.uuidString.lowercased()
         persist = { revision in
             try await Task.detached(priority: .userInitiated) {
@@ -37,9 +39,10 @@ actor NoteWriter {
                     to: fileURL,
                     expectedDiskText: revision.expectedDiskText,
                     conflictIdentifier: "\(conflictPrefix)-r\(revision.number)")
-                return PersistedRevision(number: revision.number,
-                                         text: revision.text,
-                                         conflictCopyURL: save.conflictCopyURL)
+                return PersistedRevision(
+                    number: revision.number,
+                    text: revision.text,
+                    conflictCopyURL: save.conflictCopyURL)
             }.value
         }
     }
@@ -173,13 +176,18 @@ final class NoteDocument {
     @ObservationIgnored private let fileOperations: VaultFileOperations
     @ObservationIgnored private let writer: NoteWriter
 
-    init(fileURL: URL,
-         fileOperations: VaultFileOperations = VaultFileOperations(),
-         writer: NoteWriter? = nil) {
+    init(
+        fileURL: URL,
+        fileOperations: VaultFileOperations = VaultFileOperations(),
+        writer: NoteWriter? = nil
+    ) {
         self.fileURL = fileURL
         self.fileOperations = fileOperations
-        self.writer = writer ?? NoteWriter(fileURL: fileURL,
-                                           fileOperations: fileOperations)
+        self.writer =
+            writer
+            ?? NoteWriter(
+                fileURL: fileURL,
+                fileOperations: fileOperations)
     }
 
     func load() async {
@@ -257,9 +265,10 @@ final class NoteDocument {
 
     private func save() async {
         guard loadState == .loaded, isDirty else { return }
-        let revision = NoteWriter.Revision(number: revisionNumber,
-                                           text: text,
-                                           expectedDiskText: lastSavedText)
+        let revision = NoteWriter.Revision(
+            number: revisionNumber,
+            text: text,
+            expectedDiskText: lastSavedText)
         activeSaveCount += 1
         isSaving = true
         defer {

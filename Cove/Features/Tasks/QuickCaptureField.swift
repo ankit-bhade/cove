@@ -44,18 +44,23 @@ struct QuickCaptureField: View {
         }
         // Inset into the masthead rather than raised out of it: the field is
         // a place to put something, so it reads as a well, not a button.
-        .background(CoveTheme.canvas,
-                    in: RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
-                                         style: .continuous))
+        .background(
+            CoveTheme.canvas,
+            in: RoundedRectangle(
+                cornerRadius: CoveTheme.fieldRadius,
+                style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: CoveTheme.fieldRadius, style: .continuous)
                 .stroke(CoveTheme.hairline, lineWidth: 1)
         }
         .animation(.easeInOut(duration: 0.15), value: draft)
         .sheet(item: $pendingDraft) { pending in
-            TaskDraftSheet(sentence: pending.sentence,
-                           draft: pending.draft,
-                           listName: listName) { draft in
+            TaskDraftSheet(
+                sentence: pending.sentence,
+                draft: pending.draft,
+                listName: listName
+            ) { draft in
                 try await onCapture(draft)
                 if trimmedText == pending.sentence {
                     text = ""
@@ -74,7 +79,9 @@ struct QuickCaptureField: View {
                 .submitLabel(.done)
                 .accessibilityHint(accessibilityHint)
                 .disabled(isCapturing)
-            Button { startCapture(draft) } label: {
+            Button {
+                startCapture(draft)
+            } label: {
                 Group {
                     if isCapturing {
                         ProgressView()
@@ -89,14 +96,17 @@ struct QuickCaptureField: View {
                             .foregroundStyle(CoveTheme.canvas)
                     }
                 }
-                    .frame(width: 30, height: 30)
-                    .background(canCapture ? AnyShapeStyle(CoveTheme.accent)
-                                : AnyShapeStyle(Color.secondary.opacity(0.35)),
-                                in: Circle())
-                    // The visible control stays compact while the outer
-                    // frame provides a full-size touch target.
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                .frame(width: 30, height: 30)
+                .background(
+                    canCapture
+                        ? AnyShapeStyle(CoveTheme.accent)
+                        : AnyShapeStyle(Color.secondary.opacity(0.35)),
+                    in: Circle()
+                )
+                // The visible control stays compact while the outer
+                // frame provides a full-size touch target.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!canCapture || isCapturing)
@@ -113,8 +123,9 @@ struct QuickCaptureField: View {
     private var draft: TaskDraft? {
         let sentence = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sentence.isEmpty else { return nil }
-        return QuickTaskParser.parse(sentence, now: .now,
-                                     defaultingToToday: listName == nil)
+        return QuickTaskParser.parse(
+            sentence, now: .now,
+            defaultingToToday: listName == nil)
     }
 
     /// A sentence that was nothing but a date leaves an empty title, and an
@@ -125,9 +136,10 @@ struct QuickCaptureField: View {
     }
 
     private func preview(_ draft: TaskDraft) -> some View {
-        let due = DueDescription.text(dueDateString: draft.dueDateString,
-                                      dueTimeString: draft.dueTimeString,
-                                      at: .now)
+        let due = DueDescription.text(
+            dueDateString: draft.dueDateString,
+            dueTimeString: draft.dueTimeString,
+            at: .now)
         return HStack(alignment: .top, spacing: 9) {
             Image(systemName: "sparkles")
                 .font(.system(size: 12, weight: .semibold))
@@ -205,8 +217,8 @@ struct QuickCaptureField: View {
     /// the user's input intact so they can retry instead of reconstructing it.
     private func startCapture(_ draft: TaskDraft?) {
         guard let draft,
-              !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !isCapturing
+            !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            !isCapturing
         else { return }
         let submittedText = trimmedText
         isCapturing = true

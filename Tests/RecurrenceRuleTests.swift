@@ -36,30 +36,39 @@ final class RecurrenceRuleTests: XCTestCase {
     func testNormalizedTagForms() {
         XCTAssertEqual(RecurrenceRule(frequency: .daily).tagText, "daily")
         XCTAssertEqual(RecurrenceRule.everyWeekday.tagText, "every weekday")
-        XCTAssertEqual(RecurrenceRule(frequency: .weekly, byWeekday: [1]).tagText,
-                       "every sunday")
-        XCTAssertEqual(RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]).tagText,
-                       "every monday wednesday")
-        XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: 2).tagText,
-                       "every 2 weeks")
+        XCTAssertEqual(
+            RecurrenceRule(frequency: .weekly, byWeekday: [1]).tagText,
+            "every sunday")
+        XCTAssertEqual(
+            RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]).tagText,
+            "every monday wednesday")
+        XCTAssertEqual(
+            RecurrenceRule(frequency: .weekly, interval: 2).tagText,
+            "every 2 weeks")
     }
 
     func testParsesHandTypedVariants() {
-        XCTAssertEqual(RecurrenceRule(tagText: "every day"),
-                       RecurrenceRule(frequency: .daily))
-        XCTAssertEqual(RecurrenceRule(tagText: "every sun"),
-                       RecurrenceRule(frequency: .weekly, byWeekday: [1]))
-        XCTAssertEqual(RecurrenceRule(tagText: "every mon wed fri"),
-                       RecurrenceRule(frequency: .weekly, byWeekday: [2, 4, 6]))
+        XCTAssertEqual(
+            RecurrenceRule(tagText: "every day"),
+            RecurrenceRule(frequency: .daily))
+        XCTAssertEqual(
+            RecurrenceRule(tagText: "every sun"),
+            RecurrenceRule(frequency: .weekly, byWeekday: [1]))
+        XCTAssertEqual(
+            RecurrenceRule(tagText: "every mon wed fri"),
+            RecurrenceRule(frequency: .weekly, byWeekday: [2, 4, 6]))
         XCTAssertEqual(RecurrenceRule(tagText: "every weekdays"), .everyWeekday)
-        XCTAssertEqual(RecurrenceRule(tagText: "every 3 days"),
-                       RecurrenceRule(frequency: .daily, interval: 3))
+        XCTAssertEqual(
+            RecurrenceRule(tagText: "every 3 days"),
+            RecurrenceRule(frequency: .daily, interval: 3))
     }
 
     func testRejectsUnknownTags() {
-        for tag in ["sometimes", "every", "every fortnight", "Daily",
-                    "every 0 weeks", "every 2 fortnights", "weekly on monday",
-                    "every monday and wednesday", ""] {
+        for tag in [
+            "sometimes", "every", "every fortnight", "Daily",
+            "every 0 weeks", "every 2 fortnights", "weekly on monday",
+            "every monday and wednesday", "",
+        ] {
             XCTAssertNil(RecurrenceRule(tagText: tag), tag)
         }
     }
@@ -70,16 +79,18 @@ final class RecurrenceRuleTests: XCTestCase {
         XCTAssertEqual(RecurrenceRule(frequency: .daily).displayName, "Every day")
         XCTAssertEqual(RecurrenceRule(frequency: .weekly).displayName, "Every week")
         XCTAssertEqual(RecurrenceRule.everyWeekday.displayName, "Every weekday")
-        XCTAssertEqual(RecurrenceRule(frequency: .weekly, byWeekday: [2]).displayName,
-                       "Every Monday")
+        XCTAssertEqual(
+            RecurrenceRule(frequency: .weekly, byWeekday: [2]).displayName,
+            "Every Monday")
         XCTAssertEqual(
             RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]).displayName,
             "Every Monday and Wednesday")
         XCTAssertEqual(
             RecurrenceRule(frequency: .weekly, byWeekday: [2, 4, 6]).displayName,
             "Every Monday, Wednesday and Friday")
-        XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: 2).displayName,
-                       "Every 2 weeks")
+        XCTAssertEqual(
+            RecurrenceRule(frequency: .weekly, interval: 2).displayName,
+            "Every 2 weeks")
         XCTAssertEqual(RecurrenceRule(frequency: .yearly).displayName, "Every year")
     }
 
@@ -88,23 +99,33 @@ final class RecurrenceRuleTests: XCTestCase {
     // 2026-07-18 is a Saturday.
 
     func testDaily() {
-        XCTAssertEqual(next(RecurrenceRule(frequency: .daily),
-                            after: "2026-07-18"), "2026-07-19")
-        XCTAssertEqual(next(RecurrenceRule(frequency: .daily, interval: 3),
-                            after: "2026-07-18"), "2026-07-21")
-        XCTAssertEqual(next(RecurrenceRule(frequency: .daily),
-                            after: "2026-12-31"), "2027-01-01")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .daily),
+                after: "2026-07-18"), "2026-07-19")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .daily, interval: 3),
+                after: "2026-07-18"), "2026-07-21")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .daily),
+                after: "2026-12-31"), "2027-01-01")
     }
 
     func testWeeklyWithoutWeekdaysRepeatsTheSameDay() {
-        XCTAssertEqual(next(RecurrenceRule(frequency: .weekly),
-                            after: "2026-07-18"), "2026-07-25")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .weekly),
+                after: "2026-07-18"), "2026-07-25")
     }
 
     func testWeeklyWalksToTheNextListedWeekday() {
         // From Wednesday 07-15 with {Mon, Wed} → Monday 07-20.
-        XCTAssertEqual(next(RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]),
-                            after: "2026-07-15"), "2026-07-20")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]),
+                after: "2026-07-15"), "2026-07-20")
         // Every weekday: Friday → Monday, Saturday → Monday.
         XCTAssertEqual(next(.everyWeekday, after: "2026-07-17"), "2026-07-20")
         XCTAssertEqual(next(.everyWeekday, after: "2026-07-18"), "2026-07-20")
@@ -112,22 +133,32 @@ final class RecurrenceRuleTests: XCTestCase {
 
     func testWeeklyIntervalJumpsWholeWeeks() {
         // Every 2 weeks from Saturday 07-18 → Saturday 08-01.
-        XCTAssertEqual(next(RecurrenceRule(frequency: .weekly, interval: 2),
-                            after: "2026-07-18"), "2026-08-01")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .weekly, interval: 2),
+                after: "2026-07-18"), "2026-08-01")
     }
 
     func testMonthlyClampsToShortMonths() {
-        XCTAssertEqual(next(RecurrenceRule(frequency: .monthly),
-                            after: "2026-01-31"), "2026-02-28")
-        XCTAssertEqual(next(RecurrenceRule(frequency: .monthly),
-                            after: "2026-07-18"), "2026-08-18")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .monthly),
+                after: "2026-01-31"), "2026-02-28")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .monthly),
+                after: "2026-07-18"), "2026-08-18")
     }
 
     func testYearlyHandlesLeapDay() {
-        XCTAssertEqual(next(RecurrenceRule(frequency: .yearly),
-                            after: "2028-02-29"), "2029-02-28")
-        XCTAssertEqual(next(RecurrenceRule(frequency: .yearly),
-                            after: "2026-07-18"), "2027-07-18")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .yearly),
+                after: "2028-02-29"), "2029-02-28")
+        XCTAssertEqual(
+            next(
+                RecurrenceRule(frequency: .yearly),
+                after: "2026-07-18"), "2027-07-18")
     }
 
     func testUnparseableDateReturnsNil() {
@@ -139,10 +170,12 @@ final class RecurrenceRuleTests: XCTestCase {
     func testIntervalIsClampedToTheSupportedRange() {
         XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: 0).interval, 1)
         XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: -5).interval, 1)
-        XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: .max).interval,
-                       RecurrenceRule.maximumInterval)
-        XCTAssertEqual(RecurrenceRule(tagText: "every 9223372036854775807 weeks")?.interval,
-                       RecurrenceRule.maximumInterval)
+        XCTAssertEqual(
+            RecurrenceRule(frequency: .weekly, interval: .max).interval,
+            RecurrenceRule.maximumInterval)
+        XCTAssertEqual(
+            RecurrenceRule(tagText: "every 9223372036854775807 weeks")?.interval,
+            RecurrenceRule.maximumInterval)
     }
 
     /// The weekly arithmetic multiplies the interval by seven, so an

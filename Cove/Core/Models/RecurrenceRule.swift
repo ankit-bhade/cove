@@ -30,8 +30,9 @@ struct RecurrenceRule: Hashable, Sendable {
     }
 
     /// Monday through Friday.
-    static let everyWeekday = RecurrenceRule(frequency: .weekly,
-                                             byWeekday: [2, 3, 4, 5, 6])
+    static let everyWeekday = RecurrenceRule(
+        frequency: .weekly,
+        byWeekday: [2, 3, 4, 5, 6])
 
     static let weekdayNames = [
         "sunday", "monday", "tuesday", "wednesday",
@@ -48,13 +49,16 @@ struct RecurrenceRule: Hashable, Sendable {
     var tagText: String {
         if self == .everyWeekday { return "every weekday" }
         if frequency == .weekly, !byWeekday.isEmpty {
-            return "every " + byWeekday
+            return "every "
+                + byWeekday
                 .map { Self.weekdayNames[$0 - 1] }
                 .joined(separator: " ")
         }
         if interval == 1 { return frequency.rawValue }
-        let unit = ["daily": "days", "weekly": "weeks",
-                    "monthly": "months", "yearly": "years"][frequency.rawValue]!
+        let unit = [
+            "daily": "days", "weekly": "weeks",
+            "monthly": "months", "yearly": "years",
+        ][frequency.rawValue]!
         return "every \(interval) \(unit)"
     }
 
@@ -77,8 +81,10 @@ struct RecurrenceRule: Hashable, Sendable {
             self = .everyWeekday
             return
         }
-        let singleUnits = ["day": Frequency.daily, "week": .weekly,
-                           "month": .monthly, "year": .yearly]
+        let singleUnits = [
+            "day": Frequency.daily, "week": .weekly,
+            "month": .monthly, "year": .yearly,
+        ]
         if let frequency = singleUnits[rest] {
             self.init(frequency: frequency)
             return
@@ -86,8 +92,10 @@ struct RecurrenceRule: Hashable, Sendable {
         // every N days/weeks/months/years
         let words = rest.split(separator: " ").map(String.init)
         if words.count == 2, let interval = Int(words[0]), interval >= 1 {
-            let pluralUnits = ["days": Frequency.daily, "weeks": .weekly,
-                               "months": .monthly, "years": .yearly]
+            let pluralUnits = [
+                "days": Frequency.daily, "weeks": .weekly,
+                "months": .monthly, "years": .yearly,
+            ]
             guard let frequency = pluralUnits[words[1]] else { return nil }
             self.init(frequency: frequency, interval: interval)
             return
@@ -122,15 +130,18 @@ struct RecurrenceRule: Hashable, Sendable {
         if frequency == .weekly, !byWeekday.isEmpty {
             if self == .everyWeekday { return "Every weekday" }
             let names = byWeekday.map { Self.weekdayNames[$0 - 1].capitalized }
-            let list = names.count == 1
+            let list =
+                names.count == 1
                 ? names[0]
                 : names.dropLast().joined(separator: ", ") + " and " + names.last!
             return interval == 1
                 ? "Every \(list)"
                 : "Every \(interval) weeks on \(list)"
         }
-        let unit = ["daily": "day", "weekly": "week",
-                    "monthly": "month", "yearly": "year"][frequency.rawValue]!
+        let unit = [
+            "daily": "day", "weekly": "week",
+            "monthly": "month", "yearly": "year",
+        ][frequency.rawValue]!
         return interval == 1 ? "Every \(unit)" : "Every \(interval) \(unit)s"
     }
 
@@ -139,20 +150,24 @@ struct RecurrenceRule: Hashable, Sendable {
     /// The next occurrence strictly after the given `YYYY-MM-DD` date, in
     /// the same format — a port of grove's `nextOccurrence`. Nil only for an
     /// unparseable input date.
-    func nextDueDateString(after dateString: String,
-                           calendar: Calendar = TaskCalendar.gregorian()) -> String? {
+    func nextDueDateString(
+        after dateString: String,
+        calendar: Calendar = TaskCalendar.gregorian()
+    ) -> String? {
         let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let parts = dateString.split(separator: "-").compactMap { Int($0) }
         // Anchor at noon so day arithmetic is immune to DST transitions.
         guard parts.count == 3,
-              let from = calendar.date(from: DateComponents(
-                  year: parts[0], month: parts[1], day: parts[2], hour: 12))
+            let from = calendar.date(
+                from: DateComponents(
+                    year: parts[0], month: parts[1], day: parts[2], hour: 12))
         else { return nil }
 
         func format(_ date: Date) -> String {
             let parts = calendar.dateComponents([.year, .month, .day], from: date)
-            return String(format: "%04d-%02d-%02d",
-                          parts.year!, parts.month!, parts.day!)
+            return String(
+                format: "%04d-%02d-%02d",
+                parts.year!, parts.month!, parts.day!)
         }
         func addDays(_ days: Int, to date: Date) -> Date {
             calendar.date(byAdding: .day, value: days, to: date)!
@@ -185,19 +200,26 @@ struct RecurrenceRule: Hashable, Sendable {
 
         case .monthly:
             // Same day-of-month, clamped so Jan 31 recurs on Feb 28.
-            guard let jumped = calendar.date(byAdding: .month, value: interval,
-                                             to: from) else { return nil }
+            guard
+                let jumped = calendar.date(
+                    byAdding: .month, value: interval,
+                    to: from)
+            else { return nil }
             // Calendar clamps overflow itself (Jan 31 + 1 month = Feb 28),
             // matching grove's explicit clamp.
             return format(jumped)
 
         case .yearly:
-            guard var next = calendar.date(byAdding: .year, value: interval,
-                                           to: from) else { return nil }
+            guard
+                var next = calendar.date(
+                    byAdding: .year, value: interval,
+                    to: from)
+            else { return nil }
             // Feb 29 → Feb 28 on non-leap years (Calendar already clamps,
             // but keep parity explicit if it ever rolled forward).
             if calendar.component(.month, from: next)
-                != calendar.component(.month, from: from) {
+                != calendar.component(.month, from: from)
+            {
                 next = addDays(-1, to: next)
             }
             return format(next)

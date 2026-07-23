@@ -27,14 +27,15 @@ final class VaultChangeObserver {
         query.predicate = NSPredicate(format: "%K LIKE '*'", NSMetadataItemFSNameKey)
 
         let center = NotificationCenter.default
-        notificationObservers.append(center.addObserver(
-            forName: .NSMetadataQueryDidUpdate, object: query, queue: .main
-        ) { [weak self] notification in
-            let urls = Self.changedURLs(from: notification)
-            MainActor.assumeIsolated {
-                self?.handleUpdate(urls)
-            }
-        })
+        notificationObservers.append(
+            center.addObserver(
+                forName: .NSMetadataQueryDidUpdate, object: query, queue: .main
+            ) { [weak self] notification in
+                let urls = Self.changedURLs(from: notification)
+                MainActor.assumeIsolated {
+                    self?.handleUpdate(urls)
+                }
+            })
         query.start()
     }
 
@@ -68,10 +69,13 @@ final class VaultChangeObserver {
     }
 
     nonisolated private static func changedURLs(from notification: Notification) -> [URL] {
-        let itemKeys = [NSMetadataQueryUpdateAddedItemsKey,
-                        NSMetadataQueryUpdateChangedItemsKey,
-                        NSMetadataQueryUpdateRemovedItemsKey]
-        return itemKeys
+        let itemKeys = [
+            NSMetadataQueryUpdateAddedItemsKey,
+            NSMetadataQueryUpdateChangedItemsKey,
+            NSMetadataQueryUpdateRemovedItemsKey,
+        ]
+        return
+            itemKeys
             .flatMap { notification.userInfo?[$0] as? [NSMetadataItem] ?? [] }
             .compactMap { $0.value(forAttribute: NSMetadataItemURLKey) as? URL }
     }

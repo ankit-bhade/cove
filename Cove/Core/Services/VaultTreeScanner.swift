@@ -13,10 +13,12 @@ struct VaultTreeScanner: Sendable {
         coordinator.coordinate(readingItemAt: rootURL, options: [], error: &coordinationError) { url in
             scanResult = Result {
                 try Task.checkCancellation()
-                return VaultNode(url: url,
-                          name: url.lastPathComponent,
-                          isDirectory: true,
-                          children: try scanDirectory(at: url))
+                return VaultNode(
+                    url: rootURL,
+                    name: rootURL.lastPathComponent,
+                    isDirectory: true,
+                    children: try scanDirectory(at: url, representedBy: rootURL)
+                )
             }
         }
 
@@ -29,7 +31,12 @@ struct VaultTreeScanner: Sendable {
         return try scanResult.get()
     }
 
-    private func scanDirectory(at url: URL) throws -> [VaultNode] {
+    /// Enumerates through the coordinator-provided URL while keeping the URL
+    /// namespace the caller supplied in the resulting tree. Coordinators can
+    /// canonicalize an accessor URL (notably `/var` to `/private/var`), and
+    /// leaking that alternate spelling into the model breaks equality with
+    /// change notifications and previously indexed entries.
+    private func scanDirectory(at url: URL, representedBy representedURL: URL) throws -> [VaultNode] {
         try Task.checkCancellation()
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .isHiddenKey]
         let contents = try FileManager.default.contentsOfDirectory(
@@ -44,21 +51,30 @@ struct VaultTreeScanner: Sendable {
         for item in contents {
             try Task.checkCancellation()
             let name = item.lastPathComponent
+            let representedItem = representedURL.appendingPathComponent(name)
             let values = try item.resourceValues(forKeys: keys)
 
             if name.hasPrefix(".") || values.isHidden == true { continue }
             if values.isSymbolicLink == true { continue }
 
             if values.isDirectory == true {
-                folders.append(VaultNode(url: item,
-                                         name: name,
-                                         isDirectory: true,
-                                         children: try scanDirectory(at: item)))
+                folders.append(
+                    VaultNode(
+                        url: representedItem,
+                        name: name,
+                        isDirectory: true,
+                        children: try scanDirectory(at: item, representedBy: representedItem)
+                    )
+                )
             } else if item.pathExtension.lowercased() == "md" {
-                files.append(VaultNode(url: item,
-                                       name: name,
-                                       isDirectory: false,
-                                       children: nil))
+                files.append(
+                    VaultNode(
+                        url: representedItem,
+                        name: name,
+                        isDirectory: false,
+                        children: nil
+                    )
+                )
             }
         }
 

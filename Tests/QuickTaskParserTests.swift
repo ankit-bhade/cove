@@ -15,8 +15,9 @@ final class QuickTaskParserTests: XCTestCase {
 
     /// Grove's fixed "now": Wednesday, July 1, 2026, 10:00 AM.
     private var now: Date {
-        calendar.date(from: DateComponents(
-            year: 2026, month: 7, day: 1, hour: 10))!
+        calendar.date(
+            from: DateComponents(
+                year: 2026, month: 7, day: 1, hour: 10))!
     }
 
     private func parse(_ input: String) -> TaskDraft {
@@ -113,13 +114,13 @@ final class QuickTaskParserTests: XCTestCase {
         let p = parse("check the monitor")
         XCTAssertEqual(p.title, "Check the monitor")
         XCTAssertNil(p.dueTimeString)
-        XCTAssertEqual(p.dueDateString, "2026-07-01") // undated → today
+        XCTAssertEqual(p.dueDateString, "2026-07-01")  // undated → today
     }
 
     // MARK: - Explicit dates
 
     func testSlashDates() {
-        XCTAssertEqual(parse("rent 2/3").dueDateString, "2027-02-03") // Feb 3 passed
+        XCTAssertEqual(parse("rent 2/3").dueDateString, "2027-02-03")  // Feb 3 passed
         XCTAssertEqual(parse("rent 2/3").title, "Rent")
         XCTAssertEqual(parse("flight 9/12").dueDateString, "2026-09-12")
         XCTAssertEqual(parse("taxes 4/15/27").dueDateString, "2027-04-15")
@@ -133,7 +134,7 @@ final class QuickTaskParserTests: XCTestCase {
     func testInvalidSlashDateIsIgnored() {
         let p = parse("score was 15/2")
         XCTAssertEqual(p.title, "Score was 15/2")
-        XCTAssertEqual(p.dueDateString, "2026-07-01") // undated → today
+        XCTAssertEqual(p.dueDateString, "2026-07-01")  // undated → today
     }
 
     // MARK: - Times
@@ -201,8 +202,9 @@ final class QuickTaskParserTests: XCTestCase {
     func testEveryWeekdaySet() {
         let p = parse("gym every mon wed 6a")
         XCTAssertEqual(p.title, "Gym")
-        XCTAssertEqual(p.recurrence,
-                       RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]))
+        XCTAssertEqual(
+            p.recurrence,
+            RecurrenceRule(frequency: .weekly, byWeekday: [2, 4]))
         XCTAssertEqual(p.dueTimeString, "06:00")
         // Now is Wednesday July 1 → first occurrence is today.
         XCTAssertEqual(p.dueDateString, "2026-07-01")
@@ -216,20 +218,25 @@ final class QuickTaskParserTests: XCTestCase {
     }
 
     func testSimpleRecurrenceForms() {
-        XCTAssertEqual(parse("journal every day").recurrence,
-                       RecurrenceRule(frequency: .daily))
-        XCTAssertEqual(parse("stretch daily").recurrence,
-                       RecurrenceRule(frequency: .daily))
-        XCTAssertEqual(parse("rent every month").recurrence,
-                       RecurrenceRule(frequency: .monthly))
-        XCTAssertEqual(parse("renew domain every year").recurrence,
-                       RecurrenceRule(frequency: .yearly))
+        XCTAssertEqual(
+            parse("journal every day").recurrence,
+            RecurrenceRule(frequency: .daily))
+        XCTAssertEqual(
+            parse("stretch daily").recurrence,
+            RecurrenceRule(frequency: .daily))
+        XCTAssertEqual(
+            parse("rent every month").recurrence,
+            RecurrenceRule(frequency: .monthly))
+        XCTAssertEqual(
+            parse("renew domain every year").recurrence,
+            RecurrenceRule(frequency: .yearly))
         XCTAssertEqual(parse("standup every weekday").recurrence, .everyWeekday)
     }
 
     func testCommaAndSeparatedWeekdayLists() {
-        XCTAssertEqual(parse("gym every mon, wed and fri").recurrence,
-                       RecurrenceRule(frequency: .weekly, byWeekday: [2, 4, 6]))
+        XCTAssertEqual(
+            parse("gym every mon, wed and fri").recurrence,
+            RecurrenceRule(frequency: .weekly, byWeekday: [2, 4, 6]))
     }
 
     func testWeekdayRecurrenceStartsOnNextMatchingDay() {
@@ -240,8 +247,9 @@ final class QuickTaskParserTests: XCTestCase {
     // MARK: - Title cleanup
 
     func testStripsDanglingConnectors() {
-        XCTAssertEqual(parse("dentist appointment on friday").title,
-                       "Dentist appointment")
+        XCTAssertEqual(
+            parse("dentist appointment on friday").title,
+            "Dentist appointment")
         XCTAssertEqual(parse("meeting at 3pm").title, "Meeting")
     }
 
@@ -261,12 +269,15 @@ final class QuickTaskParserTests: XCTestCase {
     // MARK: - Markdown line
 
     func testMarkdownLineRoundTrip() {
-        XCTAssertEqual(parse("get bread 3p tmr").markdownLine,
-                       "- [ ] Get bread @due(2026-07-02 15:00)")
-        XCTAssertEqual(parse("laundry every sun 6p").markdownLine,
-                       "- [ ] Laundry @due(2026-07-05 18:00) @repeat(every sunday)")
-        XCTAssertEqual(parse("doctor every 2 weeks").markdownLine,
-                       "- [ ] Doctor @due(2026-07-01) @repeat(every 2 weeks)")
+        XCTAssertEqual(
+            parse("get bread 3p tmr").markdownLine,
+            "- [ ] Get bread @due(2026-07-02 15:00)")
+        XCTAssertEqual(
+            parse("laundry every sun 6p").markdownLine,
+            "- [ ] Laundry @due(2026-07-05 18:00) @repeat(every sunday)")
+        XCTAssertEqual(
+            parse("doctor every 2 weeks").markdownLine,
+            "- [ ] Doctor @due(2026-07-01) @repeat(every 2 weeks)")
     }
 
     // MARK: - Undated capture (list items)
@@ -274,8 +285,9 @@ final class QuickTaskParserTests: XCTestCase {
     /// The Lists screen passes `defaultingToToday: false`, so an item with
     /// no date word stays undated instead of landing on today.
     private func parseUndated(_ input: String) -> TaskDraft {
-        QuickTaskParser.parse(input, now: now, calendar: calendar,
-                              defaultingToToday: false)
+        QuickTaskParser.parse(
+            input, now: now, calendar: calendar,
+            defaultingToToday: false)
     }
 
     func testUndatedListItemStaysUndated() {
@@ -294,14 +306,16 @@ final class QuickTaskParserTests: XCTestCase {
         XCTAssertEqual(draft.title, "Order cake")
         XCTAssertEqual(draft.dueDateString, "2026-07-03")
         XCTAssertEqual(draft.dueTimeString, "15:00")
-        XCTAssertEqual(draft.markdownLine,
-                       "- [ ] Order cake @due(2026-07-03 15:00)")
+        XCTAssertEqual(
+            draft.markdownLine,
+            "- [ ] Order cake @due(2026-07-03 15:00)")
     }
 
     func testARecurringListItemStillResolvesADate() {
         // A repeat rule implies its first occurrence, so the item is dated.
-        XCTAssertEqual(parseUndated("rent monthly").markdownLine,
-                       "- [ ] Rent @due(2026-07-01) @repeat(monthly)")
+        XCTAssertEqual(
+            parseUndated("rent monthly").markdownLine,
+            "- [ ] Rent @due(2026-07-01) @repeat(monthly)")
     }
 
     func testDroppingTheDateFromADraftDropsTimeAndRepeat() {
@@ -322,13 +336,15 @@ final class QuickTaskParserTests: XCTestCase {
     func testHugeRelativeCountsAreClampedRatherThanOverflowing() {
         let draft = parse("pay rent in 9223372036854775807 weeks")
         XCTAssertEqual(draft.title, "Pay rent")
-        XCTAssertEqual(draft.dueDateString,
-                       parse("pay rent in \(QuickTaskParser.maximumRelativeUnits) weeks")
-                           .dueDateString)
+        XCTAssertEqual(
+            draft.dueDateString,
+            parse("pay rent in \(QuickTaskParser.maximumRelativeUnits) weeks")
+                .dueDateString)
     }
 
     func testHugeRecurrenceIntervalIsClamped() {
-        XCTAssertEqual(parse("water plants every 9223372036854775807 weeks").recurrence?.interval,
-                       RecurrenceRule.maximumInterval)
+        XCTAssertEqual(
+            parse("water plants every 9223372036854775807 weeks").recurrence?.interval,
+            RecurrenceRule.maximumInterval)
     }
 }

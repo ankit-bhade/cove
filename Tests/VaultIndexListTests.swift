@@ -5,52 +5,68 @@ import XCTest
 /// dated against undated items.
 final class VaultIndexListTests: XCTestCase {
 
-    private func task(_ text: String,
-                      due: String? = nil,
-                      time: String? = nil,
-                      list: String? = nil,
-                      line: Int = 0,
-                      completed: Bool = false) -> TaskItem {
-        TaskItem(fileURL: URL(fileURLWithPath: "/vault/Tasks.md"),
-                 fileTitle: "Tasks",
-                 lineNumber: line,
-                 text: text,
-                 dueDateString: due,
-                 dueTimeString: time,
-                 recurrence: nil,
-                 isCompleted: completed,
-                 listName: list)
+    private func task(
+        _ text: String,
+        due: String? = nil,
+        time: String? = nil,
+        list: String? = nil,
+        line: Int = 0,
+        completed: Bool = false
+    ) -> TaskItem {
+        TaskItem(
+            fileURL: URL(fileURLWithPath: "/vault/Tasks.md"),
+            fileTitle: "Tasks",
+            lineNumber: line,
+            text: text,
+            dueDateString: due,
+            dueTimeString: time,
+            recurrence: nil,
+            isCompleted: completed,
+            listName: list)
     }
 
     private func index(_ tasks: [TaskItem], lists: [String] = []) -> VaultIndex {
-        VaultIndex(entries: [NoteIndexEntry(url: URL(fileURLWithPath: "/vault/Tasks.md"),
-                                            title: "Tasks",
-                                            tasks: tasks)],
-                   listNames: lists)
+        VaultIndex(
+            entries: [
+                NoteIndexEntry(
+                    url: URL(fileURLWithPath: "/vault/Tasks.md"),
+                    title: "Tasks",
+                    tasks: tasks)
+            ],
+            listNames: lists)
     }
 
     // MARK: - Separation
 
     func testListTasksAreExcludedFromTheTasksScreen() {
-        let subject = index([task("Ordinary", due: "2026-07-20"),
-                             task("Milk", list: "Groceries", line: 1)],
-                            lists: ["Groceries"])
+        let subject = index(
+            [
+                task("Ordinary", due: "2026-07-20"),
+                task("Milk", list: "Groceries", line: 1),
+            ],
+            lists: ["Groceries"])
         XCTAssertEqual(subject.incompleteTasks.map(\.text), ["Ordinary"])
     }
 
     func testCompletedListTasksAreExcludedToo() {
-        let subject = index([task("Done", due: "2026-07-20", completed: true),
-                             task("Bread", list: "Groceries", line: 1, completed: true)],
-                            lists: ["Groceries"])
+        let subject = index(
+            [
+                task("Done", due: "2026-07-20", completed: true),
+                task("Bread", list: "Groceries", line: 1, completed: true),
+            ],
+            lists: ["Groceries"])
         XCTAssertEqual(subject.completedTasks.map(\.text), ["Done"])
     }
 
     // MARK: - Lists
 
     func testListsFollowHeadingOrderNotTaskOrder() {
-        let subject = index([task("Netflix", list: "Subscriptions", line: 1),
-                             task("Milk", list: "Groceries", line: 3)],
-                            lists: ["Groceries", "Subscriptions"])
+        let subject = index(
+            [
+                task("Netflix", list: "Subscriptions", line: 1),
+                task("Milk", list: "Groceries", line: 3),
+            ],
+            lists: ["Groceries", "Subscriptions"])
         XCTAssertEqual(subject.lists.map(\.name), ["Groceries", "Subscriptions"])
     }
 
@@ -61,9 +77,12 @@ final class VaultIndexListTests: XCTestCase {
     }
 
     func testListSplitsOpenFromCompleted() {
-        let subject = index([task("Milk", list: "Groceries", line: 1),
-                             task("Bread", list: "Groceries", line: 2, completed: true)],
-                            lists: ["Groceries"])
+        let subject = index(
+            [
+                task("Milk", list: "Groceries", line: 1),
+                task("Bread", list: "Groceries", line: 2, completed: true),
+            ],
+            lists: ["Groceries"])
         XCTAssertEqual(subject.lists.first?.openTasks.map(\.text), ["Milk"])
         XCTAssertEqual(subject.lists.first?.completedTasks.map(\.text), ["Bread"])
     }
@@ -71,18 +90,25 @@ final class VaultIndexListTests: XCTestCase {
     // MARK: - Ordering
 
     func testDatedItemsSortBeforeUndatedOnes() {
-        let subject = index([task("Milk", list: "Groceries", line: 1),
-                             task("Cake", due: "2026-07-22", list: "Groceries", line: 2),
-                             task("Eggs", list: "Groceries", line: 3)],
-                            lists: ["Groceries"])
-        XCTAssertEqual(subject.lists.first?.openTasks.map(\.text),
-                       ["Cake", "Milk", "Eggs"])
+        let subject = index(
+            [
+                task("Milk", list: "Groceries", line: 1),
+                task("Cake", due: "2026-07-22", list: "Groceries", line: 2),
+                task("Eggs", list: "Groceries", line: 3),
+            ],
+            lists: ["Groceries"])
+        XCTAssertEqual(
+            subject.lists.first?.openTasks.map(\.text),
+            ["Cake", "Milk", "Eggs"])
     }
 
     func testUndatedItemsKeepTheOrderTheyWereAdded() {
-        let subject = index([task("Eggs", list: "Groceries", line: 5),
-                             task("Milk", list: "Groceries", line: 2)],
-                            lists: ["Groceries"])
+        let subject = index(
+            [
+                task("Eggs", list: "Groceries", line: 5),
+                task("Milk", list: "Groceries", line: 2),
+            ],
+            lists: ["Groceries"])
         XCTAssertEqual(subject.lists.first?.openTasks.map(\.text), ["Milk", "Eggs"])
     }
 
@@ -90,13 +116,17 @@ final class VaultIndexListTests: XCTestCase {
 
     func testOnlyTheRootTasksNoteIsTheCaptureNote() {
         let root = URL(fileURLWithPath: "/vault", isDirectory: true)
-        XCTAssertTrue(VaultManager.isCaptureNote(
-            URL(fileURLWithPath: "/vault/Tasks.md"), vaultRoot: root))
-        XCTAssertTrue(VaultManager.isCaptureNote(
-            URL(fileURLWithPath: "/vault/tasks.md"), vaultRoot: root))
-        XCTAssertFalse(VaultManager.isCaptureNote(
-            URL(fileURLWithPath: "/vault/Work/Tasks.md"), vaultRoot: root))
-        XCTAssertFalse(VaultManager.isCaptureNote(
-            URL(fileURLWithPath: "/vault/Notes.md"), vaultRoot: root))
+        XCTAssertTrue(
+            VaultManager.isCaptureNote(
+                URL(fileURLWithPath: "/vault/Tasks.md"), vaultRoot: root))
+        XCTAssertTrue(
+            VaultManager.isCaptureNote(
+                URL(fileURLWithPath: "/vault/tasks.md"), vaultRoot: root))
+        XCTAssertFalse(
+            VaultManager.isCaptureNote(
+                URL(fileURLWithPath: "/vault/Work/Tasks.md"), vaultRoot: root))
+        XCTAssertFalse(
+            VaultManager.isCaptureNote(
+                URL(fileURLWithPath: "/vault/Notes.md"), vaultRoot: root))
     }
 }

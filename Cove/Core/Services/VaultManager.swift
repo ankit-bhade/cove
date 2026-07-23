@@ -11,12 +11,13 @@ struct DeletedTaskRecord: Sendable {
     let sourceNoteURL: URL
 }
 
-typealias VaultLoadOperation = @Sendable (
-    _ url: URL,
-    _ previousIndex: VaultIndex,
-    _ changedURLs: Set<URL>?,
-    _ existingTree: VaultNode?
-) async throws -> (VaultNode, VaultIndex)
+typealias VaultLoadOperation =
+    @Sendable (
+        _ url: URL,
+        _ previousIndex: VaultIndex,
+        _ changedURLs: Set<URL>?,
+        _ existingTree: VaultNode?
+    ) async throws -> (VaultNode, VaultIndex)
 
 /// Owns the vault lifecycle: restoring the saved bookmark on launch, opening
 /// a newly picked folder, keeping security-scoped access balanced, and
@@ -40,6 +41,12 @@ final class VaultManager {
     struct TaskChangedOnDiskError: LocalizedError {
         var errorDescription: String? {
             "That task has changed on disk, so it wasn’t updated."
+        }
+    }
+
+    struct VaultUnavailableError: LocalizedError {
+        var errorDescription: String? {
+            "No vault is currently open."
         }
     }
 
@@ -80,19 +87,22 @@ final class VaultManager {
     /// scan would commit the very tree that scan was going to correct.
     @ObservationIgnored private var treeIsCurrent = false
 
-    init(bookmarkStore: VaultBookmarkStore = VaultBookmarkStore(),
-         loadOperation: VaultLoadOperation? = nil) {
+    init(
+        bookmarkStore: VaultBookmarkStore = VaultBookmarkStore(),
+        loadOperation: VaultLoadOperation? = nil
+    ) {
         self.bookmarkStore = bookmarkStore
-        self.loadOperation = loadOperation ?? { url, previousIndex, changedURLs, existingTree in
-            try await Task.detached(priority: .userInitiated) {
-                try Task.checkCancellation()
-                let node = try existingTree ?? VaultTreeScanner().scanTree(at: url)
-                let index = try VaultIndexBuilder().buildCancellableIndex(
-                    from: node, previous: previousIndex, changedURLs: changedURLs)
-                try Task.checkCancellation()
-                return (node, index)
-            }.value
-        }
+        self.loadOperation =
+            loadOperation ?? { url, previousIndex, changedURLs, existingTree in
+                try await Task.detached(priority: .userInitiated) {
+                    try Task.checkCancellation()
+                    let node = try existingTree ?? VaultTreeScanner().scanTree(at: url)
+                    let index = try VaultIndexBuilder().buildCancellableIndex(
+                        from: node, previous: previousIndex, changedURLs: changedURLs)
+                    try Task.checkCancellation()
+                    return (node, index)
+                }.value
+            }
     }
 
     deinit {
@@ -157,8 +167,9 @@ final class VaultManager {
     /// keeps every structural change on the rescan path it has always taken.
     private func refreshIndex(changedURLs: Set<URL>) async {
         guard let url = requestedVaultURL ?? vaultURL else { return }
-        await loadTree(from: url, coalescing: true,
-                       changedURLs: changedURLs, reusingTree: true)
+        await loadTree(
+            from: url, coalescing: true,
+            changedURLs: changedURLs, reusingTree: true)
     }
 
     // MARK: - File operations
@@ -246,14 +257,17 @@ final class VaultManager {
     /// retries. The transform re-parses the newest coordinated file text.
     func setTaskCompleted(_ task: TaskItem, to desiredCompletion: Bool) async throws {
         let identity = task.identity
-        let today = QuickTaskParser.ymdString(from: Date(),
-                                              calendar: TaskCalendar.gregorian())
+        let today = QuickTaskParser.ymdString(
+            from: Date(),
+            calendar: TaskCalendar.gregorian())
         var toggleError: Error?
         do {
             _ = try await repository.updateNote(at: task.fileURL) { text in
-                guard let updated = TaskParser.settingTaskCompleted(
-                    identity, to: desiredCompletion,
-                    todayDateString: today, in: text) else {
+                guard
+                    let updated = TaskParser.settingTaskCompleted(
+                        identity, to: desiredCompletion,
+                        todayDateString: today, in: text)
+                else {
                     throw TaskChangedOnDiskError()
                 }
                 return updated
@@ -308,10 +322,12 @@ final class VaultManager {
 
             let insertionLocation: Int
             if let next = record.nextIdentity,
-               let match = TaskParser.matchingTask(next, in: text) {
+                let match = TaskParser.matchingTask(next, in: text)
+            {
                 insertionLocation = match.lineRange.location
             } else if let previous = record.previousIdentity,
-                      let match = TaskParser.matchingTask(previous, in: text) {
+                let match = TaskParser.matchingTask(previous, in: text)
+            {
                 insertionLocation = NSMaxRange(match.lineRange)
             } else {
                 insertionLocation = Self.lineStart(
@@ -320,7 +336,8 @@ final class VaultManager {
 
             var line = record.originalLine
             if insertionLocation == (text as NSString).length,
-               !text.isEmpty, !text.hasSuffix("\n"), !text.hasSuffix("\r") {
+                !text.isEmpty, !text.hasSuffix("\n"), !text.hasSuffix("\r")
+            {
                 line = "\n" + line
             }
             return (text as NSString).replacingCharacters(
@@ -347,8 +364,10 @@ final class VaultManager {
         let ns = text as NSString
         var currentLine = 0
         var result = ns.length
-        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length),
-                               options: [.byLines, .substringNotRequired]) {
+        ns.enumerateSubstrings(
+            in: NSRange(location: 0, length: ns.length),
+            options: [.byLines, .substringNotRequired]
+        ) {
             _, lineRange, _, stop in
             if currentLine == lineNumber {
                 result = lineRange.location
@@ -392,13 +411,13 @@ final class VaultManager {
     /// than the end of the file, which would otherwise put it inside the last
     /// list and hide it from the Tasks screen.
     func captureTask(_ draft: TaskDraft, into list: String? = nil) async throws {
-        guard let vaultURL else { return }
+        let vaultURL = try requireOpenVaultURL()
         let line = draft.markdownLine
         try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-                guard let list else {
-                    return TaskListDocument.insertingUnlistedLine(line, in: text)
-                }
-                return TaskListDocument.insertingLine(line, inSection: list, in: text)
+            guard let list else {
+                return TaskListDocument.insertingUnlistedLine(line, in: text)
+            }
+            return TaskListDocument.insertingLine(line, inSection: list, in: text)
         }
     }
 
@@ -412,30 +431,34 @@ final class VaultManager {
 
     /// Adds an empty `## name` heading to the capture note.
     func createList(named name: String) async throws {
-        guard let vaultURL else { return }
+        let vaultURL = try requireOpenVaultURL()
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard !index.listNames.contains(where: {
-            $0.caseInsensitiveCompare(trimmed) == .orderedSame
-        }) else { throw ListExistsError(name: trimmed) }
+        guard
+            !index.listNames.contains(where: {
+                $0.caseInsensitiveCompare(trimmed) == .orderedSame
+            })
+        else { throw ListExistsError(name: trimmed) }
 
         try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-                TaskListDocument.addingSection(named: trimmed, to: text)
+            TaskListDocument.addingSection(named: trimmed, to: text)
         }
     }
 
     /// Renames a list's heading, keeping its items under it.
     func renameList(named name: String, to newName: String) async throws {
-        guard let vaultURL else { return }
+        let vaultURL = try requireOpenVaultURL()
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != name else { return }
-        guard !index.listNames.contains(where: {
-            $0.caseInsensitiveCompare(trimmed) == .orderedSame
-                && $0.caseInsensitiveCompare(name) != .orderedSame
-        }) else { throw ListExistsError(name: trimmed) }
+        guard
+            !index.listNames.contains(where: {
+                $0.caseInsensitiveCompare(trimmed) == .orderedSame
+                    && $0.caseInsensitiveCompare(name) != .orderedSame
+            })
+        else { throw ListExistsError(name: trimmed) }
 
         try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-                TaskListDocument.renamingSection(named: name, to: trimmed, in: text)
+            TaskListDocument.renamingSection(named: name, to: trimmed, in: text)
         }
     }
 
@@ -444,18 +467,25 @@ final class VaultManager {
     /// this is one coordinated read-modify-write rather than the per-file
     /// sweep the Tasks screen's Clear All needs.
     func clearCompletedTasks(inList name: String) async throws {
-        guard let vaultURL else { return }
+        let vaultURL = try requireOpenVaultURL()
         try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-                TaskParser.clearingCompletedTasks(in: text, sectioned: true, inList: name)
+            TaskParser.clearingCompletedTasks(in: text, sectioned: true, inList: name)
         }
     }
 
     /// Removes a list's heading and every task under it.
     func deleteList(named name: String) async throws {
-        guard let vaultURL else { return }
+        let vaultURL = try requireOpenVaultURL()
         try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-                TaskListDocument.removingSection(named: name, from: text)
+            TaskListDocument.removingSection(named: name, from: text)
         }
+    }
+
+    private func requireOpenVaultURL() throws -> URL {
+        guard state == .open, let vaultURL else {
+            throw VaultUnavailableError()
+        }
+        return vaultURL
     }
 
     /// Runs one coordinated mutation off the main actor, then rescans so the
@@ -476,8 +506,9 @@ final class VaultManager {
         in folder: URL,
         transform: @escaping @Sendable (String) throws -> String?
     ) async throws {
-        let url = try await repository.updateNote(named: name, in: folder,
-                                                  transform: transform)
+        let url = try await repository.updateNote(
+            named: name, in: folder,
+            transform: transform)
         if isInTree(url) {
             await refreshIndex(changedURLs: [url])
         } else {
@@ -491,12 +522,15 @@ final class VaultManager {
         } ?? false
     }
 
-    private func loadTree(from url: URL,
-                          coalescing: Bool = false,
-                          changedURLs: Set<URL>? = nil,
-                          reusingTree: Bool = false) async {
-        let existingTree = reusingTree && treeIsCurrent
-            && vaultURL?.standardizedFileURL == url.standardizedFileURL
+    private func loadTree(
+        from url: URL,
+        coalescing: Bool = false,
+        changedURLs: Set<URL>? = nil,
+        reusingTree: Bool = false
+    ) async {
+        let existingTree =
+            reusingTree && treeIsCurrent
+                && vaultURL?.standardizedFileURL == url.standardizedFileURL
             ? rootNode : nil
         if existingTree == nil { treeIsCurrent = false }
         loadGeneration &+= 1
@@ -512,19 +546,22 @@ final class VaultManager {
                     return
                 }
             }
-            await self?.performLoad(from: url,
-                                    generation: generation,
-                                    changedURLs: changedURLs,
-                                    existingTree: existingTree)
+            await self?.performLoad(
+                from: url,
+                generation: generation,
+                changedURLs: changedURLs,
+                existingTree: existingTree)
         }
         refreshTask = task
         await task.value
     }
 
-    private func performLoad(from url: URL,
-                             generation: UInt64,
-                             changedURLs: Set<URL>?,
-                             existingTree: VaultNode?) async {
+    private func performLoad(
+        from url: URL,
+        generation: UInt64,
+        changedURLs: Set<URL>?,
+        existingTree: VaultNode?
+    ) async {
         guard isCurrentLoad(generation: generation, url: url) else { return }
         let startedAt = Date()
         let loadOperation = self.loadOperation
@@ -557,7 +594,9 @@ final class VaultManager {
             let tasks = index.allTasks
             Task { await scheduler.rebuildNotifications(for: tasks) }
             publishWidgetState(tasks: tasks)
-            CoveLog.index.info("Indexed \(node.allFiles.count, privacy: .public) notes in \(Date().timeIntervalSince(startedAt), privacy: .public) seconds")
+            CoveLog.index.info(
+                "Indexed \(node.allFiles.count, privacy: .public) notes in \(Date().timeIntervalSince(startedAt), privacy: .public) seconds"
+            )
         } catch is CancellationError {
             return
         } catch {
@@ -612,13 +651,15 @@ final class VaultManager {
             // A missing App Group is normal for the ad-hoc macOS build. A
             // malformed or inaccessible iOS queue is retained for diagnosis
             // and retry rather than being replaced with an empty file.
-            CoveLog.widget.error("Pending operation queue load failed: \(error.localizedDescription, privacy: .private)")
+            CoveLog.widget.error(
+                "Pending operation queue load failed: \(error.localizedDescription, privacy: .private)")
             return
         }
         guard !pending.isEmpty else { return }
 
-        let today = QuickTaskParser.ymdString(from: Date(),
-                                              calendar: TaskCalendar.gregorian())
+        let today = QuickTaskParser.ymdString(
+            from: Date(),
+            calendar: TaskCalendar.gregorian())
         for operation in pending {
             // A queued path that doesn't resolve inside the vault now open —
             // a note deleted and replaced by a folder, an operation left over
@@ -628,7 +669,9 @@ final class VaultManager {
                 do {
                     try widgetStore.acknowledge(operationID: operation.id)
                 } catch {
-                    CoveLog.widget.error("Out-of-vault operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
+                    CoveLog.widget.error(
+                        "Out-of-vault operation acknowledgment failed: \(error.localizedDescription, privacy: .private)"
+                    )
                 }
                 continue
             }
@@ -647,16 +690,21 @@ final class VaultManager {
                 do {
                     try widgetStore.acknowledge(operationID: operation.id)
                 } catch {
-                    CoveLog.widget.error("Stale operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
+                    CoveLog.widget.error(
+                        "Stale operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
                 }
             } catch {
                 // Normal file/coordinator/iCloud failures stay queued, up to
                 // the attempt ceiling.
                 do {
                     if try widgetStore.recordFailure(operationID: operation.id) {
-                        CoveLog.widget.error("Pending operation dropped after \(PendingTaskOperation.maxAttempts, privacy: .public) attempts: \(error.localizedDescription, privacy: .private)")
+                        CoveLog.widget.error(
+                            "Pending operation dropped after \(PendingTaskOperation.maxAttempts, privacy: .public) attempts: \(error.localizedDescription, privacy: .private)"
+                        )
                     } else {
-                        CoveLog.widget.error("Pending operation retained after failure: \(error.localizedDescription, privacy: .private)")
+                        CoveLog.widget.error(
+                            "Pending operation retained after failure: \(error.localizedDescription, privacy: .private)"
+                        )
                     }
                 } catch {
                     CoveLog.widget.error("Attempt bookkeeping failed: \(error.localizedDescription, privacy: .private)")

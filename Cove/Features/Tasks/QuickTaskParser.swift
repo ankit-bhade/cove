@@ -91,6 +91,13 @@ enum QuickTaskParser {
         "nov": 11, "november": 11, "dec": 12, "december": 12,
     ]
 
+    /// Upper bound on the count in "in N days/weeks/months". Weeks multiply
+    /// the count by seven, so an unbounded one overflows and traps the
+    /// process while the sentence is still being typed — the live preview
+    /// re-parses on every keystroke. Ten thousand of any unit is centuries
+    /// out and still lands inside the four-digit year the `@due` tag stores.
+    static let maximumRelativeUnits = 10_000
+
     /// Tracks which parts of the input are already consumed by an extractor.
     private struct Claims {
         private(set) var spans: [NSRange] = []
@@ -219,7 +226,8 @@ enum QuickTaskParser {
                                         calendar: calendar))
         }
         inUnitsRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, let n = text(m, 1).flatMap(Int.init) else { return }
+            guard let m, let typed = text(m, 1).flatMap(Int.init) else { return }
+            let n = min(typed, maximumRelativeUnits)
             let unit = text(m, 2)!
             guard claims.tryClaim(m.range) else { return }
             if unit.hasPrefix("d") {

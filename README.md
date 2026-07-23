@@ -33,7 +33,10 @@ retryable). Vaults outside iCloud Drive refresh whenever the
 app returns to the foreground. The search field in the browser searches every
 note's title and contents as you type (case-insensitively, with no persisted
 index), and selecting a result opens that note in
-the editor. A Tasks tab collects every line of the exact form
+the editor. A note Cove can't read — text that isn't UTF-8, or a file iCloud
+hasn't finished downloading — is passed over rather than blocking the vault,
+and is picked up again on the next refresh once it can be read. A Tasks tab
+collects every line of the exact form
 `- [ ] Task text @due(YYYY-MM-DD)` from across the vault: open tasks are
 sorted by due date and grouped into Overdue, Today, Tomorrow, and Upcoming
 sections, with due dates written the way you'd say them ("Today, 3:00 PM",

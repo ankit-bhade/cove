@@ -313,4 +313,22 @@ final class QuickTaskParserTests: XCTestCase {
         draft.recurrence = nil
         XCTAssertEqual(draft.markdownLine, "- [ ] Laundry")
     }
+
+    // MARK: - Bounds
+
+    /// The count in "in N weeks" is multiplied by seven, and the preview
+    /// re-parses on every keystroke — an unclamped one would trap the
+    /// process mid-sentence rather than produce a date.
+    func testHugeRelativeCountsAreClampedRatherThanOverflowing() {
+        let draft = parse("pay rent in 9223372036854775807 weeks")
+        XCTAssertEqual(draft.title, "Pay rent")
+        XCTAssertEqual(draft.dueDateString,
+                       parse("pay rent in \(QuickTaskParser.maximumRelativeUnits) weeks")
+                           .dueDateString)
+    }
+
+    func testHugeRecurrenceIntervalIsClamped() {
+        XCTAssertEqual(parse("water plants every 9223372036854775807 weeks").recurrence?.interval,
+                       RecurrenceRule.maximumInterval)
+    }
 }

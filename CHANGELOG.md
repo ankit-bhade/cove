@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Task captures, toggles, deletions, and list edits rebuild the index over the
+  tree already in memory instead of re-enumerating every folder in the vault.
+  The mutated note is re-read, every other note reuses its index entry, and
+  anything that can change the tree's shape — creating, renaming, moving, or
+  deleting a note or folder, or the write that creates the capture note —
+  still takes the full rescan.
+- Date formatters are built once per template, locale, time zone, and calendar
+  rather than per task row per render, and notification bodies are worded only
+  for the plans that survive the 60-request cap.
 - The Today widget heads with the date rather than the word "Today", which a
   widget showing only today's tasks already implies: the weekday reads wide on
   the medium family and abbreviated on the small one, with the month and day
@@ -48,6 +57,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   macOS sidebar uses outline symbols, the platform's own convention.
 
 ### Fixed
+
+- One unreadable note no longer takes the whole vault down with it. A note
+  whose bytes aren't UTF-8, or that iCloud hasn't materialized yet, used to
+  fail the index build, close the vault, and leave the app on its recovery
+  screen. Such a note is now indexed with no tasks, logged, and re-read on the
+  next rebuild, so the rest of the vault stays open and the note recovers by
+  itself once it can be read.
+
+- Absurd repeat intervals no longer crash the app. "in 9223372036854775807
+  weeks" trapped the process while it was still being typed, since the live
+  preview re-parses on every keystroke, and the same value left in a note's
+  `@repeat` tag trapped on the next completion. Relative counts and recurrence
+  intervals are now clamped to bounds the date arithmetic can hold.
+
+- Widget-initiated toggles validate the note path they were given. A queued
+  operation is applied only when its recorded path still resolves to a
+  non-hidden Markdown file inside the vault now open — one left over from a
+  vault the user has since swapped away from is dropped instead of retried.
 
 - Sweep the deleted-item recovery area. Recovered notes and folders are kept
   for a week and then removed the next time the vault opens, so deleting

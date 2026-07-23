@@ -88,8 +88,14 @@ struct TaskToggleWriter {
         let didStart = vaultURL.startAccessingSecurityScopedResource()
         defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
 
+        // A snapshot path that doesn't resolve inside the vault this process
+        // just opened is not a target to retry — it's one to drop.
+        guard let noteURL = operation.taskIdentity.fileURL(within: vaultURL) else {
+            return true
+        }
+
         do {
-            _ = try await repository.updateNote(at: operation.taskIdentity.fileURL) { text in
+            _ = try await repository.updateNote(at: noteURL) { text in
                 TaskParser.settingTaskCompleted(
                     operation.taskIdentity,
                     to: operation.desiredCompletion,

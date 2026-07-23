@@ -112,11 +112,50 @@ enum DueDescription {
     private static func formatted(_ date: Date,
                                   template: String,
                                   calendar: Calendar) -> String {
+        TemplateDateFormatters.shared.string(from: date,
+                                             template: template,
+                                             calendar: calendar)
+    }
+}
+
+/// Locale-aware template formatters, built once per distinct template, locale,
+/// time zone, and calendar, then reused.
+///
+/// `DateFormatter` is expensive to construct and these sit on hot paths: a
+/// visible task row formats its due date on every render, including the
+/// minute tick that keeps the Overdue/Today groups honest. Keying on the
+/// locale identifier is what keeps the reuse safe —
+/// `setLocalizedDateFormatFromTemplate` resolves the template once, so a
+/// changed locale has to miss the cache rather than keep the old wording.
+final class TemplateDateFormatters: @unchecked Sendable {
+    static let shared = TemplateDateFormatters()
+
+    private struct Key: Hashable {
+        let template: String
+        let locale: String
+        let timeZone: String
+        let calendar: Calendar.Identifier
+    }
+
+    private let lock = NSLock()
+    private var formatters: [Key: DateFormatter] = [:]
+
+    func string(from date: Date, template: String, calendar: Calendar) -> String {
+        let key = Key(template: template,
+                      locale: Locale.autoupdatingCurrent.identifier,
+                      timeZone: calendar.timeZone.identifier,
+                      calendar: calendar.identifier)
+        lock.lock()
+        defer { lock.unlock() }
+        if let formatter = formatters[key] {
+            return formatter.string(from: date)
+        }
         let formatter = DateFormatter()
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.locale = .autoupdatingCurrent
         formatter.setLocalizedDateFormatFromTemplate(template)
+        formatters[key] = formatter
         return formatter.string(from: date)
     }
 }

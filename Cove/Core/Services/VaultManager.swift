@@ -14,7 +14,8 @@ struct DeletedTaskRecord: Sendable {
 typealias VaultLoadOperation = @Sendable (
     _ url: URL,
     _ previousIndex: VaultIndex,
-    _ changedURLs: Set<URL>?
+    _ changedURLs: Set<URL>?,
+    _ existingTree: VaultNode?
 ) async throws -> (VaultNode, VaultIndex)
 
 /// Owns the vault lifecycle: restoring the saved bookmark on launch, opening
@@ -73,13 +74,19 @@ final class VaultManager {
     @ObservationIgnored private var requestedVaultURL: URL?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
+    /// True while `rootNode` is a tree no pending load is about to replace.
+    /// An index-only refresh may reuse the scanned tree only then: it cancels
+    /// whatever load is in flight, so reusing the tree across a requested
+    /// scan would commit the very tree that scan was going to correct.
+    @ObservationIgnored private var treeIsCurrent = false
+
     init(bookmarkStore: VaultBookmarkStore = VaultBookmarkStore(),
          loadOperation: VaultLoadOperation? = nil) {
         self.bookmarkStore = bookmarkStore
-        self.loadOperation = loadOperation ?? { url, previousIndex, changedURLs in
+        self.loadOperation = loadOperation ?? { url, previousIndex, changedURLs, existingTree in
             try await Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()
-                let node = try VaultTreeScanner().scanTree(at: url)
+                let node = try existingTree ?? VaultTreeScanner().scanTree(at: url)
                 let index = try VaultIndexBuilder().buildCancellableIndex(
                     from: node, previous: previousIndex, changedURLs: changedURLs)
                 try Task.checkCancellation()
@@ -139,6 +146,19 @@ final class VaultManager {
     func refresh() async {
         guard let url = requestedVaultURL ?? vaultURL else { return }
         await loadTree(from: url, coalescing: true)
+    }
+
+    /// Rebuilds the index over the tree already in memory, re-reading only
+    /// the notes named. An app-created content change writes inside a file
+    /// that is already in the tree, so re-enumerating every folder in the
+    /// vault to learn that nothing moved is work whose answer is known —
+    /// and in an iCloud vault it is the expensive half of a checkbox tap.
+    /// Falls back to a full scan whenever the tree can't be trusted, which
+    /// keeps every structural change on the rescan path it has always taken.
+    private func refreshIndex(changedURLs: Set<URL>) async {
+        guard let url = requestedVaultURL ?? vaultURL else { return }
+        await loadTree(from: url, coalescing: true,
+                       changedURLs: changedURLs, reusingTree: true)
     }
 
     // MARK: - File operations
@@ -241,7 +261,7 @@ final class VaultManager {
         } catch {
             toggleError = error
         }
-        await refresh()
+        await refreshIndex(changedURLs: [task.fileURL])
         if let toggleError { throw toggleError }
     }
 
@@ -276,7 +296,7 @@ final class VaultManager {
         } catch {
             deleteError = error
         }
-        await refresh()
+        await refreshIndex(changedURLs: [task.fileURL])
         if let deleteError { throw deleteError }
         return record
     }
@@ -307,7 +327,7 @@ final class VaultManager {
                 in: NSRange(location: insertionLocation, length: 0),
                 with: line)
         }
-        await refresh()
+        await refreshIndex(changedURLs: [record.sourceNoteURL])
     }
 
     nonisolated private static func markdownLine(for task: TaskItem) -> String {
@@ -361,7 +381,7 @@ final class VaultManager {
         } catch {
             clearError = error
         }
-        await refresh()
+        await refreshIndex(changedURLs: fileURLs)
         if let clearError { throw clearError }
     }
 
@@ -448,18 +468,37 @@ final class VaultManager {
         await refresh()
     }
 
+    /// The capture note is created on demand, so a mutation that lands in a
+    /// note the tree has never seen is a structural change and takes the full
+    /// rescan; every later write to it only changes contents.
     private func mutateNote(
         named name: String,
         in folder: URL,
         transform: @escaping @Sendable (String) throws -> String?
     ) async throws {
-        _ = try await repository.updateNote(named: name, in: folder, transform: transform)
-        await refresh()
+        let url = try await repository.updateNote(named: name, in: folder,
+                                                  transform: transform)
+        if isInTree(url) {
+            await refreshIndex(changedURLs: [url])
+        } else {
+            await refresh()
+        }
+    }
+
+    private func isInTree(_ url: URL) -> Bool {
+        rootNode?.allFiles.contains {
+            $0.url.standardizedFileURL == url.standardizedFileURL
+        } ?? false
     }
 
     private func loadTree(from url: URL,
                           coalescing: Bool = false,
-                          changedURLs: Set<URL>? = nil) async {
+                          changedURLs: Set<URL>? = nil,
+                          reusingTree: Bool = false) async {
+        let existingTree = reusingTree && treeIsCurrent
+            && vaultURL?.standardizedFileURL == url.standardizedFileURL
+            ? rootNode : nil
+        if existingTree == nil { treeIsCurrent = false }
         loadGeneration &+= 1
         let generation = loadGeneration
         requestedVaultURL = url
@@ -475,7 +514,8 @@ final class VaultManager {
             }
             await self?.performLoad(from: url,
                                     generation: generation,
-                                    changedURLs: changedURLs)
+                                    changedURLs: changedURLs,
+                                    existingTree: existingTree)
         }
         refreshTask = task
         await task.value
@@ -483,18 +523,19 @@ final class VaultManager {
 
     private func performLoad(from url: URL,
                              generation: UInt64,
-                             changedURLs: Set<URL>?) async {
+                             changedURLs: Set<URL>?,
+                             existingTree: VaultNode?) async {
         guard isCurrentLoad(generation: generation, url: url) else { return }
         let startedAt = Date()
         let loadOperation = self.loadOperation
         let previousIndex = index
         // Toggles the widget couldn't write itself are applied first, so the
         // scan that follows already sees them and the index is built once.
-        await applyPendingWidgetOperations()
+        await applyPendingWidgetOperations(vaultRoot: url)
         guard isCurrentLoad(generation: generation, url: url) else { return }
 
         let scanTask = Task {
-            try await loadOperation(url, previousIndex, changedURLs)
+            try await loadOperation(url, previousIndex, changedURLs, existingTree)
         }
         do {
             let (node, index) = try await withTaskCancellationHandler {
@@ -504,6 +545,7 @@ final class VaultManager {
             }
             guard isCurrentLoad(generation: generation, url: url) else { return }
             rootNode = node
+            treeIsCurrent = true
             self.index = index
             vaultURL = url
             lastErrorDescription = nil
@@ -523,6 +565,7 @@ final class VaultManager {
             CoveLog.vault.error("Vault load failed: \(error.localizedDescription, privacy: .private)")
             endAccess()
             rootNode = nil
+            treeIsCurrent = false
             index = VaultIndex()
             vaultURL = nil
             lastErrorDescription = error.localizedDescription
@@ -561,7 +604,7 @@ final class VaultManager {
     /// queued but counts an attempt against it, so a tap survives an
     /// unavailable vault without an unappliable one being retried on every
     /// launch forever.
-    private func applyPendingWidgetOperations() async {
+    private func applyPendingWidgetOperations(vaultRoot: URL) async {
         let pending: [PendingTaskOperation]
         do {
             pending = try widgetStore.loadPendingOperations()
@@ -577,10 +620,20 @@ final class VaultManager {
         let today = QuickTaskParser.ymdString(from: Date(),
                                               calendar: TaskCalendar.gregorian())
         for operation in pending {
+            // A queued path that doesn't resolve inside the vault now open —
+            // a note deleted and replaced by a folder, an operation left over
+            // from a vault the user has since swapped away from — can never
+            // apply, so it is dropped rather than retried.
+            guard let noteURL = operation.taskIdentity.fileURL(within: vaultRoot) else {
+                do {
+                    try widgetStore.acknowledge(operationID: operation.id)
+                } catch {
+                    CoveLog.widget.error("Out-of-vault operation acknowledgment failed: \(error.localizedDescription, privacy: .private)")
+                }
+                continue
+            }
             do {
-                _ = try await repository.updateNote(
-                    at: operation.taskIdentity.fileURL
-                ) { text in
+                _ = try await repository.updateNote(at: noteURL) { text in
                     TaskParser.settingTaskCompleted(
                         operation.taskIdentity,
                         to: operation.desiredCompletion,

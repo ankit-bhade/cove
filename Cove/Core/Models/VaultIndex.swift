@@ -33,6 +33,26 @@ struct TaskIdentity: Codable, Hashable, Sendable {
     var fileURL: URL { URL(fileURLWithPath: filePath) }
     var recurrence: RecurrenceRule? { recurrenceTag.flatMap(RecurrenceRule.init(tagText:)) }
 
+    /// The note to mutate, but only when the recorded path still resolves
+    /// inside `vaultRoot`. An identity is persisted state: it crosses the App
+    /// Group to the widget and back, and it can outlive the vault it was
+    /// written against — a queued toggle survives the user picking a
+    /// different folder. So a write validates the path against the vault it
+    /// is about to open rather than trusting the string, and holds it to the
+    /// same rules the scanner uses: inside the vault, a Markdown file,
+    /// nothing hidden or symlinked on the way in.
+    func fileURL(within vaultRoot: URL) -> URL? {
+        let url = fileURL.standardizedFileURL
+        guard url.pathExtension.lowercased() == "md" else { return nil }
+        let resolved = url.resolvingSymlinksInPath().pathComponents
+        let root = vaultRoot.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        guard resolved.count > root.count,
+              Array(resolved.prefix(root.count)) == root,
+              !resolved.dropFirst(root.count).contains(where: { $0.hasPrefix(".") })
+        else { return nil }
+        return url
+    }
+
     init(filePath: String,
          lineNumber: Int,
          text: String,

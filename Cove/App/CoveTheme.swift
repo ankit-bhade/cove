@@ -568,22 +568,31 @@ struct CoveMark: View {
     private let nightBottom = Color(red: 0.078, green: 0.067, blue: 0.055) // #14110E
     private let ink = Color(red: 0.141, green: 0.129, blue: 0.114)         // #24211D
     private let paper = Color(red: 0.976, green: 0.961, blue: 0.933)       // #F9F5EE
-    private let ember = Color(red: 0.851, green: 0.545, blue: 0.267)
+    private let emberTop = Color(red: 0.910, green: 0.659, blue: 0.408)    // #E8A868
+    private let emberBottom = Color(red: 0.788, green: 0.478, blue: 0.204) // #C97A34
 
     private var isDark: Bool { scheme == .dark }
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+            RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
                 .fill(ground)
             Text(verbatim: "c")
-                .font(.system(size: size * 0.66, weight: .semibold, design: .serif))
+                .font(.system(size: size * 0.74, weight: .semibold, design: .serif))
                 .foregroundStyle(isDark ? paper : ink)
-                .offset(x: -size * 0.04, y: -size * 0.01)
+                // SwiftUI centers the font's line box, not the visible glyph.
+                // This baseline compensation leaves the glyph at the design's
+                // optical nudge of (-0.085, -0.01) relative to the tile.
+                .offset(x: -size * 0.085, y: -size * 0.10)
             Circle()
-                .fill(ember)
-                .frame(width: size * 0.14, height: size * 0.14)
-                .offset(x: size * 0.17, y: size * 0.05)
+                .fill(RadialGradient(
+                    colors: [emberTop, emberBottom],
+                    center: .init(x: 0.38, y: 0.34),
+                    startRadius: 0,
+                    endRadius: size * 0.16 * 0.62
+                ))
+                .frame(width: size * 0.16, height: size * 0.16)
+                .offset(x: size * 0.13, y: size * 0.05)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)

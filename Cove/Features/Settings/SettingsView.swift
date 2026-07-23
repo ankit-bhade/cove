@@ -42,7 +42,7 @@ struct SettingsView: View {
         Section {
             if let vaultURL = vaultManager.vaultURL {
                 HStack(alignment: .top, spacing: 12) {
-                    CoveIconTile(systemName: "folder.fill", tint: CoveTheme.seaGlass)
+                    CoveIconTile(systemName: "folder.fill", tint: CoveTheme.moss)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(vaultURL.lastPathComponent)
                             .font(.body.weight(.semibold))
@@ -57,7 +57,7 @@ struct SettingsView: View {
             VaultPickerButton(title: "Choose a Different Vault…", prominent: false)
                 .controlSize(.regular)
         } header: {
-            Text("Vault")
+            CoveSectionHeader("Vault")
         } footer: {
             Text("Selecting a new folder replaces the current vault. Your files are never moved or deleted.")
         }
@@ -68,7 +68,7 @@ struct SettingsView: View {
     private var nameSection: some View {
         Section {
             HStack(spacing: 12) {
-                CoveIconTile(systemName: "hand.wave.fill", tint: CoveTheme.seaGlass)
+                CoveIconTile(systemName: "hand.wave.fill", tint: CoveTheme.moss)
                 TextField("Your name", text: $greetingName)
                     .textFieldStyle(.plain)
                     #if os(iOS)
@@ -77,7 +77,7 @@ struct SettingsView: View {
                     .autocorrectionDisabled()
             }
         } header: {
-            Text("Greeting")
+            CoveSectionHeader("Greeting")
         } footer: {
             Text("Used in the greeting on the Notes screen. Leave it blank to keep greetings impersonal.")
         }
@@ -103,7 +103,7 @@ struct SettingsView: View {
                 .labelsHidden()
             }
         } header: {
-            Text("Appearance")
+            CoveSectionHeader("Appearance")
         }
     }
 
@@ -138,7 +138,7 @@ struct SettingsView: View {
                 EmptyView()
             }
         } header: {
-            Text("Notifications")
+            CoveSectionHeader("Notifications")
         } footer: {
             Text("Tasks with a due time get a reminder at that moment. Tasks with only a date don’t notify.")
         }
@@ -150,18 +150,13 @@ struct SettingsView: View {
                 .font(.body.weight(.medium))
         } icon: {
             CoveIconTile(systemName: notificationStatusIcon,
-                         tint: notificationsEnabled ? CoveTheme.teal : .secondary)
+                         tint: notificationsEnabled ? CoveTheme.accent : .secondary)
         }
     }
 
     private var notificationBadge: some View {
-        Text(notificationStatusLabel)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(notificationsEnabled ? CoveTheme.teal : .secondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background((notificationsEnabled ? CoveTheme.teal : Color.secondary)
-                .opacity(0.10), in: Capsule())
+        CoveCountBadge(notificationStatusLabel,
+                       tint: notificationsEnabled ? CoveTheme.accent : .secondary)
     }
 
     private var notificationStatusLabel: String {

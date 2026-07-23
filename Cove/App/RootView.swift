@@ -49,39 +49,39 @@ struct RootView: View {
                 HStack(spacing: 10) {
                     Image(systemName: section.symbol)
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(selectedSection == section ? CoveTheme.teal : .secondary)
-                        .frame(width: 22)
+                        .foregroundStyle(selectedSection == section
+                                         ? CoveTheme.accent : .secondary)
+                        .frame(width: 20)
                     Text(section.title)
                         .font(.body.weight(selectedSection == section ? .semibold : .regular))
                 }
                 .tag(section)
-                .padding(.vertical, 4)
+                .padding(.vertical, 5)
             }
             .safeAreaInset(edge: .top) {
-                HStack(spacing: 10) {
-                    Image("LaunchIcon")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 34, height: 34)
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                HStack(spacing: 11) {
+                    CoveMark(size: 32)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Cove")
-                            .font(.headline)
+                            .font(.coveHeadline)
                         Text("Markdown, at home")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .coveEyebrow()
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 11)
                 .background(.ultraThinMaterial)
                 .overlay(alignment: .bottom) {
-                    Divider().opacity(0.65)
+                    Rectangle()
+                        .fill(CoveTheme.hairline)
+                        .frame(height: 1)
                 }
                 .accessibilityElement(children: .combine)
+                .accessibilityLabel("Cove")
             }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
+            .navigationSplitViewColumnWidth(min: 196, ideal: 224, max: 300)
         } detail: {
             sectionView(selectedSection)
         }
@@ -145,22 +145,18 @@ private struct CoveLoadingView: View {
     var body: some View {
         ZStack {
             CoveBrandBackground()
-            VStack(spacing: 18) {
-                Image("LaunchIcon")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 88, height: 88)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .shadow(color: CoveTheme.navy.opacity(0.20), radius: 20, y: 10)
-                VStack(spacing: 6) {
+            VStack(spacing: CoveTheme.Space.loose) {
+                CoveMark(size: 76)
+                    .shadow(color: CoveTheme.ink.opacity(0.18), radius: 18, y: 9)
+                VStack(spacing: CoveTheme.Space.tight) {
                     Text("Cove")
-                        .font(.title2.weight(.bold))
+                        .font(.coveDisplay)
                     Text("Opening your notes…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 ProgressView()
-                    .tint(CoveTheme.teal)
+                    .controlSize(.small)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Opening your notes")

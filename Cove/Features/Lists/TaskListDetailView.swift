@@ -31,7 +31,7 @@ struct TaskListDetailView: View {
         List {
             Section {
                 captureCard
-                    .listRowInsets(CoveTheme.dashboardRowInsets())
+                    .listRowInsets(CoveTheme.mastheadRowInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -45,8 +45,7 @@ struct TaskListDetailView: View {
                                     isProcessing: pendingTaskIDs.contains(task.id))
                         }
                     } header: {
-                        Text("To Do · \(list.openTasks.count)")
-                            .font(.caption.weight(.semibold))
+                        CoveSectionHeader("To Do", count: list.openTasks.count)
                     }
                 }
                 if !list.completedTasks.isEmpty {
@@ -58,16 +57,14 @@ struct TaskListDetailView: View {
                                     isProcessing: pendingTaskIDs.contains(task.id))
                         }
                     } header: {
-                        HStack {
-                            Text("Done · \(list.completedTasks.count)")
-                            Spacer()
+                        CoveSectionHeader(title: "Done", count: list.completedTasks.count) {
                             Button("Clear All", role: .destructive) {
                                 showsClearCompletedConfirmation = true
                             }
                             .buttonStyle(.borderless)
+                            .font(.caption2.weight(.semibold))
                             .disabled(isClearingCompleted)
                         }
-                        .font(.caption.weight(.semibold))
                     }
                 }
                 if list.isEmpty {
@@ -150,17 +147,19 @@ struct TaskListDetailView: View {
     /// List items stay undated unless the sentence actually names a date,
     /// which passing `listName` through to the field takes care of.
     private var captureCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                CoveHeroIcon(systemName: "plus", size: 36)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Add an item")
-                        .font(.headline)
-                    Text("Dates and reminders are optional")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        // The navigation bar already carries the list's name, so the masthead
+        // spends its words on what this card is for — and names itself the
+        // same way the Tasks screen's capture card does.
+        CoveMasthead(
+            eyebrow: "Quick Capture",
+            title: "Add an item",
+            subtitle: "A date is optional — “milk” is a perfectly good item."
+        ) {
+            if let list, !list.isEmpty {
+                CoveCountBadge("\(list.openTasks.count) open")
+                    .accessibilityLabel("\(list.openTasks.count) open items")
             }
+        } content: {
             QuickCaptureField(
                 placeholder: "Add to \(listName)",
                 accessibilityHint: "Enter an item, optionally with a date, time, or repeat rule",
@@ -169,8 +168,6 @@ struct TaskListDetailView: View {
                 try await vaultManager.captureTask(draft, into: listName)
             }
         }
-        .padding(16)
-        .background { CoveHeroCardBackground() }
     }
 
     /// The navigation value is the list's name, so a rename makes this view

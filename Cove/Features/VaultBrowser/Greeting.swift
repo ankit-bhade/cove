@@ -24,14 +24,17 @@ enum Greeting {
 
     /// The stretches of the day, each with its own set of phrases. Ordered
     /// by start hour; the last one runs to midnight.
+    /// The phrases are about *the reader's* hour — the page in front of them,
+    /// the quiet, the light — rather than about the app's name. Cove is a
+    /// sheltered place, and a greeting that keeps saying so is a mascot.
     static let stretches: [(startHour: Int, phrases: [Phrase])] = [
         (0, [Phrase("Still up, %@?", "Still up?"),
              Phrase("Burning the midnight oil, %@", "Burning the midnight oil"),
-             Phrase("The cove is dark and quiet, %@", "The cove is dark and quiet"),
+             Phrase("The house is quiet, %@", "The house is quiet"),
              Phrase("Late one, %@", "A late one")]),
         (5, [Phrase("Early start, %@", "An early start"),
              Phrase("First light, %@", "First light"),
-             Phrase("The tide is out, %@", "The tide is out"),
+             Phrase("Ahead of the day, %@", "Ahead of the day"),
              Phrase("Up before the sun, %@", "Up before the sun")]),
         (8, [Phrase("Good morning, %@", "Good morning"),
              Phrase("Morning, %@", "Morning"),
@@ -41,18 +44,18 @@ enum Greeting {
         (12, [Phrase("Good afternoon, %@", "Good afternoon"),
               Phrase("Midday, %@", "Midday"),
               Phrase("Halfway there, %@", "Halfway there"),
-              Phrase("High tide, %@", "High tide")]),
+              Phrase("Somewhere in the middle, %@", "Somewhere in the middle")]),
         (14, [Phrase("Good afternoon, %@", "Good afternoon"),
               Phrase("Afternoon, %@", "Afternoon"),
               Phrase("The long stretch, %@", "The long stretch"),
-              Phrase("Still sailing, %@", "Still sailing")]),
+              Phrase("Still going, %@", "Still going")]),
         (17, [Phrase("Good evening, %@", "Good evening"),
               Phrase("Evening, %@", "Evening"),
               Phrase("Winding down, %@?", "Winding down"),
               Phrase("Golden hour, %@", "Golden hour")]),
         (21, [Phrase("Good night, %@", "Good night"),
               Phrase("Quiet hours, %@", "Quiet hours"),
-              Phrase("The cove is calm, %@", "The cove is calm"),
+              Phrase("Lamps on, %@", "Lamps on"),
               Phrase("One last thought, %@?", "One last thought")]),
     ]
 

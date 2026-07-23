@@ -19,7 +19,6 @@ struct QuickCaptureField: View {
     var listName: String?
     let onCapture: (TaskDraft) async throws -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
     @State private var text = ""
     @State private var pendingDraft: PendingDraft?
     @State private var isCapturing = false
@@ -37,15 +36,20 @@ struct QuickCaptureField: View {
         VStack(spacing: 0) {
             entryRow
             if let draft {
-                Divider().overlay(CoveTheme.border(for: colorScheme))
+                Rectangle()
+                    .fill(CoveTheme.hairline)
+                    .frame(height: 1)
                 preview(draft)
             }
         }
-        .background(CoveTheme.canvas(for: colorScheme),
-                    in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        // Inset into the masthead rather than raised out of it: the field is
+        // a place to put something, so it reads as a well, not a button.
+        .background(CoveTheme.canvas,
+                    in: RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
+                                         style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(CoveTheme.border(for: colorScheme), lineWidth: 1)
+            RoundedRectangle(cornerRadius: CoveTheme.fieldRadius, style: .continuous)
+                .stroke(CoveTheme.hairline, lineWidth: 1)
         }
         .animation(.easeInOut(duration: 0.15), value: draft)
         .sheet(item: $pendingDraft) { pending in
@@ -75,16 +79,19 @@ struct QuickCaptureField: View {
                     if isCapturing {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(.white)
+                            .tint(CoveTheme.canvas)
                     } else {
+                        // The canvas, not white: in dark mode the ember fill
+                        // is the lighter of the two, so a white glyph on it
+                        // would all but disappear.
                         Image(systemName: "arrow.up")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(CoveTheme.canvas)
                     }
                 }
                     .frame(width: 30, height: 30)
-                    .background(canCapture ? AnyShapeStyle(CoveTheme.brandGradient)
-                                : AnyShapeStyle(Color.secondary.opacity(0.4)),
+                    .background(canCapture ? AnyShapeStyle(CoveTheme.accent)
+                                : AnyShapeStyle(Color.secondary.opacity(0.35)),
                                 in: Circle())
                     // The visible control stays compact while the outer
                     // frame provides a full-size touch target.
@@ -124,7 +131,7 @@ struct QuickCaptureField: View {
         return HStack(alignment: .top, spacing: 9) {
             Image(systemName: "sparkles")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(CoveTheme.teal)
+                .foregroundStyle(CoveTheme.accent)
                 // Pins the glyph to the title's line rather than letting it
                 // drift to the middle of a two-line block.
                 .padding(.top, 3)
@@ -153,7 +160,7 @@ struct QuickCaptureField: View {
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(CoveTheme.teal)
+                    .foregroundStyle(CoveTheme.accent)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -172,8 +179,8 @@ struct QuickCaptureField: View {
         }
         if let rule = draft.recurrence {
             Label(rule.displayName, systemImage: "repeat")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -183,10 +190,11 @@ struct QuickCaptureField: View {
             Text(due)
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(CoveTheme.teal)
-        .padding(.horizontal, 7)
+        .foregroundStyle(CoveTheme.accent)
+        .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(CoveTheme.teal.opacity(0.10), in: Capsule())
+        .background(CoveTheme.accent.opacity(0.11), in: Capsule())
+        .overlay { Capsule().stroke(CoveTheme.accent.opacity(0.14), lineWidth: 1) }
     }
 
     private var trimmedText: String {

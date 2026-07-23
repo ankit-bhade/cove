@@ -70,14 +70,14 @@ struct ListsView: View {
                             showsNewListPrompt = true
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(CoveTheme.teal)
+                        .buttonBorderShape(.roundedRectangle(radius: 10))
                     }
                     .listRowBackground(Color.clear)
                 }
             } else {
                 Section {
                     listsOverview(lists)
-                        .listRowInsets(CoveTheme.dashboardRowInsets())
+                        .listRowInsets(CoveTheme.mastheadRowInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
@@ -104,9 +104,7 @@ struct ListsView: View {
                         }
                     }
                 } header: {
-                    Text("Collections")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    CoveSectionHeader("Collections", count: lists.count)
                 }
             }
         }
@@ -130,59 +128,27 @@ struct ListsView: View {
         let open = lists.reduce(0) { $0 + $1.openTasks.count }
         let completed = lists.reduce(0) { $0 + $1.completedTasks.count }
 
-        return VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                CoveHeroIcon(systemName: "list.bullet.rectangle.fill", size: 46)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Everything in its place")
-                        .font(.title3.weight(.semibold))
-                    Text("Reusable lists for the things you keep track of")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 0) {
-                    listMetric(lists.count, label: lists.count == 1 ? "List" : "Lists")
-                    Divider().padding(.vertical, 2)
-                    listMetric(open, label: "Open")
-                    Divider().padding(.vertical, 2)
-                    listMetric(completed, label: "Done")
-                }
-                VStack(spacing: 10) {
-                    listMetric(lists.count, label: lists.count == 1 ? "List" : "Lists")
-                    listMetric(open, label: "Open")
-                    listMetric(completed, label: "Done")
-                }
-            }
-            .frame(minHeight: 42)
+        return CoveMasthead(
+            eyebrow: "Overview",
+            title: "Everything in its place",
+            subtitle: "Reusable groups for the things you keep track of."
+        ) {
+            CoveStatStrip(stats: [
+                CoveStat(lists.count, lists.count == 1 ? "List" : "Lists"),
+                CoveStat(open, "Open"),
+                CoveStat(completed, "Done"),
+            ])
         }
-        .padding(20)
-        .background { CoveHeroCardBackground() }
-    }
-
-    private func listMetric(_ value: Int, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value, format: .number)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(CoveTheme.teal)
-            Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
     }
 
     private func row(for list: TaskList) -> some View {
         HStack(spacing: 12) {
-            CoveIconTile(systemName: "list.bullet")
-            VStack(alignment: .leading, spacing: 3) {
+            CoveIconTile(systemName: "list.bullet", tint: CoveTheme.moss)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(list.name)
                     .font(.body.weight(.medium))
                 Text(subtitle(for: list))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .coveEyebrow()
             }
             Spacer()
             if !list.openTasks.isEmpty {

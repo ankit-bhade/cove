@@ -158,11 +158,14 @@ final class TaskPresentationTests: XCTestCase {
         XCTAssertEqual(groups[0].tasks.map(\.text), ["First", "Second", "Third"])
     }
 
-    func testGroupTitlesCarryTheirCounts() {
+    func testGroupsNameThemselvesWithoutTheirCounts() {
+        // The header sets the count beside the name in its own weight, so the
+        // name has to stay a bare noun.
         let today = now(2026, 7, 19, hour: 12)
         let groups = TaskGroup.grouping(
             [task(due: "2026-07-19"), task(due: "2026-07-19")], now: today)
-        XCTAssertEqual(groups.first?.title, "Today · 2")
+        XCTAssertEqual(groups.first?.name, "Today")
+        XCTAssertEqual(groups.first?.tasks.count, 2)
     }
 
     // MARK: - Undated list items

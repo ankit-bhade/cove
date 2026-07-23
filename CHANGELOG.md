@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- New visual direction: ink on warm paper, marked in ember. The coastal
+  teal-and-navy palette is replaced by a warm paper canvas, warm ink text, a
+  burnt-ember accent that carries every interaction, moss for folders and
+  lists, and a warm rust for overdue. Titles are set in the system serif —
+  screen titles, mastheads, and empty states — against tracked capitals for
+  labels and monospaced digits for every count. The three hand-built dashboard
+  cards become one `CoveMasthead` (accent rule, eyebrow, serif title,
+  subtitle, and whatever the screen puts under it), section headers become one
+  `CoveSectionHeader`, and the app's in-product mark is now drawn rather than
+  loaded from an asset. Search's two unavailable states and the editor's
+  can't-open state use Cove's own empty state instead of the system's.
+  Behavior, navigation, and information architecture are unchanged.
 - Visual consistency pass across the shared UI. The Tasks card's open count is
   now the same tinted capsule the Lists rows use, instead of a `Label` whose
   dot glyph read as a stray bullet beside its own text; both draw from one

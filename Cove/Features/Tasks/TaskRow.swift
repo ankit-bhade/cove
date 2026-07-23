@@ -24,11 +24,14 @@ struct TaskRow: View {
                     if isProcessing {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(CoveTheme.teal)
                     } else {
                         Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 21, weight: .medium))
-                            .foregroundStyle(task.isCompleted ? Color.secondary : CoveTheme.teal)
+                            .foregroundStyle(task.isCompleted
+                                             ? AnyShapeStyle(.tertiary)
+                                             : AnyShapeStyle(overdue ? CoveTheme.alert
+                                                             : CoveTheme.accent))
+                            .contentTransition(.symbolEffect(.replace))
                     }
                 }
                     // The glyph alone is a small target; padding brings the
@@ -104,13 +107,16 @@ struct TaskRow: View {
 
     private func recurrenceLabel(_ rule: RecurrenceRule) -> some View {
         Label(rule.displayName, systemImage: "repeat")
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.tertiary)
     }
 
+    /// Overdue is the loudest state, today is the accent, and everything
+    /// further out is quiet — a list where every capsule is colored tells the
+    /// reader nothing about which one to look at first.
     private func dueLabel(overdue: Bool) -> some View {
-        let tint: Color = overdue ? .red
-            : task.isDue(onSameDayAs: now) ? CoveTheme.teal
+        let tint: Color = overdue ? CoveTheme.alert
+            : task.isDue(onSameDayAs: now) ? CoveTheme.accent
             : .secondary
         return HStack(spacing: 5) {
             Image(systemName: overdue ? "exclamationmark.circle.fill"
@@ -119,8 +125,9 @@ struct TaskRow: View {
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(tint)
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(tint.opacity(0.10), in: Capsule())
+        .background(tint.opacity(0.11), in: Capsule())
+        .overlay { Capsule().stroke(tint.opacity(0.14), lineWidth: 1) }
     }
 }

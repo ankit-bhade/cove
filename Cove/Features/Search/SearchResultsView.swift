@@ -22,7 +22,7 @@ struct SearchResultsView: View {
                         NavigationLink(value: result.node.url) {
                             HStack(alignment: .top, spacing: 12) {
                                 CoveIconTile(systemName: "doc.text.fill")
-                                VStack(alignment: .leading, spacing: 5) {
+                                VStack(alignment: .leading, spacing: 4) {
                                     Text(result.node.displayName)
                                         .font(.body.weight(.semibold))
                                     if let snippet = result.snippet {
@@ -38,8 +38,8 @@ struct SearchResultsView: View {
                         }
                     }
                 } header: {
-                    Text("\(results.count) \(results.count == 1 ? "result" : "results")")
-                        .font(.caption.weight(.semibold))
+                    CoveSectionHeader(results.count == 1 ? "Result" : "Results",
+                                      count: results.count)
                 }
             }
         }
@@ -50,23 +50,27 @@ struct SearchResultsView: View {
                 // The debounce plus a full-vault read is long enough that a
                 // blank list reads as "no matches" instead of "working".
                 VStack(spacing: 12) {
-                    ProgressView().tint(CoveTheme.teal)
+                    ProgressView()
+                        .controlSize(.small)
                     Text("Searching your notes…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             } else if hasSearched, results.isEmpty {
-                ContentUnavailableView {
-                    Label("No Notes Found", systemImage: "magnifyingglass")
-                } description: {
-                    Text("Try a different title or phrase.")
-                }
+                // Cove's own empty state rather than the system's: a search
+                // that finds nothing is the most-seen empty screen in the
+                // app, and the generic one looks like a different product.
+                CoveEmptyState(
+                    "No Notes Found",
+                    systemName: "magnifyingglass",
+                    description: "Try a different title or phrase — search reads every note's text as well as its name."
+                )
             } else if let searchError {
-                ContentUnavailableView {
-                    Label("Search Unavailable", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(searchError)
-                }
+                CoveEmptyState(
+                    "Search Unavailable",
+                    systemName: "exclamationmark.triangle",
+                    description: searchError
+                )
             }
         }
         .animation(.easeInOut(duration: 0.15), value: isSearching)

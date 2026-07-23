@@ -57,17 +57,21 @@ struct TodayWidgetView: View {
     private var headerSize: CGFloat { isSmall ? 13 : 15 }
 
     private var header: some View {
-        HStack(spacing: isSmall ? 6 : 7) {
-            Image(systemName: "sun.max")
-                .font(.system(size: isSmall ? 15 : 16, weight: .medium))
-                .foregroundStyle(palette.accent)
+        HStack(spacing: isSmall ? 7 : 8) {
+            // The app's masthead rule rather than a glyph: at widget sizes a
+            // symbol is either too small to read or too loud, and the rule
+            // ties the widget to the screen it deep-links into.
+            Capsule()
+                .fill(palette.accent)
+                .frame(width: 3, height: isSmall ? 15 : 16)
             // "Today" and the date are one phrase, so they share a size and a
             // baseline. At 11pt in a center-aligned row the date read as a
             // caption sitting on its own line rather than part of the title;
             // weight and color still separate them.
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("Today")
-                    .font(.system(size: headerSize, weight: .semibold))
+                    .font(.system(size: headerSize + 1, weight: .semibold,
+                                  design: .serif))
                     .foregroundStyle(palette.primaryText)
                 if !isSmall {
                     Text(entry.date.formatted(.dateTime.weekday(.abbreviated))
@@ -186,7 +190,7 @@ struct TodayWidgetView: View {
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(palette.accent)
             Text("All clear")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold, design: .serif))
                 .foregroundStyle(palette.primaryText)
             Text("Nothing due today")
                 .font(.system(size: 11.5))

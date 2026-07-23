@@ -6,7 +6,6 @@ import OSLog
 /// the content beneath it.
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.undoManager) private var undoManager
     /// Set in Settings; empty means the greetings stay impersonal.
     @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
@@ -187,8 +186,8 @@ struct VaultBrowserView: View {
         return List {
             if let folder {
                 Section {
-                    vaultOverview(for: folder)
-                        .listRowInsets(CoveTheme.dashboardRowInsets())
+                    overview(for: folder, isRoot: folder.url == vaultManager.vaultURL)
+                        .listRowInsets(CoveTheme.mastheadRowInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
@@ -197,8 +196,8 @@ struct VaultBrowserView: View {
             if nodes.isEmpty {
                 Section {
                     CoveEmptyState(
-                        "This Folder Is Ready",
-                        systemName: "doc.badge.plus",
+                        "Nothing Here Yet",
+                        systemName: "square.and.pencil",
                         description: "Create a Markdown note or folder with the + button above."
                     )
                     .padding(.vertical, 8)
@@ -210,9 +209,7 @@ struct VaultBrowserView: View {
                         row(for: node)
                     }
                 } header: {
-                    Text("Contents")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    CoveSectionHeader("Contents", count: nodes.count)
                 }
             }
         }
@@ -241,62 +238,35 @@ struct VaultBrowserView: View {
         return nil
     }
 
-    private func vaultOverview(for folder: VaultNode) -> some View {
+    /// The masthead over a folder level. At the root it is a greeting — the
+    /// one place in the app that addresses the reader. Deeper in, the greeting
+    /// would be a second hello inside the same session, so the folder names
+    /// itself instead and the eyebrow says where it sits.
+    private func overview(for folder: VaultNode, isRoot: Bool) -> some View {
         let counts = overviewCounts(for: folder)
+        let stats = [
+            CoveStat(counts.folders, counts.folders == 1 ? "Folder" : "Folders"),
+            CoveStat(counts.subfolders, counts.subfolders == 1 ? "Subfolder" : "Subfolders"),
+            CoveStat(counts.notes, counts.notes == 1 ? "Note" : "Notes"),
+        ]
 
         return TimelineView(.periodic(from: .now, by: 60)) { context in
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 12) {
-                    CoveHeroIcon(systemName: "water.waves", size: 46)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Greeting.text(for: context.date, name: greetingName))
-                            .font(.title3.weight(.semibold))
-                        Text("Your vault at a glance")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: 12) {
-                        overviewStat(value: counts.folders,
-                                     label: counts.folders == 1 ? "Folder" : "Folders")
-                        overviewStat(value: counts.subfolders,
-                                     label: counts.subfolders == 1 ? "Subfolder" : "Subfolders")
-                        overviewStat(value: counts.notes,
-                                     label: counts.notes == 1 ? "Note" : "Notes")
-                    }
-                } else {
-                    HStack(spacing: 0) {
-                        overviewStat(value: counts.folders,
-                                     label: counts.folders == 1 ? "Folder" : "Folders")
-                        Divider().padding(.vertical, 2)
-                        overviewStat(value: counts.subfolders,
-                                     label: counts.subfolders == 1 ? "Subfolder" : "Subfolders")
-                        Divider().padding(.vertical, 2)
-                        overviewStat(value: counts.notes,
-                                     label: counts.notes == 1 ? "Note" : "Notes")
-                    }
-                    .frame(height: 42)
-                }
+            // The eyebrow never repeats the navigation title above it: at the
+            // root it names the open vault — the one thing on screen that
+            // nothing else says — and deeper in it labels the kind of thing
+            // the bar is already naming.
+            CoveMasthead(
+                eyebrow: isRoot ? folder.displayName : "Folder",
+                title: isRoot
+                    ? Greeting.text(for: context.date, name: greetingName)
+                    : folder.displayName,
+                subtitle: isRoot
+                    ? "Plain Markdown files, exactly where you left them."
+                    : nil
+            ) {
+                CoveStatStrip(stats: stats)
             }
-            .padding(20)
-            .background { CoveHeroCardBackground() }
         }
-    }
-
-    private func overviewStat(value: Int, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value, format: .number)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(CoveTheme.teal)
-            Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
     }
 
     /// Direct folders, deeper folders, and all notes within this level.
@@ -331,10 +301,12 @@ struct VaultBrowserView: View {
         }
     }
 
+    /// Folders take the supporting hue and notes the accent: the two kinds of
+    /// row are told apart by color before the glyph inside them is read.
     private func nodeLabel(_ node: VaultNode) -> some View {
-        HStack(spacing: 11) {
+        HStack(spacing: 12) {
             CoveIconTile(systemName: node.isDirectory ? "folder.fill" : "doc.text.fill",
-                         tint: node.isDirectory ? CoveTheme.seaGlass : CoveTheme.teal)
+                         tint: node.isDirectory ? CoveTheme.moss : CoveTheme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(node.displayName)
                     .font(.body.weight(.medium))
@@ -342,8 +314,7 @@ struct VaultBrowserView: View {
                 if node.isDirectory {
                     let itemCount = node.children?.count ?? 0
                     Text("\(itemCount) \(itemCount == 1 ? "item" : "items")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .coveEyebrow()
                 }
             }
         }

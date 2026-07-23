@@ -570,6 +570,7 @@ struct CoveMark: View {
     private let paper = Color(red: 0.976, green: 0.961, blue: 0.933)       // #F9F5EE
     private let emberTop = Color(red: 0.910, green: 0.659, blue: 0.408)    // #E8A868
     private let emberBottom = Color(red: 0.788, green: 0.478, blue: 0.204) // #C97A34
+    private let markScale: CGFloat = 1.08
 
     private var isDark: Bool { scheme == .dark }
 
@@ -578,21 +579,21 @@ struct CoveMark: View {
             RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
                 .fill(ground)
             Text(verbatim: "c")
-                .font(.system(size: size * 0.74, weight: .semibold, design: .serif))
+                .font(.system(size: size * 0.74 * markScale, weight: .bold, design: .serif))
                 .foregroundStyle(isDark ? paper : ink)
                 // SwiftUI centers the font's line box, not the visible glyph.
                 // This baseline compensation leaves the glyph at the design's
                 // optical nudge of (-0.085, -0.01) relative to the tile.
-                .offset(x: -size * 0.085, y: -size * 0.10)
+                .offset(x: -size * 0.085 * markScale, y: -size * 0.10 * markScale)
             Circle()
                 .fill(RadialGradient(
                     colors: [emberTop, emberBottom],
                     center: .init(x: 0.38, y: 0.34),
                     startRadius: 0,
-                    endRadius: size * 0.16 * 0.62
+                    endRadius: size * 0.16 * markScale * 0.62
                 ))
-                .frame(width: size * 0.16, height: size * 0.16)
-                .offset(x: size * 0.13, y: size * 0.05)
+                .frame(width: size * 0.16 * markScale, height: size * 0.16 * markScale)
+                .offset(x: size * 0.13 * markScale, y: size * 0.05 * markScale)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)

@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Today widget heads with the date rather than the word "Today", which a
+  widget showing only today's tasks already implies: the weekday reads wide on
+  the medium family and abbreviated on the small one, with the month and day
+  beside it. The accent rule left of the header is gone, and the checkboxes are
+  drawn in a muted accent — repeated down a small surface, rings at full
+  saturation were louder than the task text they belong to.
 - New visual direction: ink on warm paper, marked in ember. The coastal
   teal-and-navy palette is replaced by a warm paper canvas, warm ink text, a
   burnt-ember accent that carries every interaction, moss for folders and

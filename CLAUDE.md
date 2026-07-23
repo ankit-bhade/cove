@@ -587,9 +587,20 @@ no shared asset catalog. The values differ on purpose: a widget sits on a Home
 Screen beside other apps rather than inside Cove's canvas, so its background
 is plain warm paper and its accent runs a shade deeper for legibility at
 widget text sizes. It does reuse `DueDescription`, so a date can't be worded
-one way here and another in the row it mirrors, and it echoes the masthead's
-accent rule instead of a glyph — at widget sizes a symbol is either too small
-to read or too loud.
+one way here and another in the row it mirrors.
+
+**The date is the header, and the word "Today" isn't in it.** A widget that
+only ever shows today's tasks doesn't need to say so — the word took the
+title and left the one fact worth glancing at as a caption beside it. The
+weekday is wide on the medium family and abbreviated on the small one, with
+the month and day secondary. "Today" survives as the widget's name in the
+gallery, which is how it gets found.
+
+**Checkboxes are drawn in `checkboxRest`, a muted accent, not the full one.**
+The boxes repeat down the widget while the count and the times appear once
+each, so at full saturation the rings were the loudest thing on a surface
+whose job is to be glanced at. A completed row fills the same soft tone, so
+finishing something quiets the row rather than lighting it up.
 
 **Deep link:** `.widgetURL` is `cove://tasks`, handled in `RootView.onOpenURL`;
 the scheme is registered in the root `Info.plist` under `CFBundleURLTypes`.
@@ -888,10 +899,13 @@ Rough edges and surprises, not restatements of the design above.
   `CoveThemeTests` is what covers the macOS side of the palette — appearance
   resolution and contrast — and it is the only automated evidence that dark
   mode is right there.
-* The Today widget was verified by rendering its views on the simulator at
-  both sizes in light and dark, and by confirming the app writes a correct
-  snapshot. The widget on a real Home Screen — including the interactive
-  checkbox — was **not** verified, because the simulator offers no tap
-  injection to add a widget.
+* The Today widget is verified on a real simulator Home Screen: added through
+  the widget gallery at both sizes in light and dark, showing a live vault's
+  tasks, and its interactive checkbox was tapped and confirmed to rewrite the
+  `- [ ]` line in `Tasks.md`. That last part means the extension *can* resolve
+  a bookmark the host app created, at least in the simulator — the pending-
+  operation queue is still the fallback for when it can't. Adding a widget
+  needs tap injection (long-press the Home Screen → Edit → Add Widget), not
+  `simctl` alone.
 * Date handling is tested against non-Gregorian system calendars, UTC-ahead
   and -behind zones, New York DST transitions, and midnight.

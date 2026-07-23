@@ -71,10 +71,10 @@ notification permission only from Settings, never during a background
 refresh). Reminder details use the user’s localized compact date and time.
 A Lists tab keeps grouped tasks visually separate from what's actually due.
 On iPhone and iPad, a Today widget can be added to the Home Screen in small
-or medium size: it lists the tasks due today with a checkbox to tick one off
-without opening the app, shows overdue ones in red and a count of what's
-left, and reads "All clear" once nothing is due. Tapping it opens the Tasks
-tab.
+or medium size: it heads with the day and date, lists the tasks due today with
+a checkbox to tick one off without opening the app, shows overdue ones in red
+and a count of what's left, and reads "All clear" once nothing is due. Tapping
+it opens the Tasks tab.
 A widget checkbox is first recorded as a durable desired-state operation, so
 an unavailable vault can be retried the next time Cove opens and replaying an
 already-applied operation cannot toggle the task back.

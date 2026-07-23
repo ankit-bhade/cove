@@ -144,15 +144,6 @@ struct TaskGroup: Identifiable {
         }
     }
 
-    var symbol: String {
-        switch kind {
-        case .overdue: "exclamationmark.circle.fill"
-        case .today: "sun.max"
-        case .tomorrow: "sunrise"
-        case .upcoming: "calendar"
-        }
-    }
-
     /// Partitions sorted incomplete tasks into the non-empty sections.
     static func grouping(_ tasks: [TaskItem],
                          now: Date,

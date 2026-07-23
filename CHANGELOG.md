@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local `Logger` categories cover vault, document, widget, notification, and
   index failures without logging note contents or task titles.
 
+### Changed
+
+- Visual consistency pass across the shared UI. The Tasks card's open count is
+  now the same tinted capsule the Lists rows use, instead of a `Label` whose
+  dot glyph read as a stray bullet beside its own text; both draw from one
+  `CoveCountBadge`. The Tasks section headers drop their icons — a sunrise and
+  a calendar at caption size were illegible, and every other section header in
+  the app is already plain text. Settings' vault-reselect row leads with the
+  same icon tile as the rows around it rather than a bare body-size glyph. The
+  macOS sidebar uses outline symbols, the platform's own convention.
+
 ### Fixed
 
 - Sweep the deleted-item recovery area. Recovered notes and folders are kept

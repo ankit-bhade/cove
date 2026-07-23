@@ -153,8 +153,16 @@ struct VaultPickerButton: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.roundedRectangle(radius: 12))
         } else {
+            // Inside Settings this button is one row among several, all of
+            // which lead with a `CoveIconTile`. A bare symbol here rendered
+            // at body size — larger and heavier than every tile above it,
+            // and starting at a different leading edge.
             Button(action: action) {
-                Label(title, systemImage: "folder.badge.plus")
+                Label {
+                    Text(title)
+                } icon: {
+                    CoveIconTile(systemName: "folder.badge.plus")
+                }
             }
             .buttonStyle(.borderless)
         }

@@ -186,12 +186,7 @@ struct ListsView: View {
             }
             Spacer()
             if !list.openTasks.isEmpty {
-                Text("\(list.openTasks.count)")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(CoveTheme.teal)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(CoveTheme.teal.opacity(0.12), in: Capsule())
+                CoveCountBadge("\(list.openTasks.count)")
             }
         }
         .padding(.vertical, 3)

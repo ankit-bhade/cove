@@ -127,12 +127,16 @@ private enum AppSection: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Outline variants. The iOS tab bar substitutes the filled version
+    /// itself, so the name only shows through on the macOS sidebar — where
+    /// outline is the platform's own convention and the filled glyphs read
+    /// as heavier than every other sidebar in the system.
     var symbol: String {
         switch self {
-        case .notes: "folder.fill"
-        case .tasks: "checkmark.circle.fill"
-        case .lists: "list.bullet.rectangle.fill"
-        case .settings: "gearshape.fill"
+        case .notes: "folder"
+        case .tasks: "checkmark.circle"
+        case .lists: "list.bullet.rectangle"
+        case .settings: "gearshape"
         }
     }
 }

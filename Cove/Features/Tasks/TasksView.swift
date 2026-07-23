@@ -8,7 +8,6 @@ import OSLog
 /// rolls forward to its next occurrence); tapping the row opens the note.
 struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.undoManager) private var undoManager
     @State private var errorMessage: String?
     @State private var isClearingCompleted = false
@@ -63,8 +62,8 @@ struct TasksView: View {
         let completed = vaultManager.index.completedTasks
         return List {
             Section {
-                quickCaptureCard(openCount: incomplete.count)
-                    .listRowInsets(CoveTheme.dashboardRowInsets())
+                captureMasthead(openCount: incomplete.count)
+                    .listRowInsets(CoveTheme.mastheadRowInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -77,13 +76,14 @@ struct TasksView: View {
                                 isProcessing: pendingTaskIDs.contains(task.id))
                     }
                 } header: {
-                    // Plain text, like every other section header in the app.
-                    // The glyphs these headers used to carry — a sunrise, a
-                    // calendar — turned to mush at caption size and said
-                    // nothing the title didn't already say.
-                    Text(group.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(group.isOverdue ? Color.red : .secondary)
+                    // Tracked capitals with the count set apart, like every
+                    // other section header in the app. The glyphs these
+                    // headers used to carry — a sunrise, a calendar — turned
+                    // to mush at caption size and said nothing the title
+                    // didn't already say.
+                    CoveSectionHeader(group.name,
+                                      count: group.tasks.count,
+                                      tint: group.isOverdue ? CoveTheme.alert : nil)
                 }
             }
             if !completed.isEmpty {
@@ -95,23 +95,21 @@ struct TasksView: View {
                                 isProcessing: pendingTaskIDs.contains(task.id))
                     }
                 } header: {
-                    HStack {
-                        Text("Completed · \(completed.count)")
-                        Spacer()
+                    CoveSectionHeader(title: "Completed", count: completed.count) {
                         Button("Clear All", role: .destructive) {
                             showsClearCompletedConfirmation = true
                         }
                         .buttonStyle(.borderless)
+                        .font(.caption2.weight(.semibold))
                         .disabled(isClearingCompleted)
                     }
-                    .font(.caption.weight(.semibold))
                 }
             }
             if incomplete.isEmpty, completed.isEmpty {
                 Section {
                     CoveEmptyState(
-                        "A Clear Horizon",
-                        systemName: "checkmark.circle",
+                        "Nothing Due",
+                        systemName: "checkmark",
                         description: "Capture a task above, or add a due-task line to any note."
                     )
                     .listRowBackground(Color.clear)
@@ -125,21 +123,15 @@ struct TasksView: View {
         .coveReadableWidth()
     }
 
-    private func quickCaptureCard(openCount: Int) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 10) {
-                    captureHeading
-                    openTaskCount(openCount)
-                }
-            } else {
-                HStack(alignment: .center) {
-                    captureHeading
-                    Spacer()
-                    openTaskCount(openCount)
-                }
-            }
-
+    private func captureMasthead(openCount: Int) -> some View {
+        CoveMasthead(
+            eyebrow: "Quick Capture",
+            title: "Write it, naturally",
+            subtitle: "“Get bread tmr 3pm” becomes a dated task in Tasks.md."
+        ) {
+            CoveCountBadge("\(openCount) open")
+                .accessibilityLabel("\(openCount) open tasks")
+        } content: {
             QuickCaptureField(
                 placeholder: "e.g. Get bread tomorrow at 3pm",
                 accessibilityHint: "Enter a task with an optional date, time, or repeat rule"
@@ -147,26 +139,6 @@ struct TasksView: View {
                 try await vaultManager.captureTask(draft)
             }
         }
-        .padding(16)
-        .background { CoveHeroCardBackground() }
-    }
-
-    private var captureHeading: some View {
-        HStack(spacing: 10) {
-            CoveHeroIcon(systemName: "bolt.fill", size: 38)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Quick Capture")
-                    .font(.headline)
-                Text("Write it naturally")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func openTaskCount(_ count: Int) -> some View {
-        CoveCountBadge("\(count) open")
-            .accessibilityLabel("\(count) open tasks")
     }
 
     /// Removes the task's line from its note. Deliberately not confirmed —

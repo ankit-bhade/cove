@@ -98,11 +98,14 @@ flow that recovers a stale selection), takes the name used in the Notes
 greeting, switches between system, light, and dark appearance, and shows
 whether notification permission is granted, with a shortcut to enable it. The app has its own icon and launch screen — the
 `cove` wordmark over layered waves, its `o` a sun in light appearance and a
-full moon in dark. The
-interface uses a cohesive coastal navy-and-teal visual system derived from
-that artwork, with branded setup and loading states, vault and task overview
-cards, richer file and task rows, polished empty and search states, and a more
-spacious writing canvas. On Mac, Notes, Tasks, Lists, and Settings live in a
+full moon in dark. Inside, the interface is set in ink on warm paper: a warm
+off-white canvas, screen titles and headlines in the system serif, tracked
+capitals for labels, monospaced digits for every count, and a single burnt-ember
+accent that carries interaction — with moss for folders and lists and a warm
+rust for anything overdue. Each main screen opens with the same masthead
+(a short accent rule, a label, a serif title, and the screen's own content
+beneath it), and setup, loading, empty, and search states are all drawn from
+that one system. On Mac, Notes, Tasks, Lists, and Settings live in a
 native branded sidebar; iPhone and iPad keep the familiar tab bar. Wide screens use
 comfortable readable content widths, the editor keeps long lines under
 control, refresh actions show their progress, and compact layouts adapt for

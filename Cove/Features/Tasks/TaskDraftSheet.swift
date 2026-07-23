@@ -28,27 +28,13 @@ struct TaskDraftSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack(spacing: 13) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 42, height: 42)
-                            .background(CoveTheme.brandGradient,
-                                        in: RoundedRectangle(cornerRadius: 12,
-                                                             style: .continuous))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Review Cove’s Interpretation")
-                                .font(.headline)
-                            Text(listName.map { "Fine-tune anything before it’s added to \($0)." }
-                                 ?? "Fine-tune anything before it’s added to Tasks.md.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                    .background { CoveCardBackground() }
-                    .listRowInsets(CoveTheme.dashboardRowInsets(bottom: 12))
+                    CoveMasthead(
+                        eyebrow: "Interpretation",
+                        title: "Check the details",
+                        subtitle: listName.map { "Fine-tune anything before it’s added to \($0)." }
+                            ?? "Fine-tune anything before it’s added to Tasks.md."
+                    )
+                    .listRowInsets(CoveTheme.mastheadRowInsets(bottom: 12))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }

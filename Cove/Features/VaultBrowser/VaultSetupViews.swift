@@ -27,20 +27,17 @@ struct WelcomeView: View {
         detail: String,
         @ViewBuilder actions: () -> Actions
     ) -> some View {
-        VStack(spacing: 24) {
-            Image("LaunchIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 112, height: 112)
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .shadow(color: CoveTheme.navy.opacity(0.22), radius: 24, y: 12)
-                .accessibilityHidden(true)
-            VStack(spacing: 10) {
+        VStack(spacing: CoveTheme.Space.loose) {
+            CoveMark(size: 88)
+                .shadow(color: CoveTheme.ink.opacity(0.20), radius: 22, y: 11)
+            VStack(spacing: CoveTheme.Space.snug) {
                 Text(title)
-                    .font(.largeTitle.weight(.bold))
-                Text(message)
-                    .font(.title3.weight(.medium))
+                    .font(.coveDisplayLarge)
                     .multilineTextAlignment(.center)
+                Text(message)
+                    .font(.title3)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
                 Text(detail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -53,7 +50,7 @@ struct WelcomeView: View {
         .frame(maxWidth: 440)
         .padding(.horizontal, 28)
         .padding(.vertical, 34)
-        .background { CoveCardBackground(cornerRadius: 28) }
+        .background { CoveCardBackground(cornerRadius: 26) }
         .padding(24)
     }
 }
@@ -67,19 +64,25 @@ struct VaultRecoveryView: View {
             CoveBrandBackground()
             GeometryReader { proxy in
                 ScrollView {
-                    VStack(spacing: 22) {
+                    VStack(spacing: CoveTheme.Space.loose) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .fill(.orange.opacity(0.12))
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .fill(CoveTheme.alert.opacity(0.12))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                        .stroke(CoveTheme.alert.opacity(0.18), lineWidth: 1)
+                                }
                             Image(systemName: "folder.badge.questionmark")
-                                .font(.system(size: 38, weight: .medium))
-                                .foregroundStyle(.orange)
+                                .font(.system(size: 34, weight: .medium))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(CoveTheme.alert)
                         }
-                        .frame(width: 88, height: 88)
+                        .frame(width: 84, height: 84)
                         .accessibilityHidden(true)
-                        VStack(spacing: 10) {
+                        VStack(spacing: CoveTheme.Space.snug) {
                             Text("Let’s Reconnect Your Vault")
-                                .font(.title.weight(.bold))
+                                .font(.coveDisplay)
+                                .multilineTextAlignment(.center)
                             Text("The folder may have moved, been renamed, or no longer be available on this device.")
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -92,9 +95,14 @@ struct VaultRecoveryView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(12)
                                 .frame(maxWidth: .infinity)
-                                .background(.secondary.opacity(0.08),
-                                            in: RoundedRectangle(cornerRadius: 12,
+                                .background(CoveTheme.canvas,
+                                            in: RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
                                                                  style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
+                                                     style: .continuous)
+                                        .stroke(CoveTheme.hairline, lineWidth: 1)
+                                }
                         }
                         VaultPickerButton(title: "Choose Vault Folder")
                             .controlSize(.large)
@@ -102,7 +110,7 @@ struct VaultRecoveryView: View {
                     .frame(maxWidth: 440)
                     .padding(.horizontal, 28)
                     .padding(.vertical, 34)
-                    .background { CoveCardBackground(cornerRadius: 28) }
+                    .background { CoveCardBackground(cornerRadius: 26) }
                     .padding(24)
                     .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 }
@@ -151,7 +159,7 @@ struct VaultPickerButton: View {
             }
             .frame(maxWidth: .infinity)
             .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.roundedRectangle(radius: 12))
+            .buttonBorderShape(.roundedRectangle(radius: CoveTheme.fieldRadius))
         } else {
             // Inside Settings this button is one row among several, all of
             // which lead with a `CoveIconTile`. A bare symbol here rendered

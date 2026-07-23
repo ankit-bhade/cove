@@ -135,12 +135,14 @@ struct TaskGroup: Identifiable {
     var id: Int { kind.rawValue }
     var isOverdue: Bool { kind == .overdue }
 
-    var title: String {
+    /// The section's name on its own: the header sets the count beside it in
+    /// its own weight rather than running the two into one string.
+    var name: String {
         switch kind {
-        case .overdue: "Overdue · \(tasks.count)"
-        case .today: "Today · \(tasks.count)"
-        case .tomorrow: "Tomorrow · \(tasks.count)"
-        case .upcoming: "Upcoming · \(tasks.count)"
+        case .overdue: "Overdue"
+        case .today: "Today"
+        case .tomorrow: "Tomorrow"
+        case .upcoming: "Upcoming"
         }
     }
 

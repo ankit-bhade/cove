@@ -45,19 +45,14 @@ struct MoveDestinationPicker: View {
                     dismiss()
                 } label: {
                     HStack(spacing: 10) {
-                        CoveIconTile(systemName: "folder.fill", tint: CoveTheme.seaGlass)
+                        CoveIconTile(systemName: "folder.fill", tint: CoveTheme.moss)
                         Text(destination.name)
                             .font(.body.weight(.medium))
                         Spacer()
                         // Without this the row is simply inert, which reads
                         // as a bug rather than as "it is already here".
                         if isCurrent {
-                            Text("Current")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(.secondary.opacity(0.12), in: Capsule())
+                            CoveCountBadge("Current", tint: .secondary)
                         }
                     }
                     .padding(.vertical, 3)

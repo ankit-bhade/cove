@@ -14,7 +14,10 @@ been paid for.
 ## Status
 
 All eleven build phases are complete; work since then is reliability
-hardening. See `CHANGELOG.md` for what has shipped.
+hardening and, most recently, a new visual direction — ink on warm paper,
+marked in ember, replacing the coastal palette the app shipped with. See
+`CHANGELOG.md` for what has shipped and "The visual system" below for what the
+direction commits to.
 
 The phases were: folder picker and bookmarks (1), editor and file operations
 (2), live Markdown styling (3), iCloud change detection (4), search (5), tasks
@@ -464,17 +467,68 @@ leaves a dangling comma. **The pick is seeded by day ordinal plus stretch
 index**, so the once-a-minute tick can't reshuffle the phrase mid-read while a
 new day or stretch still changes it.
 
-`CoveTheme` centralizes the palette and card treatment. The style modifiers
-exist so every scrolling screen shares one definition instead of repeating an
-`#if os(iOS)` block. `CoveIconTile` is decorative, so it is
-`accessibilityHidden` (the row carries the label) and `@ScaledMetric`-sized.
-`CoveCountBadge` is the one shape for "how many": the Tasks card and the Lists
-rows sit a tab apart and get compared, and the Tasks count was previously a
-`Label` whose `circle.fill` glyph read as a bullet rather than a badge.
+### The visual system
 
+`CoveTheme` is the whole design system: tokens, type, and the handful of
+components every screen is assembled from. It is **ink on warm paper, marked
+in ember** — an unbleached warm canvas, warm ink, one saturated hue (a burnt
+ember) for interaction and emphasis, moss for things that *contain* other
+things, and a warm rust for lateness. Nothing else gets a color. The
+deliberate absence is a second bright hue: a palette with two accents has to
+explain which one means what on every screen it appears.
+
+**Every token is a dynamic color, not a `(for: scheme)` function.** They are
+built with `UIColor`/`NSColor` dynamic providers, so a token resolves itself
+against the appearance it renders in and no view threads a `ColorScheme`
+through to pick a shade. That also removes the failure the old form invited —
+a nested component reading a different `colorScheme` than its container. The
+resolution is what `CoveThemeTests` pins down (macOS only, where
+`performAsCurrentDrawingAppearance` can fix the appearance): a provider that
+quietly returned one shade for both appearances would look right in light
+mode and wrong in dark with nothing failing, and the same tests hold ink,
+accent, and alert to their WCAG contrast floors on the canvas.
+
+**Serif type is the identity, and it is only ever a voice.** Titles a person
+reads once — screen titles, mastheads, empty states, the brand mark — are set
+in the system serif; data, labels, and anything scanned stay in the system
+sans. It scales with Dynamic Type and needs no font asset. Labels are tracked
+capitals (`coveEyebrow`) and every count is monospaced, so a badge doesn't
+resize as its number changes.
+
+**`NavigationBarAppearance` is the one UIKit appearance-proxy call in the
+app.** SwiftUI has no modifier for a `navigationTitle`'s font, and that title
+is the largest text on every screen — left as the system's bold sans it was
+the one part of the app still reading as a default next to the serif masthead
+directly beneath it. Touching `standardAppearance` replaces the whole
+appearance object, so the transparent scroll-edge bar has to be restated or
+every screen gains a material behind its title.
+
+**`CoveMasthead` is one component, not three cards.** Notes, Tasks, and Lists
+sit one tab apart and their headers get compared; three hand-built cards drift
+by definition. It carries a short accent rule (the app's one repeated
+ornament), an eyebrow, a serif title, an optional subtitle, an optional
+trailing accessory, and whatever the screen puts underneath — a `CoveStatStrip`,
+a `QuickCaptureField`, nothing. **An eyebrow never repeats the navigation
+title above it**: at the vault root it names the open vault, which nothing
+else on screen says; on a capture card it names the card.
+
+Only two of the three convenience inits exist. A `Trailing == EmptyView` and a
+`Content == EmptyView` init are both candidates for a single unlabeled
+trailing closure, so the pair is ambiguous at every call site — the
+accessory-carrying form is spelled out instead.
+
+`CoveSectionHeader` is the one list-section header, `CoveIconTile` the one
+row glyph (decorative, so `accessibilityHidden` — the row carries the label —
+and `@ScaledMetric`-sized), and `CoveCountBadge` the one shape for "how many".
 **Section headers are text, never `Label`s.** Caption-size SF Symbols with
 fine detail — a sunrise, a calendar grid — render as smudges, and a header
 that already says "Tomorrow · 1" has nothing left for a glyph to add.
+
+**`CoveMark` is drawn, not loaded.** A serif `c` cupping an ember dot — the
+shape of a sheltered inlet said abstractly, with no water in it. Drawing it
+means it inherits the appearance, scales to any size without a new export, and
+matches the serif titles beside it; its own colors stay literal in both
+appearances, because a stamp that inverts is no longer the same stamp.
 
 **Tab and sidebar symbols are outline names.** The iOS tab bar substitutes
 the filled variant itself, so the choice only shows through on the macOS
@@ -493,7 +547,12 @@ The asset catalog carries generated `cove` wordmark artwork — the word in
 Cormorant Garamond semibold over layered waves, its `o` a sun (light) or
 cratered full moon (dark). The set is a full-bleed 1024 iOS icon plus a dark
 variant, icon-grid rounded rects for every mac size, and a `LaunchIcon`
-imageset reused in-app by the loading, setup, and Settings headers.
+imageset used by the iOS launch screen.
+
+**The artwork no longer sets the palette, and nothing in-app draws it.** The
+interface's identity is `CoveMark` and the ink-and-ember tokens; the catalog
+art is the springboard icon and the launch screen only. That is a known
+mismatch, not a decision — see the limitation below.
 
 **The `UILaunchScreen` dictionary lives in a root-level partial `Info.plist`**
 merged via `INFOPLIST_FILE` alongside `GENERATE_INFOPLIST_FILE`, kept outside
@@ -521,12 +580,16 @@ Sources phase under "Shared with CoveWidgets". Nothing moved on disk.
 
 The widget applies the design's own 14/15pt insets with
 `.contentMarginsDisabled()`, since WidgetKit's wider defaults would cost the
-small family a row. `WidgetPalette` holds literal light/dark tokens rather
-than referencing `CoveTheme`: the widget's accent is a deeper teal, the
-handoff names an overdue red the app's palette lacks, and keeping colors local
-means the extension needs no shared asset catalog. It does reuse
-`DueDescription`, so a date can't be worded one way here and another in the
-row it mirrors.
+small family a row. `WidgetPalette` restates the app's tokens as literals
+rather than referencing `CoveTheme`, which lives in the app's view layer the
+widget target doesn't compile — keeping them local means the extension needs
+no shared asset catalog. The values differ on purpose: a widget sits on a Home
+Screen beside other apps rather than inside Cove's canvas, so its background
+is plain warm paper and its accent runs a shade deeper for legibility at
+widget text sizes. It does reuse `DueDescription`, so a date can't be worded
+one way here and another in the row it mirrors, and it echoes the masthead's
+accent rule instead of a glyph — at widget sizes a symbol is either too small
+to read or too loud.
 
 **Deep link:** `.widgetURL` is `cove://tasks`, handled in `RootView.onOpenURL`;
 the scheme is registered in the root `Info.plist` under `CFBundleURLTypes`.
@@ -590,7 +653,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
 ```
 
-Current verified suite: **305 tests** (macOS host), plus clean macOS and
+Current verified suite: **309 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 ### Documentation rule
@@ -779,6 +842,23 @@ Rough edges and surprises, not restatements of the design above.
 * The 44×44pt checkbox targets are larger than the row pitch, so a tap in the
   ~8pt band between two rows may hit the neighbour.
 
+### Visual system
+
+* **The app icon and launch screen are still the coastal wordmark**, so the
+  first two things a person sees — the springboard icon and the launch
+  screen — belong to the palette the interface no longer uses. Regenerating
+  them needs the design document, headless Chrome, and a webfont download (see
+  "Regenerating the app icon"); the source lives outside this repo.
+* Serif navigation titles are iOS-only. `NavigationBarAppearance` has no
+  AppKit counterpart, so on macOS the window title and sidebar labels stay in
+  the system sans while the mastheads under them are serif.
+* Destructive buttons (`Clear All`, swipe-to-delete) keep the system red
+  rather than `CoveTheme.alert`, so a swipe action's red fill sits a shade off
+  the rust an overdue task uses. Deliberate — the role also carries VoiceOver
+  and confirmation semantics that a tinted plain button would drop.
+* The eyebrow is uppercased by `textCase`, so a vault or list name that is
+  already an acronym or deliberately lowercase is restyled in the masthead.
+
 ### Icon and platform
 
 * The icon PNGs are generated artwork checked into the catalog, and the vector
@@ -802,6 +882,12 @@ Rough edges and surprises, not restatements of the design above.
   behavior manually with a vault in iCloud Drive.
 * `TaskNotificationScheduler` needs manual delivery verification; the planner
   and diff inputs are deterministic, but the system center isn't exercised.
+* The visual system was verified by screenshotting every screen on the iOS
+  Simulator in both appearances; the Mac build is checked by launching it,
+  since GUI capture needs Screen Recording permission the shell doesn't have.
+  `CoveThemeTests` is what covers the macOS side of the palette — appearance
+  resolution and contrast — and it is the only automated evidence that dark
+  mode is right there.
 * The Today widget was verified by rendering its views on the simulator at
   both sizes in light and dark, and by confirming the app writes a correct
   snapshot. The widget on a real Home Screen — including the interactive

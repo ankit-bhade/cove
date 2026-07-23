@@ -1,13 +1,15 @@
 import SwiftUI
 
-/// The Today widget's colors, straight from the design handoff's token table.
+/// The Today widget's colors: the app's ink-on-warm-paper palette, restated
+/// for a surface Cove doesn't control.
 ///
-/// These are deliberately literal rather than a reference to `CoveTheme`: the
-/// widget's accent is a slightly deeper teal than the app's (`#1F7D92` against
-/// `CoveTheme.teal`), and the handoff specifies an overdue red the app's
-/// palette has no name for. Keeping them here means the widget target stays
-/// self-contained — no shared asset catalog — and the widget reads correctly
-/// on a Home Screen next to other apps rather than inside Cove's own canvas.
+/// These stay literal rather than referencing `CoveTheme` — the widget target
+/// compiles a handful of pure files, not the app's view layer, and keeping the
+/// tokens here means the extension needs no shared asset catalog. The values
+/// differ deliberately: a widget sits on a Home Screen next to other apps
+/// rather than inside Cove's own canvas, so its background is a plain warm
+/// paper and its accent runs a shade deeper than the app's for legibility at
+/// widget text sizes.
 struct WidgetPalette {
     let background: Color
     let primaryText: Color
@@ -20,22 +22,22 @@ struct WidgetPalette {
     let checkMark: Color
 
     static let light = WidgetPalette(
-        background: .white,
-        primaryText: Color(red: 0.082, green: 0.114, blue: 0.141),
-        secondaryText: Color(red: 0.082, green: 0.114, blue: 0.141).opacity(0.50),
-        accent: Color(red: 0.122, green: 0.490, blue: 0.573),
-        accentSoft: Color(red: 0.122, green: 0.490, blue: 0.573).opacity(0.12),
-        overdue: Color(red: 0.847, green: 0.263, blue: 0.290),
-        checkMark: .white)
+        background: Color(red: 0.988, green: 0.976, blue: 0.957),
+        primaryText: Color(red: 0.141, green: 0.129, blue: 0.114),
+        secondaryText: Color(red: 0.141, green: 0.129, blue: 0.114).opacity(0.52),
+        accent: Color(red: 0.573, green: 0.318, blue: 0.141),
+        accentSoft: Color(red: 0.573, green: 0.318, blue: 0.141).opacity(0.13),
+        overdue: Color(red: 0.698, green: 0.227, blue: 0.169),
+        checkMark: Color(red: 0.988, green: 0.976, blue: 0.957))
 
     static let dark = WidgetPalette(
-        background: Color(red: 0.075, green: 0.102, blue: 0.114),
-        primaryText: Color(red: 0.933, green: 0.957, blue: 0.961),
-        secondaryText: Color(red: 0.933, green: 0.957, blue: 0.961).opacity(0.55),
-        accent: Color(red: 0.302, green: 0.702, blue: 0.784),
-        accentSoft: Color(red: 0.302, green: 0.702, blue: 0.784).opacity(0.16),
-        overdue: Color(red: 1.0, green: 0.420, blue: 0.420),
-        checkMark: Color(red: 0.043, green: 0.078, blue: 0.090))
+        background: Color(red: 0.098, green: 0.090, blue: 0.082),
+        primaryText: Color(red: 0.949, green: 0.933, blue: 0.906),
+        secondaryText: Color(red: 0.949, green: 0.933, blue: 0.906).opacity(0.55),
+        accent: Color(red: 0.878, green: 0.635, blue: 0.392),
+        accentSoft: Color(red: 0.878, green: 0.635, blue: 0.392).opacity(0.17),
+        overdue: Color(red: 0.910, green: 0.475, blue: 0.416),
+        checkMark: Color(red: 0.098, green: 0.090, blue: 0.082))
 
     static func resolved(for scheme: ColorScheme) -> WidgetPalette {
         scheme == .dark ? .dark : .light

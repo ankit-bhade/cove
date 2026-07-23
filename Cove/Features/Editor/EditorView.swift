@@ -8,7 +8,6 @@ struct EditorView: View {
     @State private var document: NoteDocument
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.colorScheme) private var colorScheme
 
     init(fileURL: URL) {
         _document = State(initialValue: NoteDocument(fileURL: fileURL))
@@ -20,18 +19,21 @@ struct EditorView: View {
             case .loading:
                 ProgressView()
             case .failed(let message):
-                ContentUnavailableView(
+                CoveEmptyState(
                     "Can’t Open Note",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(message)
+                    systemName: "exclamationmark.triangle",
+                    description: message
                 )
             case .loaded:
+                // The measure a person can actually read a line at. Left
+                // unbounded, a maximized Mac window sets Markdown across
+                // two feet of screen.
                 MarkdownTextView(text: $document.text)
-                    .frame(maxWidth: 880)
+                    .frame(maxWidth: 760)
                     .frame(maxWidth: .infinity)
             }
         }
-        .background(CoveTheme.canvas(for: colorScheme).ignoresSafeArea())
+        .background(CoveTheme.canvas.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) {
             if document.saveErrorDescription != nil || document.conflictDescription != nil {
                 VStack(spacing: 8) {
@@ -44,22 +46,16 @@ struct EditorView: View {
                             }
                             .buttonStyle(.bordered)
                         }
-                        .font(.footnote)
-                        .foregroundStyle(.primary)
-                        .padding(11)
-                        .background(.orange.opacity(0.16),
-                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .modifier(EditorBanner(tint: CoveTheme.alert))
                     }
                     if let message = document.conflictDescription {
                         Label(message, systemImage: "doc.on.doc")
-                            .font(.footnote)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(11)
-                            .background(CoveTheme.teal.opacity(0.12),
-                                        in: RoundedRectangle(cornerRadius: 12,
-                                                             style: .continuous))
+                            .modifier(EditorBanner(tint: CoveTheme.accent))
                     }
                 }
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
             }
@@ -125,6 +121,26 @@ struct EditorView: View {
                                         to: nil, from: nil, for: nil)
     }
     #endif
+}
+
+/// The editor's two notices — a failed save and a preserved conflict — drawn
+/// the same way so one doesn't read as more serious than its tint says.
+private struct EditorBanner: ViewModifier {
+    let tint: Color
+
+    func body(content: Content) -> some View {
+        content
+            .font(.footnote)
+            .foregroundStyle(.primary)
+            .padding(11)
+            .background(tint.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: CoveTheme.fieldRadius,
+                                             style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: CoveTheme.fieldRadius, style: .continuous)
+                    .stroke(tint.opacity(0.22), lineWidth: 1)
+            }
+    }
 }
 
 private extension NoteDocument.SaveStatus {

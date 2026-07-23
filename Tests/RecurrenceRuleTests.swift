@@ -133,4 +133,24 @@ final class RecurrenceRuleTests: XCTestCase {
     func testUnparseableDateReturnsNil() {
         XCTAssertNil(next(RecurrenceRule(frequency: .daily), after: "soon"))
     }
+
+    // MARK: - Interval bounds
+
+    func testIntervalIsClampedToTheSupportedRange() {
+        XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: 0).interval, 1)
+        XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: -5).interval, 1)
+        XCTAssertEqual(RecurrenceRule(frequency: .weekly, interval: .max).interval,
+                       RecurrenceRule.maximumInterval)
+        XCTAssertEqual(RecurrenceRule(tagText: "every 9223372036854775807 weeks")?.interval,
+                       RecurrenceRule.maximumInterval)
+    }
+
+    /// The weekly arithmetic multiplies the interval by seven, so an
+    /// unclamped one read back out of a note's `@repeat` tag would overflow
+    /// and trap the process on the next completion.
+    func testHugeWeeklyIntervalAdvancesInsteadOfOverflowing() throws {
+        let rule = try XCTUnwrap(RecurrenceRule(tagText: "every 9223372036854775807 weeks"))
+        let advanced = try XCTUnwrap(next(rule, after: "2026-07-18"))
+        XCTAssertGreaterThan(advanced, "2026-07-18")
+    }
 }

@@ -9,15 +9,23 @@ struct RecurrenceRule: Hashable, Sendable {
     }
 
     var frequency: Frequency
-    /// Every N days/weeks/months/years; at least 1.
+    /// Every N days/weeks/months/years; clamped to `1...maximumInterval`.
     var interval: Int
     /// `Calendar` weekday numbers (1 = Sunday … 7 = Saturday), sorted and
     /// deduplicated. Only meaningful for weekly rules.
     var byWeekday: [Int]
 
+    /// Upper bound on `interval`, enforced by the one initializer every other
+    /// path routes through. The weekly arithmetic multiplies the interval by
+    /// seven, so a number a person could type into quick entry — or leave in a
+    /// note's `@repeat` tag — would overflow and trap the process rather than
+    /// produce a date. A thousand of any unit is already past the point where
+    /// a repeating task means anything.
+    static let maximumInterval = 1_000
+
     init(frequency: Frequency, interval: Int = 1, byWeekday: [Int] = []) {
         self.frequency = frequency
-        self.interval = max(1, interval)
+        self.interval = min(max(1, interval), Self.maximumInterval)
         self.byWeekday = Array(Set(byWeekday)).sorted()
     }
 

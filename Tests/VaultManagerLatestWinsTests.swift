@@ -23,7 +23,7 @@ final class VaultManagerLatestWinsTests: XCTestCase {
                                                resolutionOptions: [])
         let loader = DelayedVaultLoader()
         let manager = VaultManager(bookmarkStore: bookmarkStore) {
-            url, _, _ in
+            url, _, _, _ in
             await loader.load(url)
         }
 

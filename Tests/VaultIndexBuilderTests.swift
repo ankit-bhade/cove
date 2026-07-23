@@ -117,4 +117,39 @@ final class VaultIndexBuilderTests: XCTestCase {
         XCTAssertFalse(tree.allFiles.contains { $0.name == "Deleted.md" })
         XCTAssertFalse(index.allTasks.contains { $0.text == "Hidden" })
     }
+
+    // MARK: - Unreadable notes
+
+    /// A note the app can't read is one bad file, not a bad vault: the rest
+    /// of the index has to survive it.
+    func testUnreadableNoteIsIndexedWithoutTasksAndKeepsTheVaultLoading() throws {
+        try Data([0x2D, 0x20, 0x5B, 0x20, 0x5D, 0xFF, 0xFE, 0xFF])
+            .write(to: root.appendingPathComponent("Broken.md"))
+
+        let index = try builtIndex()
+
+        XCTAssertEqual(index.entries.count, 4)
+        XCTAssertEqual(index.entries.first { $0.title == "Broken" }?.tasks.count, 0)
+        // Every task in the readable notes is still indexed.
+        XCTAssertEqual(index.allTasks.count, 4)
+    }
+
+    /// The skipped note carries no cache key, so the next rebuild reads it
+    /// again rather than trusting a failure forever.
+    func testUnreadableNoteIsNotCachedAcrossRebuilds() throws {
+        let brokenURL = root.appendingPathComponent("Broken.md")
+        try Data([0xFF, 0xFE, 0xFF]).write(to: brokenURL)
+
+        let tree = try VaultTreeScanner().scanTree(at: root)
+        let first = try VaultIndexBuilder().buildCancellableIndex(from: tree)
+        XCTAssertNil(first.entries.first { $0.title == "Broken" }?.modificationDate)
+
+        try "- [ ] Fixed now @due(2026-08-02)\n".write(to: brokenURL,
+                                                       atomically: true,
+                                                       encoding: .utf8)
+        let second = try VaultIndexBuilder().buildCancellableIndex(from: tree,
+                                                                  previous: first)
+        XCTAssertEqual(second.entries.first { $0.title == "Broken" }?.tasks.first?.text,
+                       "Fixed now")
+    }
 }

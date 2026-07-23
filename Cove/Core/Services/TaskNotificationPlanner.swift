@@ -33,10 +33,13 @@ enum TaskNotificationPlanner {
                       now: Date,
                       calendar: Calendar = TaskCalendar.gregorian()) -> [TaskNotificationPlan] {
         let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        // The cap is applied before the bodies are worded: the tasks past it
+        // are never scheduled, so formatting a date for each of them is work
+        // thrown away.
         return tasks
             .filter { !$0.isCompleted && $0.dueTimeString != nil }
             .sorted(by: VaultIndex.byDueDate)
-            .compactMap { task -> TaskNotificationPlan? in
+            .compactMap { task -> (task: TaskItem, fireDate: Date, components: DateComponents)? in
                 // A time can only exist alongside a date, so the undated
                 // list items never reach here — but the model allows nil.
                 guard let time = task.timeComponents,
@@ -48,24 +51,23 @@ enum TaskNotificationPlanner {
                     hour: time.hour, minute: time.minute)
                 guard let fireDate = calendar.date(from: components),
                       fireDate > now else { return nil }
-                return TaskNotificationPlan(
-                    identifier: identifierPrefix + task.id,
-                    title: task.text,
-                    body: "\(formattedDueMoment(fireDate, calendar: calendar)).",
-                    fireDateComponents: components)
+                return (task, fireDate, components)
             }
             .prefix(maximumPlans)
-            .map { $0 }
+            .map { scheduled in
+                TaskNotificationPlan(
+                    identifier: identifierPrefix + scheduled.task.id,
+                    title: scheduled.task.text,
+                    body: "\(formattedDueMoment(scheduled.fireDate, calendar: calendar)).",
+                    fireDateComponents: scheduled.components)
+            }
     }
 
     /// A compact, human-readable reminder date, for example
     /// `Jul 18, 8:00pm` or `Jul 18, 8:30pm`.
     private static func formattedDueMoment(_ date: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = .autoupdatingCurrent
-        formatter.setLocalizedDateFormatFromTemplate("MMM d, h:mm a")
-        return formatter.string(from: date)
+        TemplateDateFormatters.shared.string(from: date,
+                                             template: "MMM d, h:mm a",
+                                             calendar: calendar)
     }
 }

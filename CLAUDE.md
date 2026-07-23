@@ -212,6 +212,18 @@ vault URL, cancels its predecessor, and commits only when both still match —
 otherwise an older completion could restore a previous vault's tree, index, or
 error state.
 
+**An app-created content change rebuilds the index over the tree already in
+memory.** Capture, toggle, delete, clear, and list edits write inside a file
+the tree already lists, so re-enumerating every folder to learn that nothing
+moved is work whose answer is known — and in an iCloud vault it is the
+expensive half of a checkbox tap. The mutated note goes in as a changed URL so
+it is re-read; every other note reuses its index entry. Reuse is gated on a
+`treeIsCurrent` flag rather than on a tree merely existing: an index-only
+refresh cancels whatever load is in flight, so without the flag it could
+cancel a pending scan and then commit the very tree that scan was about to
+replace. Everything structural — create, rename, move, delete, and the write
+that *creates* the capture note — stays on the full rescan.
+
 ### Files and coordination
 
 `VaultFileOperations` (stateless, `Sendable`) performs every mutation and note
@@ -331,6 +343,21 @@ modification date, size. Search re-reads from disk by design, so a copy here
 would be a full in-memory duplicate of the vault that nothing reads. The date
 and size are what let an unchanged note reuse its entry across a rebuild.
 Scanning and indexing check cancellation throughout.
+
+**A note that can't be read costs its own tasks, not the vault.** Invalid
+UTF-8, or a file iCloud hasn't materialized, used to throw out of the index
+build and into `VaultManager`'s catch-all, which closes the vault and shows
+the recovery screen — one bad file denied access to every good one. The note
+is now indexed with no tasks and, deliberately, no cache key, so the next
+rebuild reads it again instead of trusting the failure forever.
+
+**Recurrence intervals are clamped in the one initializer everything routes
+through** (`RecurrenceRule.maximumInterval`), and quick entry clamps the count
+in `in N days/weeks/months` the same way. The weekly arithmetic multiplies the
+interval by seven: unclamped, a number a person can type — or leave sitting in
+a note's `@repeat` tag — overflows and traps the process, in the parser's case
+while the sentence is still being typed, since the preview re-parses on every
+keystroke.
 
 **Every task mutation re-finds its line semantically**, matching text plus
 full schedule and preferring the remembered line number among duplicates. A
@@ -621,6 +648,15 @@ present yesterday's list as today's.
 **The toggle intent carries only the row's id** — everything else is looked up
 in the snapshot, which is by definition what the widget was drawing.
 
+**A recorded path is validated against the vault, never trusted.** A
+`TaskIdentity` is persisted state that crosses the App Group and can outlive
+the vault it was written for — a queued toggle survives the user picking a
+different folder. Both the extension and the app's drain resolve the path
+against the vault they just opened (`fileURL(within:)`), holding it to the
+scanner's own rules — inside the vault, a Markdown file, nothing hidden or
+symlinked on the way in — and drop an operation that fails rather than
+retrying it, since no retry can make it apply.
+
 **Operations record desired state, not an instruction to toggle**, so
 replaying one cannot undo a successful first attempt. Each is queued *before*
 the write is attempted and acknowledged only after success, because whether an
@@ -664,7 +700,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
 ```
 
-Current verified suite: **309 tests** (macOS host), plus clean macOS and
+Current verified suite: **324 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 ### Documentation rule
@@ -727,6 +763,10 @@ Rough edges and surprises, not restatements of the design above.
   (expected — there is no custom sync).
 * A tree scan holds one coordinated read for its whole duration. Fine for
   reads; all mutations use per-item coordination.
+* A note the app can't read is silently indexed with no tasks: it still
+  appears in the browser and still opens (the editor reports its own error),
+  but any tasks in it are missing from the Tasks screen with nothing on screen
+  saying why. The failure is in the log only.
 
 ### Editor and styling
 
@@ -793,6 +833,10 @@ Rough edges and surprises, not restatements of the design above.
 * Time ranges keep only the start; Cove has no calendar events.
 * An empty title can't be captured, so a sentence that is nothing but a date
   leaves the add button disabled.
+* Absurd counts are clamped silently: "in 99999 weeks" is read as the maximum
+  relative count, and a repeat interval above `RecurrenceRule.maximumInterval`
+  becomes that maximum. The preview shows the clamped date, which is the only
+  signal.
 * The preview re-parses the whole sentence on every keystroke — cheap, but a
   regex sweep rather than an incremental parse.
 * Captures always land in `Tasks.md` at the vault root; the capture note isn't

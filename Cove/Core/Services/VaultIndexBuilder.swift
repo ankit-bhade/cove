@@ -28,17 +28,35 @@ struct VaultIndexBuilder: Sendable {
         for node in root.allFiles {
             try Task.checkCancellation()
             let sectioned = VaultManager.isCaptureNote(node.url, vaultRoot: root.url)
-            let values = try node.url.resourceValues(forKeys: [.contentModificationDateKey,
+            let values = try? node.url.resourceValues(forKeys: [.contentModificationDateKey,
                                                                 .fileSizeKey])
             if let cached = previousByURL[node.url.standardizedFileURL],
                forcedChanges?.contains(node.url.standardizedFileURL) != true,
-               cached.modificationDate == values.contentModificationDate,
-               cached.fileSize == values.fileSize {
+               let modificationDate = values?.contentModificationDate,
+               let fileSize = values?.fileSize,
+               cached.modificationDate == modificationDate,
+               cached.fileSize == fileSize {
                 entries.append(cached)
                 if sectioned { listNames = cached.listNames }
                 continue
             }
-            let text = try fileOperations.readNote(at: node.url)
+            let text: String
+            do {
+                text = try fileOperations.readNote(at: node.url)
+            } catch {
+                // One note the app can't read — text that isn't UTF-8, a file
+                // iCloud hasn't materialized — must not take the whole vault
+                // down with it. The entry is kept with no tasks and no cache
+                // key, so the next rebuild tries the file again.
+                CoveLog.index.error("Skipped unreadable note \(node.displayName, privacy: .public): \(error.localizedDescription, privacy: .private)")
+                entries.append(NoteIndexEntry(url: node.url,
+                                              title: node.displayName,
+                                              tasks: [],
+                                              listNames: [],
+                                              modificationDate: nil,
+                                              fileSize: nil))
+                continue
+            }
             var noteListNames: [String] = []
             if sectioned {
                 noteListNames = TaskListDocument.sectionNames(in: text)
@@ -60,8 +78,8 @@ struct VaultIndexBuilder: Sendable {
                                           title: node.displayName,
                                           tasks: tasks,
                                           listNames: noteListNames,
-                                          modificationDate: values.contentModificationDate,
-                                          fileSize: values.fileSize))
+                                          modificationDate: values?.contentModificationDate,
+                                          fileSize: values?.fileSize))
         }
         try Task.checkCancellation()
         return VaultIndex(entries: entries, listNames: listNames)

@@ -17,8 +17,12 @@ struct WidgetPalette {
     let accent: Color
     let accentSoft: Color
     let overdue: Color
+    /// The checkbox at rest — a muted accent rather than the full one. The
+    /// boxes repeat down the widget while the count and the times appear
+    /// once each, so at full saturation they were the loudest thing on it.
+    let checkboxRest: Color
     /// The check glyph drawn inside a filled checkbox: the widget's own
-    /// background, so the mark reads as a hole punched in the accent fill.
+    /// background, so the mark reads as a hole punched in the fill.
     let checkMark: Color
 
     static let light = WidgetPalette(
@@ -28,6 +32,7 @@ struct WidgetPalette {
         accent: Color(red: 0.573, green: 0.318, blue: 0.141),
         accentSoft: Color(red: 0.573, green: 0.318, blue: 0.141).opacity(0.13),
         overdue: Color(red: 0.698, green: 0.227, blue: 0.169),
+        checkboxRest: Color(red: 0.573, green: 0.318, blue: 0.141).opacity(0.38),
         checkMark: Color(red: 0.988, green: 0.976, blue: 0.957))
 
     static let dark = WidgetPalette(
@@ -37,6 +42,7 @@ struct WidgetPalette {
         accent: Color(red: 0.878, green: 0.635, blue: 0.392),
         accentSoft: Color(red: 0.878, green: 0.635, blue: 0.392).opacity(0.17),
         overdue: Color(red: 0.910, green: 0.475, blue: 0.416),
+        checkboxRest: Color(red: 0.878, green: 0.635, blue: 0.392).opacity(0.42),
         checkMark: Color(red: 0.098, green: 0.090, blue: 0.082))
 
     static func resolved(for scheme: ColorScheme) -> WidgetPalette {

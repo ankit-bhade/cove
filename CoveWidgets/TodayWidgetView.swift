@@ -56,31 +56,24 @@ struct TodayWidgetView: View {
 
     private var headerSize: CGFloat { isSmall ? 13 : 15 }
 
+    /// The date is the header. A widget that only ever shows today's tasks
+    /// doesn't need to say "Today" — the word spent the title on something the
+    /// reader already knows, and left the one fact worth glancing at as a
+    /// caption beside it.
     private var header: some View {
         HStack(spacing: isSmall ? 7 : 8) {
-            // The app's masthead rule rather than a glyph: at widget sizes a
-            // symbol is either too small to read or too loud, and the rule
-            // ties the widget to the screen it deep-links into.
-            Capsule()
-                .fill(palette.accent)
-                .frame(width: 3, height: isSmall ? 15 : 16)
-            // "Today" and the date are one phrase, so they share a size and a
-            // baseline. At 11pt in a center-aligned row the date read as a
-            // caption sitting on its own line rather than part of the title;
-            // weight and color still separate them.
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("Today")
+                Text(entry.date.formatted(
+                    .dateTime.weekday(isSmall ? .abbreviated : .wide)))
                     .font(.system(size: headerSize + 1, weight: .semibold,
                                   design: .serif))
                     .foregroundStyle(palette.primaryText)
-                if !isSmall {
-                    Text(entry.date.formatted(.dateTime.weekday(.abbreviated))
-                        + " · "
-                        + entry.date.formatted(.dateTime.month(.abbreviated).day()))
-                        .font(.system(size: headerSize))
-                        .foregroundStyle(palette.secondaryText)
-                }
+                Text(entry.date.formatted(.dateTime.month(.abbreviated).day()))
+                    .font(.system(size: headerSize))
+                    .foregroundStyle(palette.secondaryText)
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
             Spacer(minLength: 4)
             countPill
         }
@@ -159,26 +152,30 @@ struct TodayWidgetView: View {
     private func checkbox(for task: SnapshotTask) -> some View {
         Button(intent: ToggleTaskIntent(taskID: task.id)) {
             checkboxGlyph(isCompleted: task.isCompleted)
-                .font(.system(size: 21, weight: .medium))
+                .font(.system(size: 20, weight: .regular))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(width: 21, height: 21)
+        .frame(width: 20, height: 20)
         .accessibilityLabel(task.isCompleted ? "Mark incomplete" : "Complete")
     }
 
-    /// A checked box is the accent disc with the mark punched out of it in the
-    /// widget's own background color, so it stays legible at 21pt.
+    /// An empty box is drawn in the soft accent, not the full one. Four rings
+    /// at full saturation running down a small widget shouted over the task
+    /// text they belong to — the row's job is to be read, and the box's is to
+    /// be findable. A checked box is a filled disc in the same soft tone with
+    /// the mark punched out of it in the widget's own background color, so
+    /// finishing something quiets the row rather than lighting it up.
     @ViewBuilder
     private func checkboxGlyph(isCompleted: Bool) -> some View {
         if isCompleted {
             Image(systemName: "checkmark.circle.fill")
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(palette.checkMark, palette.accent)
+                .foregroundStyle(palette.checkMark, palette.checkboxRest)
         } else {
             Image(systemName: "circle")
-                .foregroundStyle(palette.accent)
+                .foregroundStyle(palette.checkboxRest)
         }
     }
 

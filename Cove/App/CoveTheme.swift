@@ -557,19 +557,28 @@ extension CoveEmptyState where Actions == EmptyView {
 struct CoveMark: View {
     var size: CGFloat = 34
 
-    private let stamp = Color(red: 0.129, green: 0.114, blue: 0.098)
-    private let paper = Color(red: 0.976, green: 0.961, blue: 0.933)
+    // The stamp inverts with appearance so it matches the app icon's two
+    // faces: ink on warm paper in light, paper on night-black in dark. The
+    // ember dot and all geometry stay put — only the ground and the serif `c`
+    // trade places, which is what keeps the icon and this drawn mark one shape.
+    @Environment(\.colorScheme) private var scheme
+
+    private let paperGround = Color(red: 0.965, green: 0.953, blue: 0.933) // #F6F3EE
+    private let nightTop = Color(red: 0.133, green: 0.114, blue: 0.094)    // #221D18
+    private let nightBottom = Color(red: 0.078, green: 0.067, blue: 0.055) // #14110E
+    private let ink = Color(red: 0.141, green: 0.129, blue: 0.114)         // #24211D
+    private let paper = Color(red: 0.976, green: 0.961, blue: 0.933)       // #F9F5EE
     private let ember = Color(red: 0.851, green: 0.545, blue: 0.267)
+
+    private var isDark: Bool { scheme == .dark }
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                .fill(LinearGradient(colors: [stamp.opacity(0.94), stamp],
-                                     startPoint: .topLeading,
-                                     endPoint: .bottomTrailing))
+                .fill(ground)
             Text(verbatim: "c")
                 .font(.system(size: size * 0.66, weight: .semibold, design: .serif))
-                .foregroundStyle(paper)
+                .foregroundStyle(isDark ? paper : ink)
                 .offset(x: -size * 0.04, y: -size * 0.01)
             Circle()
                 .fill(ember)
@@ -578,6 +587,14 @@ struct CoveMark: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    private var ground: AnyShapeStyle {
+        isDark
+            ? AnyShapeStyle(LinearGradient(colors: [nightTop, nightBottom],
+                                           startPoint: .topLeading,
+                                           endPoint: .bottomTrailing))
+            : AnyShapeStyle(paperGround)
     }
 }
 

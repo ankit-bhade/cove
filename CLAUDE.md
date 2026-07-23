@@ -554,8 +554,12 @@ that already says "Tomorrow · 1" has nothing left for a glyph to add.
 **`CoveMark` is drawn, not loaded.** A serif `c` cupping an ember dot — the
 shape of a sheltered inlet said abstractly, with no water in it. Drawing it
 means it inherits the appearance, scales to any size without a new export, and
-matches the serif titles beside it; its own colors stay literal in both
-appearances, because a stamp that inverts is no longer the same stamp.
+matches the serif titles beside it. The stamp inverts with appearance — ink on
+warm paper in light, paper on night-black in dark, the ember dot and every
+offset held constant — so it reads as the two faces of the same app icon
+rather than two different marks. (It deliberately did *not* invert before the
+icon adopted the same stamp; matching the icon's light face is what changed
+the call.)
 
 **Tab and sidebar symbols are outline names.** The iOS tab bar substitutes
 the filled variant itself, so the choice only shows through on the macOS
@@ -570,16 +574,17 @@ screens; an unrecognized stored value falls back to `system`.
 
 ### Icon and launch screen
 
-The asset catalog carries generated `cove` wordmark artwork — the word in
-Cormorant Garamond semibold over layered waves, its `o` a sun (light) or
-cratered full moon (dark). The set is a full-bleed 1024 iOS icon plus a dark
-variant, icon-grid rounded rects for every mac size, and a `LaunchIcon`
-imageset used by the iOS launch screen.
+The asset catalog carries generated `CoveMark` artwork — the serif `c` cupping
+an ember dot, the same mark the interface draws. The set is a full-bleed 1024
+iOS icon plus a dark variant, icon-grid rounded rects for every mac size, and a
+`LaunchIcon` imageset used by the iOS launch screen. The mark is identical in
+both appearances; only the ground changes — warm paper in light, a night-black
+gradient in dark — and the serif `c` inverts with it so it reads on both.
 
-**The artwork no longer sets the palette, and nothing in-app draws it.** The
-interface's identity is `CoveMark` and the ink-and-ember tokens; the catalog
-art is the springboard icon and the launch screen only. That is a known
-mismatch, not a decision — see the limitation below.
+**The icon and the in-app mark are now one shape.** The catalog art is
+`CoveMark` rendered to PNG, the interface draws the live `CoveMark`, and both
+carry the ink-and-ember palette — so the springboard icon, the launch screen,
+and the loading/setup mark all agree. The coastal wordmark is retired.
 
 **The `UILaunchScreen` dictionary lives in a root-level partial `Info.plist`**
 merged via `INFOPLIST_FILE` alongside `GENERATE_INFOPLIST_FILE`, kept outside
@@ -723,21 +728,28 @@ someone, not what the design says.
 
 ### Regenerating the app icon
 
-The source of truth is the `Cove Icon Final.dc.html` design document (two
-`<symbol>` elements, `coveLight` and `coveDark`, each 1024×1024). Neither step
-below is part of the app or its build:
+The mark is the `CoveMark` stamp — a serif `c` cupping an ember dot — and it
+uses the **system serif** (New York), so unlike the old Cormorant wordmark it
+needs no webfont, no headless Chrome, and no network. Every PNG is rendered
+straight from SwiftUI with `ImageRenderer` on a macOS host. The spec (colors,
+the geometry as fractions of the tile edge, and a drop-in `CoveIconArtwork`
+view plus exporter) is the Claude Design handoff `Cove Icon - Claude Code
+Handoff.md`; the design doc is `Cove App Icon.dc.html`. Both live in the Claude
+Design project, not this repo.
 
-1. Render each symbol standalone at 1024×1024 with headless Chrome. The
-   wordmark needs Cormorant Garamond, which is not installed on macOS — the
-   page must pull it from Google Fonts, so the render needs network access and
-   a `--virtual-time-budget` long enough for the webfont to land. Confirm the
-   result is Cormorant and not the Georgia fallback.
-2. Derive every catalog size from those two renders with CoreGraphics:
-   full-bleed for iOS, an 824/1024 rounded-rect body with a soft drop shadow
-   for the macOS icon grid, and full-bleed rounded tiles for `LaunchIcon`.
+The generator is throwaway — a standalone `swift` script (or a small `@main`
+target) that instantiates `CoveIconArtwork` at each size and writes the PNGs
+into `Cove/Assets.xcassets/`, then is deleted. It never ships. Three shapes:
+full-bleed square for iOS (no baked corners — iOS masks it), an 824/1024
+rounded-rect body inset into the macOS icon grid, and full-bleed rounded tiles
+(radius `0.2237·S`) for `LaunchIcon`. iOS carries a light and a dark ground;
+macOS exports the light ground at every size (its slot has no dark entry); the
+launch tiles carry both (`.png` light, `-dark.png` dark). `Contents.json` for
+both sets already names these exact filenames, so no manifest edit is needed.
 
 Verify with a macOS and an iOS build afterwards — `actool` reports icon
-problems as build *warnings*, not errors.
+problems as build *warnings*, not errors — and eyeball the renders, since the
+serif `c`'s ball terminal and the dot placement are the whole mark.
 
 ---
 
@@ -899,11 +911,6 @@ Rough edges and surprises, not restatements of the design above.
 
 ### Visual system
 
-* **The app icon and launch screen are still the coastal wordmark**, so the
-  first two things a person sees — the springboard icon and the launch
-  screen — belong to the palette the interface no longer uses. Regenerating
-  them needs the design document, headless Chrome, and a webfont download (see
-  "Regenerating the app icon"); the source lives outside this repo.
 * Serif navigation titles are iOS-only. `NavigationBarAppearance` has no
   AppKit counterpart, so on macOS the window title and sidebar labels stay in
   the system sans while the mastheads under them are serif.
@@ -916,15 +923,14 @@ Rough edges and surprises, not restatements of the design above.
 
 ### Icon and platform
 
-* The icon PNGs are generated artwork checked into the catalog, and the vector
-  source lives in the Claude Design project, not the repo — an icon change
-  means editing there and regenerating the full size set.
-* The icon is a wordmark, so the 16pt and 32pt macOS sizes reduce `cove` to an
-  illegible smudge. Inherent to the design; the waves and sun/moon still read
-  as the silhouette.
+* The icon PNGs are generated artwork checked into the catalog, and the spec
+  (the handoff and design doc) lives in the Claude Design project, not the
+  repo — an icon change means re-rendering the full size set from
+  `CoveIconArtwork` (see "Regenerating the app icon"). The generator itself
+  is throwaway and not kept in the repo.
 * The dark iOS icon variant is opaque rather than transparent. Apple's iOS 18
-  guidance prefers a transparent dark icon over a system backdrop, but the
-  design supplies its own night sky. iOS 17 ignores the variant entirely.
+  guidance prefers a transparent dark icon over a system backdrop, but the mark
+  supplies its own night-black ground. iOS 17 ignores the variant entirely.
 * The launch screen is iOS-only; macOS windows open with the app's content.
 
 ### Testing

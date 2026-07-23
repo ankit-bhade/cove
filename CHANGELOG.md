@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the app is already plain text. Settings' vault-reselect row leads with the
   same icon tile as the rows around it rather than a bare body-size glyph. The
   macOS sidebar uses outline symbols, the platform's own convention.
+- The app icon and iOS launch tile are redrawn as the `CoveMark` stamp — the
+  serif `c` cupping an ember dot — on the new grounds: ink on warm paper in
+  light, paper on night-black in dark, the same ember dot in both. This
+  retires the last of the coastal teal-and-navy wordmark, so the springboard
+  icon and splash now match the interface. The in-product `CoveMark` becomes
+  appearance-aware to match the light icon face; its geometry is unchanged.
 
 ### Fixed
 

@@ -7,8 +7,6 @@ import OSLog
 struct VaultBrowserView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.undoManager) private var undoManager
-    /// Set in Settings; empty means the greetings stay impersonal.
-    @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
 
     @State private var namePrompt: NamePrompt?
     @State private var nameInput = ""
@@ -234,34 +232,22 @@ struct VaultBrowserView: View {
         return nil
     }
 
-    /// The masthead over a folder level. At the root it is a greeting — the
-    /// one place in the app that addresses the reader. Deeper in, the greeting
-    /// would be a second hello inside the same session, so the folder names
-    /// itself instead and the eyebrow says where it sits.
+    /// The panel over a folder level: what's in it, counted. The same compact
+    /// card the other screens carry, for the same reason — the greeting and
+    /// the line under it that used to sit here were the one thing on screen
+    /// that changed while saying nothing about the folder being looked at.
+    ///
+    /// The eyebrow never repeats the navigation title above it: at the root it
+    /// names the open vault, which nothing else on screen says, and deeper in
+    /// the bar is already naming the folder.
     private func overview(for folder: VaultNode, isRoot: Bool) -> some View {
         let counts = overviewCounts(for: folder)
-        let stats = [
-            CoveStat(counts.folders, counts.folders == 1 ? "Folder" : "Folders"),
-            CoveStat(counts.subfolders, counts.subfolders == 1 ? "Subfolder" : "Subfolders"),
-            CoveStat(counts.notes, counts.notes == 1 ? "Note" : "Notes"),
-        ]
-
-        return TimelineView(.periodic(from: .now, by: 60)) { context in
-            // The eyebrow never repeats the navigation title above it: at the
-            // root it names the open vault — the one thing on screen that
-            // nothing else says — and deeper in it labels the kind of thing
-            // the bar is already naming.
-            CoveMasthead(
-                eyebrow: isRoot ? folder.displayName : "Folder",
-                title: isRoot
-                    ? Greeting.text(for: context.date, name: greetingName)
-                    : folder.displayName,
-                subtitle: isRoot
-                    ? "Plain Markdown files, exactly where you left them."
-                    : nil
-            ) {
-                CoveStatStrip(stats: stats)
-            }
+        return CovePanel(eyebrow: isRoot ? folder.displayName : "Overview") {
+            CoveStatStrip(stats: [
+                CoveStat(counts.folders, counts.folders == 1 ? "Folder" : "Folders"),
+                CoveStat(counts.subfolders, counts.subfolders == 1 ? "Subfolder" : "Subfolders"),
+                CoveStat(counts.notes, counts.notes == 1 ? "Note" : "Notes"),
+            ])
         }
     }
 

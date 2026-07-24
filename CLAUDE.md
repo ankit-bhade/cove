@@ -23,9 +23,10 @@ than appearance: one `TaskActions` behind both task screens, one
 `FileCoordination` behind every coordinated access, one `covePresence()`
 behind every optional-driven presentation, and a time zone rather than a
 discarded `Calendar` in every date API. Most recently the headers were
-weighed against what they cost: the three screens that lead with a control
-rather than a greeting traded their mastheads for a compact `CovePanel`, so
-the landing screen opens on tasks rather than on a slogan. See `CHANGELOG.md`
+weighed against what they cost, and none of them survived: the tall masthead
+with its serif title, its slogan, and the day-part greeting is replaced
+everywhere by a compact `CovePanel`, so every screen opens on its own content
+rather than on a sentence about itself. See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
 
@@ -550,11 +551,13 @@ how note rows and search results were once dead. Because notes sit on the path
 too, stale-path pruning looks up files as well as folders, so an open editor
 survives rescans and pops only when its file really is gone.
 
-`Greeting` (pure, unit-tested) owns the greeting text: seven stretches of the
-day, each with phrases in a named and a plain form so an unset name never
-leaves a dangling comma. **The pick is seeded by day ordinal plus stretch
-index**, so the once-a-minute tick can't reshuffle the phrase mid-read while a
-new day or stretch still changes it.
+**Nothing in the app addresses the reader.** A `Greeting` type owned the
+vault root's headline — seven stretches of the day, phrases in a named and a
+plain form, seeded so the minute tick couldn't reshuffle them mid-read — and a
+Settings field fed it a name. It was the one thing on the browser that changed
+while saying nothing about the folder being looked at, and it went with the
+mastheads; the type, its tests, and the name setting went with it. A vault
+that carried a name in `UserDefaults` simply stops reading it.
 
 ### The visual system
 
@@ -578,7 +581,8 @@ mode and wrong in dark with nothing failing, and the same tests hold ink,
 accent, and alert to their WCAG contrast floors on the canvas.
 
 **Serif type is the identity, and it is only ever a voice.** Titles a person
-reads once — screen titles, mastheads, empty states, the brand mark — are set
+reads once — screen titles, headings inside a note, empty states, the brand
+mark — are set
 in the system serif; data, labels, and anything scanned stay in the system
 sans. It scales with Dynamic Type and needs no font asset. Labels are tracked
 capitals (`coveEyebrow`) and every count is monospaced, so a badge doesn't
@@ -586,28 +590,32 @@ resize as its number changes.
 
 **`NavigationBarAppearance` is the one UIKit appearance-proxy call in the
 app.** SwiftUI has no modifier for a `navigationTitle`'s font, and that title
-is the largest text on every screen — left as the system's bold sans it was
-the one part of the app still reading as a default next to the serif masthead
-directly beneath it. Touching `standardAppearance` replaces the whole
+is the largest text on every screen — and now that the headers under it are
+label lines rather than serif titles, it is the whole of the serif voice on a
+list screen. Left as the system's bold sans it was the one part of the app
+still reading as a default. Touching `standardAppearance` replaces the whole
 appearance object, so the transparent scroll-edge bar has to be restated or
 every screen gains a material behind its title.
 
-**A header earns its height when its title says something that changes.**
-`CoveMasthead` — accent rule, eyebrow, serif title, optional subtitle, and
-whatever the screen puts underneath — is now the vault browser's alone, where
-the title is the time-aware greeting at the root and the folder's own name a
-level down. The capture screens and the lists overview had the same card
-carrying a fixed slogan and a sentence of instruction, which is read once and
-paid for on every launch: on the app's landing screen it pushed the first
-overdue task most of the way down the display. They use `CovePanel` instead —
-the same material and the same ornament, but one label line with an optional
-count badge, then the field or the figures. The masthead lost its trailing
-accessory with them, so its ambiguous convenience inits are gone too and one
-initializer remains.
+**`CovePanel` is the one screen header, and it is a label line.** Every main
+screen used to open with a `CoveMasthead`: accent rule, eyebrow, serif title,
+a sentence of prose, then the screen's own content. None of those titles said
+anything the screen didn't. A slogan ("Write it, naturally", "Everything in
+its place") is read once and paid for on every launch; a greeting is about the
+reader rather than about the folder they came to look at; and the subtitles
+under them repeated what a field's placeholder already said. Stacked over the
+landing screen it pushed the first overdue task most of the way down the
+display. The panel keeps the same card, the same ember rule, and the eyebrow,
+adds an optional trailing count badge, and then gets out of the way — six
+tasks fit above the fold where three did, and `CoveMasthead` is gone.
+
+The panel's ornament sits *inline* with its label rather than stacked above
+it: a compact card has no room for a rule on its own line.
 
 **An eyebrow never repeats the navigation title above it**: at the vault root
-it names the open vault, which nothing else on screen says; on a capture card
-it names the card.
+it names the open vault, which nothing else on screen says; a level down the
+bar is already naming the folder, so it says "Overview" like the lists screen
+does; on a capture card it names the card.
 
 `CoveSectionHeader` is the one list-section header, `CoveIconTile` the one
 row glyph (decorative, so `accessibilityHidden` — the row carries the label —
@@ -818,7 +826,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
 ```
 
-Current verified suite: **327 tests** (macOS host), plus clean macOS and
+Current verified suite: **319 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 ### Documentation rule
@@ -1026,13 +1034,14 @@ Rough edges and surprises, not restatements of the design above.
 
 * Serif navigation titles are iOS-only. `NavigationBarAppearance` has no
   AppKit counterpart, so on macOS the window title and sidebar labels stay in
-  the system sans while the mastheads under them are serif.
+  the system sans while the empty states and note headings under them are
+  serif.
 * Destructive buttons (`Clear All`, swipe-to-delete) keep the system red
   rather than `CoveTheme.alert`, so a swipe action's red fill sits a shade off
   the rust an overdue task uses. Deliberate — the role also carries VoiceOver
   and confirmation semantics that a tinted plain button would drop.
 * The eyebrow is uppercased by `textCase`, so a vault or list name that is
-  already an acronym or deliberately lowercase is restyled in the masthead.
+  already an acronym or deliberately lowercase is restyled in the panel.
 
 ### Icon and platform
 

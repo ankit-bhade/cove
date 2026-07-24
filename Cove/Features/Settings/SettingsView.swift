@@ -10,7 +10,6 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
-    @AppStorage(Greeting.nameStorageKey) private var greetingName = ""
 
     /// Loaded on appearance and whenever the scene re-activates, so a trip
     /// to the system settings is reflected on return.
@@ -20,7 +19,6 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 vaultSection
-                nameSection
                 appearanceSection
                 notificationsSection
             }
@@ -59,28 +57,6 @@ struct SettingsView: View {
             CoveSectionHeader("Vault")
         } footer: {
             Text("Selecting a new folder replaces the current vault. Your files are never moved or deleted.")
-        }
-    }
-
-    // MARK: - Name
-
-    private var nameSection: some View {
-        Section {
-            // Accent, not moss: moss is reserved for the things that contain
-            // other things — a vault, a folder, a destination — and a
-            // greeting contains nothing.
-            CoveRow(systemName: "hand.wave.fill") {
-                TextField("Your name", text: $greetingName)
-                    .textFieldStyle(.plain)
-                    #if os(iOS)
-                        .textInputAutocapitalization(.words)
-                    #endif
-                    .autocorrectionDisabled()
-            }
-        } header: {
-            CoveSectionHeader("Greeting")
-        } footer: {
-            Text("Used in the greeting on the Notes screen. Leave it blank to keep greetings impersonal.")
         }
     }
 
@@ -126,16 +102,17 @@ struct SettingsView: View {
                     notificationBadge
                 }
             }
+            // Built from `CoveRow` like the vault-reselect button and every
+            // row above them: a `Label` here puts its glyph in the system's
+            // own icon column, a few points left of the tiles it sits under.
             switch notificationStatus {
             case .notDetermined:
-                Button {
+                actionRow("Enable Notifications", systemName: "bell.badge") {
                     Task { await requestNotificationPermission() }
-                } label: {
-                    Label("Enable Notifications", systemImage: "bell.badge")
                 }
             case .denied:
-                Button(action: openNotificationSettings) {
-                    Label("Open System Settings", systemImage: "arrow.up.forward.app")
+                actionRow("Open System Settings", systemName: "arrow.up.forward.app") {
+                    openNotificationSettings()
                 }
             default:
                 EmptyView()
@@ -145,6 +122,21 @@ struct SettingsView: View {
         } footer: {
             Text("Tasks with a due time get a reminder at that moment. Tasks with only a date don’t notify.")
         }
+    }
+
+    private func actionRow(
+        _ title: String,
+        systemName: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            CoveRow(systemName: systemName) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                Spacer(minLength: 0)
+            }
+        }
+        .buttonStyle(.borderless)
     }
 
     private var notificationTitle: some View {

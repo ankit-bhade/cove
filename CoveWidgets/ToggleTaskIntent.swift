@@ -70,14 +70,7 @@ struct TaskToggleWriter {
         if task.recurrence != nil, desiredCompletion {
             snapshot.tasks.remove(at: index)
         } else {
-            snapshot.tasks[index] = SnapshotTask(
-                filePath: task.filePath,
-                lineNumber: task.lineNumber,
-                text: task.text,
-                dueDateString: task.dueDateString,
-                dueTimeString: task.dueTimeString,
-                recurrenceTag: task.recurrenceTag,
-                isCompleted: desiredCompletion)
+            snapshot.tasks[index] = task.settingCompleted(desiredCompletion)
         }
         store.writeSnapshot(snapshot)
     }
@@ -101,8 +94,7 @@ struct TaskToggleWriter {
                 TaskParser.settingTaskCompleted(
                     operation.taskIdentity,
                     to: operation.desiredCompletion,
-                    todayDateString: QuickTaskParser.ymdString(
-                        from: now, calendar: TaskCalendar.gregorian()),
+                    todayDateString: QuickTaskParser.ymdString(from: now),
                     in: text)
             }
             return true

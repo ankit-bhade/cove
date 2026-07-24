@@ -11,31 +11,30 @@ extension TaskItem {
     /// for.
     func isOverdue(
         at now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> Bool {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         guard !isCompleted, let dueDateString else { return false }
-        if let moment = dueDateTime(in: calendar) {
+        if let moment = dueDateTime(in: timeZone) {
             return moment < now
         }
-        return dueDateString < QuickTaskParser.ymdString(from: now, calendar: calendar)
+        return dueDateString < QuickTaskParser.ymdString(from: now, timeZone: timeZone)
     }
 
     func isDue(
         onSameDayAs now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> Bool {
-        dueDateString == QuickTaskParser.ymdString(from: now, calendar: calendar)
+        dueDateString == QuickTaskParser.ymdString(from: now, timeZone: timeZone)
     }
 
     /// Whole days from `now`'s day to the due day: 0 today, 1 tomorrow,
     /// negative in the past. Nil when the stored date can't be parsed.
     func daysFromToday(
         at now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> Int? {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
-        guard let dueDate = dueDate(in: calendar) else { return nil }
+        let calendar = TaskCalendar.gregorian(timeZone: timeZone)
+        guard let dueDate = dueDate(in: timeZone) else { return nil }
         return calendar.dateComponents(
             [.day],
             from: calendar.startOfDay(for: now),
@@ -49,13 +48,13 @@ extension TaskItem {
     /// undated list item, whose row shows no due label at all.
     func relativeDueDescription(
         at now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> String {
         DueDescription.text(
             dueDateString: dueDateString,
             dueTimeString: dueTimeString,
             at: now,
-            calendar: calendar)
+            timeZone: timeZone)
     }
 }
 
@@ -69,9 +68,12 @@ enum DueDescription {
         dueDateString: String?,
         dueTimeString: String?,
         at now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> String {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        // The private helpers below take the resolved calendar: they do the
+        // arithmetic and the locale-aware formatting, and both genuinely need
+        // one rather than a zone.
+        let calendar = TaskCalendar.gregorian(timeZone: timeZone)
         guard let dueDateString,
             let dueDate = date(from: dueDateString, calendar: calendar)
         else { return dueDateString ?? "" }
@@ -217,12 +219,11 @@ struct TaskGroup: Identifiable {
     static func grouping(
         _ tasks: [TaskItem],
         now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> [TaskGroup] {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         var buckets: [Kind: [TaskItem]] = [:]
         for task in tasks {
-            buckets[kind(for: task, now: now, calendar: calendar), default: []].append(task)
+            buckets[kind(for: task, now: now, timeZone: timeZone), default: []].append(task)
         }
         return Kind.allCases.compactMap { kind in
             guard let tasks = buckets[kind], !tasks.isEmpty else { return nil }
@@ -232,11 +233,10 @@ struct TaskGroup: Identifiable {
 
     static func kind(
         for task: TaskItem, now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> Kind {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
-        if task.isOverdue(at: now, calendar: calendar) { return .overdue }
-        switch task.daysFromToday(at: now, calendar: calendar) {
+        if task.isOverdue(at: now, timeZone: timeZone) { return .overdue }
+        switch task.daysFromToday(at: now, timeZone: timeZone) {
         case 0: return .today
         case 1: return .tomorrow
         default: return .upcoming

@@ -46,7 +46,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
     func testPlansTimedIncompleteFutureTask() {
         let plans = TaskNotificationPlanner.plans(
             for: [task(text: "Do Laundry", due: "2026-07-18", time: "20:00", file: "Tasks")],
-            now: earlyNow, calendar: calendar)
+            now: earlyNow, timeZone: calendar.timeZone)
         XCTAssertEqual(plans.count, 1)
         XCTAssertEqual(plans.first?.title, "Do Laundry")
         XCTAssertEqual(
@@ -63,14 +63,14 @@ final class TaskNotificationPlannerTests: XCTestCase {
                 task(due: "2026-07-20"),
                 task(due: "2026-07-21", recurrence: RecurrenceRule(frequency: .daily)),
             ],
-            now: earlyNow, calendar: calendar)
+            now: earlyNow, timeZone: calendar.timeZone)
         XCTAssertTrue(plans.isEmpty)
     }
 
     func testSkipsCompletedTasks() {
         let plans = TaskNotificationPlanner.plans(
             for: [task(due: "2026-07-20", time: "15:00", completed: true)],
-            now: earlyNow, calendar: calendar)
+            now: earlyNow, timeZone: calendar.timeZone)
         XCTAssertTrue(plans.isEmpty)
     }
 
@@ -81,7 +81,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
                 task(due: "2026-07-19", time: "15:00"),
                 task(due: "2026-07-20", time: "15:00"),
             ],
-            now: now, calendar: calendar)
+            now: now, timeZone: calendar.timeZone)
         XCTAssertTrue(plans.isEmpty)
     }
 
@@ -89,7 +89,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
         let now = date(2026, 7, 20, hour: 14)
         let plans = TaskNotificationPlanner.plans(
             for: [task(due: "2026-07-20", time: "15:00")],
-            now: now, calendar: calendar)
+            now: now, timeZone: calendar.timeZone)
         XCTAssertEqual(plans.count, 1)
     }
 
@@ -103,7 +103,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
                     recurrence: RecurrenceRule(frequency: .weekly, byWeekday: [1]),
                     file: "Chores")
             ],
-            now: earlyNow, calendar: calendar)
+            now: earlyNow, timeZone: calendar.timeZone)
         XCTAssertEqual(plans.count, 1)
         XCTAssertEqual(
             plans.first?.body,
@@ -123,14 +123,14 @@ final class TaskNotificationPlannerTests: XCTestCase {
                     due: "2026-07-19", time: "18:00",
                     recurrence: RecurrenceRule(frequency: .daily))
             ],
-            now: now, calendar: calendar)
+            now: now, timeZone: calendar.timeZone)
         XCTAssertTrue(plans.isEmpty)
     }
 
     func testNotificationBodyKeepsNonzeroMinutes() {
         let plans = TaskNotificationPlanner.plans(
             for: [task(text: "Laundry", due: "2026-07-18", time: "20:30")],
-            now: earlyNow, calendar: calendar)
+            now: earlyNow, timeZone: calendar.timeZone)
         XCTAssertEqual(
             plans.first?.body,
             notificationBody(2026, 7, 18, hour: 20, minute: 30))
@@ -147,7 +147,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
             task(text: "T\(due)", due: due, time: "12:00", line: line)
         }
         let plans = TaskNotificationPlanner.plans(
-            for: tasks, now: earlyNow, calendar: calendar)
+            for: tasks, now: earlyNow, timeZone: calendar.timeZone)
         XCTAssertEqual(plans.count, TaskNotificationPlanner.maximumPlans)
         XCTAssertEqual(
             plans.map(\.title),
@@ -164,7 +164,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
                     due: "2026-07-21", time: "10:00",
                     recurrence: .everyWeekday, line: 1),
             ],
-            now: earlyNow, calendar: calendar)
+            now: earlyNow, timeZone: calendar.timeZone)
         XCTAssertEqual(plans.count, 2)
         XCTAssertTrue(
             plans.allSatisfy {

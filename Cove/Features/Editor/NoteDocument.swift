@@ -241,10 +241,6 @@ final class NoteDocument {
         }
     }
 
-    func saveNow() async {
-        await flush()
-    }
-
     func retrySave() async {
         saveErrorDescription = nil
         await flush()

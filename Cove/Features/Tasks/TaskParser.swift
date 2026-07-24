@@ -170,52 +170,6 @@ enum TaskParser {
             listName: listName)
     }
 
-    /// Returns `fileText` with the matching task toggled, or nil if no task
-    /// in the text matches. Called on a fresh read of the file, so a task
-    /// indexed earlier is re-found by content: among tasks with the same
-    /// text, schedule, and state, the one on the remembered line wins (in
-    /// case of duplicates), falling back to the first if lines have shifted.
-    ///
-    /// Completing an incomplete *recurring* task advances its due date to
-    /// the rule's next occurrence after the later of the current due date
-    /// and `todayDateString`, leaving the checkbox open — the line is the
-    /// task's single home, so recurrence rolls it forward instead of
-    /// checking it off. Every other toggle flips the status character.
-    static func togglingTask(
-        withText taskText: String,
-        dueDateString: String?,
-        dueTimeString: String?,
-        recurrence: RecurrenceRule?,
-        isCompleted: Bool,
-        listName: String?,
-        preferredLineNumber: Int,
-        todayDateString: String,
-        in fileText: String
-    ) -> String? {
-        guard
-            let match = matchingTask(
-                withText: taskText,
-                dueDateString: dueDateString,
-                dueTimeString: dueTimeString,
-                recurrence: recurrence,
-                isCompleted: isCompleted,
-                listName: listName,
-                preferredLineNumber: preferredLineNumber,
-                in: fileText)
-        else { return nil }
-
-        if let rule = match.recurrence, !match.isCompleted,
-            let currentDate = match.dueDateString, let dateRange = match.dueDateRange
-        {
-            let base = max(currentDate, todayDateString)
-            guard let next = rule.nextDueDateString(after: base) else { return nil }
-            return (fileText as NSString)
-                .replacingCharacters(in: dateRange, with: next)
-        }
-        return (fileText as NSString)
-            .replacingCharacters(in: match.statusRange, with: isCompleted ? " " : "x")
-    }
-
     /// Idempotently puts the identified task in `desiredCompletion`. The
     /// latest file text is parsed on every call. For an incomplete recurring
     /// task, completing means advancing that occurrence once; a retry carrying
@@ -245,34 +199,6 @@ enum TaskParser {
             with: desiredCompletion ? "x" : " ")
     }
 
-    /// Returns `fileText` with the matching task's whole line removed, or nil
-    /// if no task in the text matches. Re-finds the task the same way
-    /// `togglingTask` does, so a line that changed on disk is left alone and
-    /// the caller can report it instead of deleting the wrong task.
-    static func removingTask(
-        withText taskText: String,
-        dueDateString: String?,
-        dueTimeString: String?,
-        recurrence: RecurrenceRule?,
-        isCompleted: Bool,
-        listName: String?,
-        preferredLineNumber: Int,
-        in fileText: String
-    ) -> String? {
-        guard
-            let match = matchingTask(
-                withText: taskText,
-                dueDateString: dueDateString,
-                dueTimeString: dueTimeString,
-                recurrence: recurrence,
-                isCompleted: isCompleted,
-                listName: listName,
-                preferredLineNumber: preferredLineNumber,
-                in: fileText)
-        else { return nil }
-        return (fileText as NSString).replacingCharacters(in: match.lineRange, with: "")
-    }
-
     /// Deletes by semantic identity while deliberately ignoring completion
     /// state, so a concurrent completion followed by deletion still removes
     /// the intended line rather than a stale offset or an unrelated task.
@@ -281,6 +207,14 @@ enum TaskParser {
         return (fileText as NSString).replacingCharacters(in: match.lineRange, with: "")
     }
 
+    /// Re-finds one indexed task in a fresh read of its file: among tasks with
+    /// the same text and schedule, the one on the remembered line wins (in
+    /// case of duplicates), falling back to the first if lines have shifted.
+    ///
+    /// Completion is deliberately not part of the match — see `TaskIdentity`.
+    /// An undated task only exists in a sectioned parse, and the list a task
+    /// belongs to *is* part of its identity: two lists can hold the same item
+    /// text.
     static func matchingTask(
         _ identity: TaskIdentity,
         in fileText: String
@@ -293,34 +227,6 @@ enum TaskParser {
                 && $0.listName == identity.listName
         }
         return candidates.first(where: { $0.lineNumber == identity.lineNumber })
-            ?? candidates.first
-    }
-
-    /// Re-finds one indexed task in a fresh read of its file: among tasks with
-    /// the same text, schedule, and state, the one on the remembered line wins
-    /// (in case of duplicates), falling back to the first if lines shifted.
-    private static func matchingTask(
-        withText taskText: String,
-        dueDateString: String?,
-        dueTimeString: String?,
-        recurrence: RecurrenceRule?,
-        isCompleted: Bool,
-        listName: String?,
-        preferredLineNumber: Int,
-        in fileText: String
-    ) -> ParsedTask? {
-        // An undated task only exists in a sectioned parse, and the list a
-        // task belongs to is part of its identity — two lists can hold the
-        // same item text.
-        let candidates = tasks(in: fileText, sectioned: listName != nil).filter {
-            $0.text == taskText
-                && $0.dueDateString == dueDateString
-                && $0.dueTimeString == dueTimeString
-                && $0.recurrence == recurrence
-                && $0.isCompleted == isCompleted
-                && $0.listName == listName
-        }
-        return candidates.first(where: { $0.lineNumber == preferredLineNumber })
             ?? candidates.first
     }
 

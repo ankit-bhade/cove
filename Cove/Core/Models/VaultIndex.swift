@@ -2,6 +2,14 @@ import Foundation
 
 /// Calendar semantics for Cove's fixed Markdown date format. Stored
 /// `YYYY-MM-DD` values are Gregorian regardless of the user's system calendar.
+///
+/// Date-handling APIs across the app therefore take a **time zone**, not a
+/// calendar. They used to take a `Calendar` and immediately rebuild it as
+/// Gregorian with the incoming one's time zone — correct, but a signature that
+/// asked for something it then discarded, so a caller passing a Hebrew or
+/// Buddhist calendar was silently overridden with nothing saying so. The zone
+/// is the only part that was ever honored, and now it is the only part asked
+/// for.
 enum TaskCalendar {
     static func gregorian(timeZone: TimeZone = .autoupdatingCurrent) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
@@ -11,9 +19,9 @@ enum TaskCalendar {
 
     static func nextMidnight(
         after date: Date,
-        calendar: Calendar = gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> Date {
-        let calendar = gregorian(timeZone: calendar.timeZone)
+        let calendar = gregorian(timeZone: timeZone)
         let start = calendar.startOfDay(for: date)
         return calendar.date(byAdding: .day, value: 1, to: start)!
     }
@@ -117,23 +125,22 @@ struct TaskItem: Identifiable, Hashable, Sendable {
 
     /// Start of the due day in Cove's Gregorian task calendar.
     var dueDate: Date? {
-        dueDate(in: TaskCalendar.gregorian())
+        dueDate(in: .autoupdatingCurrent)
     }
 
-    func dueDate(in calendar: Calendar) -> Date? {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
-        return dateComponents.flatMap(calendar.date(from:))
+    func dueDate(in timeZone: TimeZone) -> Date? {
+        dateComponents.flatMap(TaskCalendar.gregorian(timeZone: timeZone).date(from:))
     }
 
     /// The due moment including the time of day, when a time is set.
     var dueDateTime: Date? {
-        dueDateTime(in: TaskCalendar.gregorian())
+        dueDateTime(in: .autoupdatingCurrent)
     }
 
-    func dueDateTime(in calendar: Calendar) -> Date? {
+    func dueDateTime(in timeZone: TimeZone) -> Date? {
         guard var components = dateComponents, let time = timeComponents else { return nil }
         (components.hour, components.minute) = time
-        return TaskCalendar.gregorian(timeZone: calendar.timeZone).date(from: components)
+        return TaskCalendar.gregorian(timeZone: timeZone).date(from: components)
     }
 
     private var dateComponents: DateComponents? {

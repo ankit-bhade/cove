@@ -86,6 +86,20 @@ enum QuickTaskParser {
     private static let hourMeridiemRegex = regex(
         #"\b(\d{1,2})\s*("# + meridiem + #")(?=\s|$|[.,!?])"#)
 
+    /// Keyed by the singular unit, and by the adverb, that `everyUnitRegex`
+    /// and `adverbRegex` above can produce. They sit here, beside the patterns
+    /// they mirror, because the two have to be edited together: a synonym
+    /// added to one alternation and not to the map is a miss, and these are
+    /// consulted while a sentence is still being typed.
+    private static let unitFrequencies: [String: RecurrenceRule.Frequency] = [
+        "day": .daily, "week": .weekly, "month": .monthly, "year": .yearly,
+    ]
+
+    private static let adverbFrequencies: [String: RecurrenceRule.Frequency] = [
+        "daily": .daily, "weekly": .weekly, "monthly": .monthly,
+        "yearly": .yearly, "annually": .yearly,
+    ]
+
     private static let monthNumbers: [String: Int] = [
         "jan": 1, "january": 1, "feb": 2, "february": 2,
         "mar": 3, "march": 3, "apr": 4, "april": 4, "may": 5,
@@ -125,10 +139,10 @@ enum QuickTaskParser {
     static func parse(
         _ input: String,
         now: Date,
-        calendar: Calendar = TaskCalendar.gregorian(),
+        timeZone: TimeZone = .autoupdatingCurrent,
         defaultingToToday: Bool = true
     ) -> TaskDraft {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        let calendar = TaskCalendar.gregorian(timeZone: timeZone)
         let lower = input.lowercased() as NSString
         // Title spans slice the original input; fall back to the lowered
         // string in the rare case lowercasing changed UTF-16 lengths.
@@ -162,21 +176,20 @@ enum QuickTaskParser {
 
         // ---- 1. Recurrence ("every ...") ---------------------------------
         everyUnitRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range), recurrence == nil else { return }
-            let interval = text(m, 1).flatMap(Int.init) ?? 1
-            let unit = text(m, 2)!
-            let frequencies: [String: RecurrenceRule.Frequency] = [
-                "day": .daily, "week": .weekly, "month": .monthly, "year": .yearly,
-            ]
+            guard let m, claims.tryClaim(m.range), recurrence == nil,
+                let unit = text(m, 2)
+            else { return }
             let singular = unit.hasSuffix("s") ? String(unit.dropLast()) : unit
+            guard let frequency = unitFrequencies[singular] else { return }
             recurrence = RecurrenceRule(
-                frequency: frequencies[singular]!,
-                interval: interval)
+                frequency: frequency,
+                interval: text(m, 1).flatMap(Int.init) ?? 1)
         }
 
         everyWeekdaySetRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range), recurrence == nil else { return }
-            let list = text(m, 1)!
+            guard let m, claims.tryClaim(m.range), recurrence == nil,
+                let list = text(m, 1)
+            else { return }
             if list == "weekday" || list == "weekdays" {
                 recurrence = .everyWeekday
             } else {
@@ -190,13 +203,10 @@ enum QuickTaskParser {
         }
 
         adverbRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range), recurrence == nil else { return }
-            let word = text(m, 1)!
-            let frequencies: [String: RecurrenceRule.Frequency] = [
-                "daily": .daily, "weekly": .weekly, "monthly": .monthly,
-                "yearly": .yearly, "annually": .yearly,
-            ]
-            recurrence = RecurrenceRule(frequency: frequencies[word]!)
+            guard let m, claims.tryClaim(m.range), recurrence == nil,
+                let word = text(m, 1), let frequency = adverbFrequencies[word]
+            else { return }
+            recurrence = RecurrenceRule(frequency: frequency)
         }
 
         // ---- 2. Dates (in grove's rule order) -----------------------------
@@ -504,9 +514,15 @@ enum QuickTaskParser {
 
     static func ymdString(
         from date: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> String {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        ymdString(from: date, calendar: TaskCalendar.gregorian(timeZone: timeZone))
+    }
+
+    /// The resolved-calendar form, for the parser's own internals — they hold
+    /// one Gregorian calendar for the whole parse rather than rebuilding it
+    /// per token.
+    static func ymdString(from date: Date, calendar: Calendar) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
     }

@@ -1,5 +1,77 @@
 import Foundation
 
+/// The one `NSFileCoordinator` call shape the app and the widget both use.
+///
+/// Every coordinated access is the same five lines: make a coordinator, hand
+/// it an `NSError` out-parameter, capture the accessor's value or its throw,
+/// then work out which of the two failed. Written out per call site that shape
+/// had drifted into five near-identical copies across two files — and the line
+/// easiest to leave out of a sixth (`if let coordinationError { throw }`) is
+/// exactly the one that turns a coordination failure into a silent no-op.
+enum FileCoordination {
+    static func read<T>(at url: URL, _ body: (URL) throws -> T) throws -> T {
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var result: Result<T, Error>?
+        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
+            result = Result { try body(url) }
+        }
+        return try resolve(result, coordinationError, fallback: .fileReadUnknown)
+    }
+
+    static func write<T>(
+        at url: URL,
+        options: NSFileCoordinator.WritingOptions,
+        _ body: (URL) throws -> T
+    ) throws -> T {
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var result: Result<T, Error>?
+        coordinator.coordinate(writingItemAt: url, options: options, error: &coordinationError) {
+            url in
+            result = Result { try body(url) }
+        }
+        return try resolve(result, coordinationError, fallback: .fileWriteUnknown)
+    }
+
+    /// Two items coordinated together: a move, or a save beside the conflict
+    /// copy it may have to write. The coordinator itself reaches the body so a
+    /// move can report `item(at:didMoveTo:)` from inside the coordination,
+    /// which is the only reason it is exposed.
+    static func write<T>(
+        at url: URL,
+        options: NSFileCoordinator.WritingOptions,
+        and otherURL: URL,
+        options otherOptions: NSFileCoordinator.WritingOptions,
+        _ body: (NSFileCoordinator, URL, URL) throws -> T
+    ) throws -> T {
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var result: Result<T, Error>?
+        coordinator.coordinate(
+            writingItemAt: url, options: options,
+            writingItemAt: otherURL, options: otherOptions,
+            error: &coordinationError
+        ) { first, second in
+            result = Result { try body(coordinator, first, second) }
+        }
+        return try resolve(result, coordinationError, fallback: .fileWriteUnknown)
+    }
+
+    /// A coordinator that reported no error and never ran its accessor isn't a
+    /// documented outcome, but treating it as success would silently claim a
+    /// write that never happened.
+    private static func resolve<T>(
+        _ result: Result<T, Error>?,
+        _ coordinationError: NSError?,
+        fallback: CocoaError.Code
+    ) throws -> T {
+        if let coordinationError { throw coordinationError }
+        guard let result else { throw CocoaError(fallback) }
+        return try result.get()
+    }
+}
+
 /// The observable outcome of one coordinated read-modify-write.
 struct NoteMutationResult: Equatable, Sendable {
     let changed: Bool
@@ -43,7 +115,7 @@ struct VaultFileOperations: Sendable {
     // MARK: - Notes
 
     func readNote(at url: URL) throws -> String {
-        try coordinatedRead(at: url) { url in
+        try FileCoordination.read(at: url) { url in
             try String(contentsOf: url, encoding: .utf8)
         }
     }
@@ -52,7 +124,7 @@ struct VaultFileOperations: Sendable {
     /// pending autosave never resurrects a note that was renamed, moved, or
     /// deleted after it was opened.
     func saveNote(_ text: String, to url: URL) throws {
-        try coordinatedWrite(at: url, options: .forReplacing) { url in
+        try FileCoordination.write(at: url, options: .forReplacing) { url in
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw OperationError.fileMissing(url.lastPathComponent)
             }
@@ -67,21 +139,17 @@ struct VaultFileOperations: Sendable {
         at url: URL,
         transform: @Sendable (String) throws -> String?
     ) throws -> NoteMutationResult {
-        var mutationResult: NoteMutationResult?
-        try coordinatedWrite(at: url, options: .forMerging) { coordinatedURL in
+        try FileCoordination.write(at: url, options: .forMerging) { coordinatedURL in
             guard FileManager.default.fileExists(atPath: coordinatedURL.path) else {
                 throw OperationError.fileMissing(coordinatedURL.lastPathComponent)
             }
             let current = try String(contentsOf: coordinatedURL, encoding: .utf8)
             guard let updated = try transform(current), updated != current else {
-                mutationResult = NoteMutationResult(changed: false, resultingText: current)
-                return
+                return NoteMutationResult(changed: false, resultingText: current)
             }
             try updated.write(to: coordinatedURL, atomically: true, encoding: .utf8)
-            mutationResult = NoteMutationResult(changed: true, resultingText: updated)
+            return NoteMutationResult(changed: true, resultingText: updated)
         }
-        guard let mutationResult else { throw CocoaError(.fileWriteUnknown) }
-        return mutationResult
     }
 
     /// Persists an editor revision while preserving a concurrently changed
@@ -99,45 +167,36 @@ struct VaultFileOperations: Sendable {
         let conflictURL = url.deletingLastPathComponent()
             .appendingPathComponent(conflictName, isDirectory: false)
 
-        let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
-        var result: Result<NoteSaveResult, Error>?
-        coordinator.coordinate(
-            writingItemAt: url, options: .forMerging,
-            writingItemAt: conflictURL, options: [],
-            error: &coordinationError
-        ) { coordinatedURL, coordinatedConflictURL in
-            result = Result {
-                guard FileManager.default.fileExists(atPath: coordinatedURL.path) else {
-                    throw OperationError.fileMissing(coordinatedURL.lastPathComponent)
-                }
-                let diskText = try String(contentsOf: coordinatedURL, encoding: .utf8)
-                var preservedURL: URL?
-                if diskText != expectedDiskText, diskText != text {
-                    if FileManager.default.fileExists(atPath: coordinatedConflictURL.path) {
-                        let preserved = try String(
-                            contentsOf: coordinatedConflictURL,
-                            encoding: .utf8)
-                        guard preserved == diskText else {
-                            throw OperationError.itemAlreadyExists(
-                                coordinatedConflictURL.lastPathComponent)
-                        }
-                    } else {
-                        try Data(diskText.utf8).write(
-                            to: coordinatedConflictURL,
-                            options: .withoutOverwriting)
-                    }
-                    preservedURL = coordinatedConflictURL
-                }
-                if diskText != text {
-                    try text.write(to: coordinatedURL, atomically: true, encoding: .utf8)
-                }
-                return NoteSaveResult(conflictCopyURL: preservedURL)
+        return try FileCoordination.write(
+            at: url, options: .forMerging,
+            and: conflictURL, options: []
+        ) { _, coordinatedURL, coordinatedConflictURL in
+            guard FileManager.default.fileExists(atPath: coordinatedURL.path) else {
+                throw OperationError.fileMissing(coordinatedURL.lastPathComponent)
             }
+            let diskText = try String(contentsOf: coordinatedURL, encoding: .utf8)
+            var preservedURL: URL?
+            if diskText != expectedDiskText, diskText != text {
+                if FileManager.default.fileExists(atPath: coordinatedConflictURL.path) {
+                    let preserved = try String(
+                        contentsOf: coordinatedConflictURL,
+                        encoding: .utf8)
+                    guard preserved == diskText else {
+                        throw OperationError.itemAlreadyExists(
+                            coordinatedConflictURL.lastPathComponent)
+                    }
+                } else {
+                    try Data(diskText.utf8).write(
+                        to: coordinatedConflictURL,
+                        options: .withoutOverwriting)
+                }
+                preservedURL = coordinatedConflictURL
+            }
+            if diskText != text {
+                try text.write(to: coordinatedURL, atomically: true, encoding: .utf8)
+            }
+            return NoteSaveResult(conflictCopyURL: preservedURL)
         }
-        if let coordinationError { throw coordinationError }
-        guard let result else { throw CocoaError(.fileWriteUnknown) }
-        return try result.get()
     }
 
     /// Rewrites the named note through `transform`, creating it if it
@@ -153,7 +212,7 @@ struct VaultFileOperations: Sendable {
     ) throws -> URL {
         let fileName = try noteFileName(from: name)
         let destination = folder.appendingPathComponent(fileName, isDirectory: false)
-        try coordinatedWrite(at: destination, options: .forMerging) { url in
+        try FileCoordination.write(at: destination, options: .forMerging) { url in
             let text: String
             if FileManager.default.fileExists(atPath: url.path) {
                 text = try String(contentsOf: url, encoding: .utf8)
@@ -170,7 +229,7 @@ struct VaultFileOperations: Sendable {
     func createNote(named name: String, in folder: URL) throws -> URL {
         let fileName = try noteFileName(from: name)
         let destination = folder.appendingPathComponent(fileName, isDirectory: false)
-        try coordinatedWrite(at: destination, options: []) { url in
+        try FileCoordination.write(at: destination, options: []) { url in
             guard !FileManager.default.fileExists(atPath: url.path) else {
                 throw OperationError.itemAlreadyExists(fileName)
             }
@@ -183,7 +242,7 @@ struct VaultFileOperations: Sendable {
     func createFolder(named name: String, in folder: URL) throws -> URL {
         let folderName = try validated(name)
         let destination = folder.appendingPathComponent(folderName, isDirectory: true)
-        try coordinatedWrite(at: destination, options: []) { url in
+        try FileCoordination.write(at: destination, options: []) { url in
             guard !FileManager.default.fileExists(atPath: url.path) else {
                 throw OperationError.itemAlreadyExists(folderName)
             }
@@ -230,7 +289,7 @@ struct VaultFileOperations: Sendable {
     }
 
     func delete(itemAt url: URL) throws {
-        try coordinatedWrite(at: url, options: .forDeleting) { url in
+        try FileCoordination.write(at: url, options: .forDeleting) { url in
             try FileManager.default.removeItem(at: url)
         }
     }
@@ -246,7 +305,7 @@ struct VaultFileOperations: Sendable {
         let recoveryFolder = vaultRoot.appendingPathComponent(
             Self.recoveryFolderName,
             isDirectory: true)
-        try coordinatedWrite(at: recoveryFolder, options: []) { folder in
+        try FileCoordination.write(at: recoveryFolder, options: []) { folder in
             if !FileManager.default.fileExists(atPath: folder.path) {
                 try FileManager.default.createDirectory(
                     at: folder,
@@ -291,7 +350,7 @@ struct VaultFileOperations: Sendable {
 
         // Names, not URLs: the coordinator may hand back a different location
         // for the folder, and each entry is coordinated again on its own.
-        let names = try coordinatedRead(at: folder) { url in
+        let names = try FileCoordination.read(at: folder) { url in
             try FileManager.default.contentsOfDirectory(atPath: url.path)
         }
         let cutoff = now.addingTimeInterval(-retention)
@@ -409,59 +468,22 @@ struct VaultFileOperations: Sendable {
 
     // MARK: - Coordination
 
-    private func coordinatedRead<T>(at url: URL, _ body: (URL) throws -> T) throws -> T {
-        let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
-        var result: Result<T, Error>?
-        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { url in
-            result = Result { try body(url) }
-        }
-        if let coordinationError { throw coordinationError }
-        guard let result else { throw CocoaError(.fileReadUnknown) }
-        return try result.get()
-    }
-
-    private func coordinatedWrite(
-        at url: URL,
-        options: NSFileCoordinator.WritingOptions,
-        _ body: (URL) throws -> Void
-    ) throws {
-        let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
-        var result: Result<Void, Error>?
-        coordinator.coordinate(writingItemAt: url, options: options, error: &coordinationError) { url in
-            result = Result { try body(url) }
-        }
-        if let coordinationError { throw coordinationError }
-        guard let result else { throw CocoaError(.fileWriteUnknown) }
-        try result.get()
-    }
-
     private func coordinatedMove(
         from source: URL, to destination: URL,
         checkDestinationExists: Bool = true
     ) throws {
-        let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
-        var result: Result<Void, Error>?
-        coordinator.coordinate(
-            writingItemAt: source, options: .forMoving,
-            writingItemAt: destination, options: .forReplacing,
-            error: &coordinationError
-        ) { source, destination in
-            result = Result {
-                if checkDestinationExists,
-                    FileManager.default.fileExists(atPath: destination.path)
-                {
-                    throw OperationError.itemAlreadyExists(destination.lastPathComponent)
-                }
-                try FileManager.default.moveItem(at: source, to: destination)
-                coordinator.item(at: source, didMoveTo: destination)
+        try FileCoordination.write(
+            at: source, options: .forMoving,
+            and: destination, options: .forReplacing
+        ) { coordinator, source, destination in
+            if checkDestinationExists,
+                FileManager.default.fileExists(atPath: destination.path)
+            {
+                throw OperationError.itemAlreadyExists(destination.lastPathComponent)
             }
+            try FileManager.default.moveItem(at: source, to: destination)
+            coordinator.item(at: source, didMoveTo: destination)
         }
-        if let coordinationError { throw coordinationError }
-        guard let result else { throw CocoaError(.fileWriteUnknown) }
-        try result.get()
     }
 }
 

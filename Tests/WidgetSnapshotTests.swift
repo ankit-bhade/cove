@@ -160,13 +160,15 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(restored.id, item.id)
     }
 
-    func testToggledFlipsOnlyCompletion() {
+    func testSettingCompletedChangesOnlyCompletion() {
         let original = SnapshotTask(task("Task", due: "2026-07-19", time: "09:00"))
-        let toggled = original.toggled()
-        XCTAssertTrue(toggled.isCompleted)
-        XCTAssertEqual(toggled.id, original.id)
-        XCTAssertEqual(toggled.text, original.text)
-        XCTAssertEqual(toggled.toggled(), original)
+        let completed = original.settingCompleted(true)
+        XCTAssertTrue(completed.isCompleted)
+        XCTAssertEqual(completed.id, original.id)
+        XCTAssertEqual(completed.text, original.text)
+        XCTAssertEqual(completed.settingCompleted(false), original)
+        // Desired state, not a flip: applying it twice is the same as once.
+        XCTAssertEqual(completed.settingCompleted(true), completed)
     }
 
     func testPendingTogglePreservesThePreTapState() {
@@ -174,7 +176,7 @@ final class WidgetSnapshotTests: XCTestCase {
         // the post-tap state would make every re-find miss.
         let completed = SnapshotTask(task("Task", due: "2026-07-19", completed: true))
         XCTAssertTrue(PendingToggle(completed).wasCompleted)
-        XCTAssertFalse(PendingToggle(completed.toggled()).wasCompleted)
+        XCTAssertFalse(PendingToggle(completed.settingCompleted(false)).wasCompleted)
     }
 
     func testPendingToggleSurvivesJSON() throws {

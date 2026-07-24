@@ -20,6 +20,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated the duplication that had accumulated across the task screens,
+  the coordination layer, and the date APIs, and removed the code nothing but
+  the tests still reached. The Tasks tab and a list's detail view kept their
+  own copies of check-off, swipe-to-delete, and clear-completed — and the
+  copies had already drifted, so the same checkbox registered its Undo as
+  “Toggle Task” on one screen and “Toggle Checkbox” on the other. Both now
+  run one `TaskActions`, so that name is a single decision. The five
+  hand-written `NSFileCoordinator` wrappers across the vault and the widget
+  queue became one `FileCoordination`; the three copies of the
+  optional-to-`Bool` presentation binding became `covePresence()`, and the
+  browser's hand-built error alert became the shared `coveErrorAlert` every
+  other screen already used.
+- Date APIs take a **time zone** rather than a calendar. Fourteen of them
+  accepted a `Calendar` and immediately rebuilt it as Gregorian from the
+  incoming one's time zone — correct, but a signature asking for something it
+  then discarded, so a caller handing over a Hebrew or Buddhist calendar was
+  silently overridden with nothing saying so. The zone was the only part ever
+  honored, and is now the only part asked for.
+- Quick capture's recurrence maps moved beside the patterns they mirror and
+  are no longer force-unwrapped: an `@repeat` synonym added to a regex but not
+  to its map now fails to match instead of trapping the process mid-keystroke.
 - Cove opens on Tasks on every surface — the iPhone and iPad tab bar, the
   macOS sidebar, and the Today widget's deep link, which already landed there.
   A launch from the Home Screen and a launch from the app icon now arrive at

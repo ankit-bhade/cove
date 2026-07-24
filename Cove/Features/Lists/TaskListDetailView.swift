@@ -1,5 +1,4 @@
 import SwiftUI
-import OSLog
 
 /// One list's items, with the same quick-entry field the Tasks screen uses.
 /// The only difference is that an item here may stay undated — "milk" is a
@@ -9,14 +8,11 @@ struct TaskListDetailView: View {
 
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.undoManager) private var undoManager
-    @State private var errorMessage: String?
+    @State private var actions = TaskActions()
     @State private var showsRenamePrompt = false
     @State private var renameText = ""
     @State private var showsClearCompletedConfirmation = false
-    @State private var isClearingCompleted = false
     @State private var showsDeleteConfirmation = false
-    @State private var pendingTaskIDs: Set<String> = []
     /// Ticks each minute so a dated item's "Today" stays true while the
     /// list sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -38,34 +34,21 @@ struct TaskListDetailView: View {
             if let list {
                 if !list.openTasks.isEmpty {
                     Section {
-                        ForEach(list.openTasks) { task in
-                            TaskRow(
-                                task: task, now: now,
-                                onToggle: { toggle(task) },
-                                onDelete: { delete(task) },
-                                isProcessing: pendingTaskIDs.contains(task.id))
-                        }
+                        TaskRows(tasks: list.openTasks, now: now, actions: actions)
                     } header: {
                         CoveSectionHeader("To Do", count: list.openTasks.count)
                     }
                 }
                 if !list.completedTasks.isEmpty {
                     Section {
-                        ForEach(list.completedTasks) { task in
-                            TaskRow(
-                                task: task, now: now,
-                                onToggle: { toggle(task) },
-                                onDelete: { delete(task) },
-                                isProcessing: pendingTaskIDs.contains(task.id))
-                        }
+                        TaskRows(tasks: list.completedTasks, now: now, actions: actions)
                     } header: {
-                        CoveSectionHeader(title: "Done", count: list.completedTasks.count) {
-                            Button("Clear All", role: .destructive) {
-                                showsClearCompletedConfirmation = true
-                            }
-                            .buttonStyle(.borderless)
-                            .font(.caption2.weight(.semibold))
-                            .disabled(isClearingCompleted)
+                        CompletedTasksHeader(
+                            title: "Done",
+                            count: list.completedTasks.count,
+                            isClearing: actions.isClearingCompleted
+                        ) {
+                            showsClearCompletedConfirmation = true
                         }
                     }
                 }
@@ -116,7 +99,9 @@ struct TaskListDetailView: View {
             titleVisibility: .visible
         ) {
             Button("Clear All", role: .destructive) {
-                clearCompletedTasks()
+                actions.clearCompleted {
+                    try await vaultManager.clearCompletedTasks(inList: listName)
+                }
             }
         } message: {
             Text("This permanently removes every completed item from “\(listName)”. Its open items stay.")
@@ -138,13 +123,8 @@ struct TaskListDetailView: View {
             Button("Rename") { rename() }
                 .disabled(trimmedRenameText.isEmpty)
         }
-        .coveErrorAlert($errorMessage)
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
-                now = Date()
-            }
-        }
+        .coveErrorAlert($actions.errorMessage)
+        .coveMinuteTick($now)
     }
 
     /// List items stay undated unless the sentence actually names a date,
@@ -183,7 +163,7 @@ struct TaskListDetailView: View {
                 try await vaultManager.renameList(named: listName, to: newName)
                 dismiss()
             } catch {
-                errorMessage = error.localizedDescription
+                actions.errorMessage = error.localizedDescription
             }
         }
     }
@@ -201,61 +181,7 @@ struct TaskListDetailView: View {
                 try await vaultManager.deleteList(named: listName)
                 dismiss()
             } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func toggle(_ task: TaskItem) {
-        guard pendingTaskIDs.insert(task.id).inserted else { return }
-        Task {
-            defer { pendingTaskIDs.remove(task.id) }
-            do {
-                try await vaultManager.toggleTask(task)
-                let previousCompletion = task.isCompleted
-                undoManager?.registerUndo(withTarget: vaultManager) { manager in
-                    Task {
-                        do { try await manager.setTaskCompleted(task, to: previousCompletion) } catch {
-                            CoveLog.vault.error(
-                                "Checkbox undo failed: \(error.localizedDescription, privacy: .private)")
-                        }
-                    }
-                }
-                undoManager?.setActionName("Toggle Checkbox")
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func clearCompletedTasks() {
-        isClearingCompleted = true
-        Task {
-            defer { isClearingCompleted = false }
-            do {
-                try await vaultManager.clearCompletedTasks(inList: listName)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func delete(_ task: TaskItem) {
-        guard pendingTaskIDs.insert(task.id).inserted else { return }
-        Task {
-            defer { pendingTaskIDs.remove(task.id) }
-            do {
-                let record = try await vaultManager.deleteTask(task)
-                undoManager?.registerUndo(withTarget: vaultManager) { manager in
-                    Task {
-                        do { try await manager.restoreDeletedTask(record) } catch {
-                            CoveLog.vault.error("Task undo failed: \(error.localizedDescription, privacy: .private)")
-                        }
-                    }
-                }
-                undoManager?.setActionName("Delete Task")
-            } catch {
-                errorMessage = error.localizedDescription
+                actions.errorMessage = error.localizedDescription
             }
         }
     }

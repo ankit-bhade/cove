@@ -20,16 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The screens whose first job is *doing* something lead with the thing itself.
-  Quick capture, a list's capture card, and the lists overview each carried a
-  full masthead — an accent rule, an eyebrow, a serif slogan, and a sentence of
-  instruction — which on the landing screen pushed the first overdue task most
-  of the way down the display for copy that is read once. They now use a
-  compact `CovePanel`: one label line, an optional count badge, and the field
-  or the figures. Six tasks fit above the fold where three did, and the
-  quick-add draft sheet drops its header entirely, so every field fits on one
-  screen without scrolling. `CoveMasthead` stays where its title says something
-  that changes — the greeting at the vault root and a folder's own name.
+- Every screen leads with its own content. All of them opened with a tall
+  masthead — an accent rule, an eyebrow, a serif title, and a sentence of prose
+  — whose titles said nothing the screen didn't: a slogan ("Write it,
+  naturally") is read once and paid for on every launch, and the subtitles
+  repeated what a field's placeholder already said. On the landing screen that
+  stack pushed the first overdue task most of the way down the display. They
+  now use a compact `CovePanel`: one label line, an optional count badge, and
+  the field or the figures. Six tasks fit above the fold where three did, the
+  whole of a small vault fits on one screen, and the quick-add sheet drops its
+  header entirely so every field fits without scrolling.
+- The Notes greeting is gone, and so is the name it addressed you by. It was
+  the one thing on the browser that changed while saying nothing about the
+  folder being looked at; the vault root now leads with the same counts panel
+  every other screen carries. The `Greeting` type, its tests, and the Settings
+  field that fed it are removed with it — a name already stored in
+  `UserDefaults` is simply no longer read.
+- Settings' notification actions are built from the same `CoveRow` as the rows
+  around them, so their glyphs stop sitting a few points left of the tiles
+  above them — the misalignment the vault-reselect row was already fixed for.
 - Markdown headers in the editor are set in the system serif, like every other
   title in the app, and paragraph spacing beats line spacing (7 against 4) so a
   new line is visibly a new line. At 4 and 2 a wrapped sentence and the next

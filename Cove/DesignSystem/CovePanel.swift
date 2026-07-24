@@ -16,10 +16,9 @@ struct CoveCardBackground: View {
     }
 }
 
-/// The warm card every header sits on: surface, a wash of ember off the top
-/// corner, a hairline, and a shadow. Shared by `CoveMasthead` and `CovePanel`
-/// so an introducing header and a working one read as the same material.
-struct CoveMastheadBackground: View {
+/// The warm card a panel sits on: surface, a wash of ember off the top
+/// corner, a hairline, and a shadow.
+private struct CovePanelBackground: View {
     var cornerRadius: CGFloat = CoveTheme.cardRadius
 
     var body: some View {
@@ -47,64 +46,20 @@ struct CoveMastheadBackground: View {
     }
 }
 
-/// The introducing header: the card the vault browser opens with, carrying a
-/// title that says something a person can't read anywhere else on the screen —
-/// the greeting at the root, the folder's own name a level down.
+/// The header every main screen opens with: one label line and the thing the
+/// screen is actually for.
 ///
-/// It no longer takes a trailing accessory. The two screens that passed one
-/// were the capture screens, and they moved to `CovePanel`, where a count
-/// badge sits beside a one-line label instead of beside a serif title.
-struct CoveMasthead<Content: View>: View {
-    let eyebrow: String
-    let title: String
-    var subtitle: String?
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: CoveTheme.Space.regular) {
-            heading
-            content()
-        }
-        .padding(CoveTheme.Space.loose - 2)
-        .background { CoveMastheadBackground() }
-    }
-
-    private var heading: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Capsule()
-                .fill(CoveTheme.accent)
-                .frame(width: 24, height: 2)
-                .padding(.bottom, 3)
-                .accessibilityHidden(true)
-            Text(eyebrow)
-                .coveEyebrow()
-            Text(title)
-                .font(.coveDisplay)
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(1)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-/// The working header: one label line and the thing the screen is actually
-/// for, on the same card as a masthead but without the serif title and the
-/// sentence under it.
+/// This replaced a taller masthead — accent rule, eyebrow, serif title, and a
+/// sentence of prose — that every screen carried. None of the titles said
+/// anything the screen didn't: a slogan ("Write it, naturally") is read once
+/// and then paid for on every launch, and a greeting is about the reader
+/// rather than about the folder they came to look at. Below them the syntax
+/// hints and reassurances repeated what the field's own placeholder said. On
+/// the landing screen that stack pushed the first real task most of the way
+/// down the display.
 ///
-/// A masthead earns its height when its title says something that *changes* —
-/// the greeting at the vault root, the name of the folder you pushed into. A
-/// fixed slogan does not: "Write it, naturally" and the syntax hint below it
-/// were read once and then paid for on every launch, and on the app's landing
-/// screen they pushed the first real task most of the way down the display.
-/// Quick capture and the lists overview use this instead, so the field and the
-/// figures start near the top where they belong.
+/// What survives is what a header can carry that nothing else on the screen
+/// does: the label of the card, a count badge, and the app's one ornament.
 struct CovePanel<Trailing: View, Content: View>: View {
     let eyebrow: String
     @ViewBuilder var trailing: () -> Trailing
@@ -129,7 +84,7 @@ struct CovePanel<Trailing: View, Content: View>: View {
             content()
         }
         .padding(CoveTheme.Space.regular)
-        .background { CoveMastheadBackground() }
+        .background { CovePanelBackground() }
     }
 
     /// The app's one repeated ornament, kept inline here rather than stacked

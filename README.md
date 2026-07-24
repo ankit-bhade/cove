@@ -9,9 +9,8 @@ Current state (Phase 11 — all build phases complete): select a vault folder,
 browse its nested folders, and open any note in a live-styled
 Markdown editor that saves automatically as you type. Opening a folder pushes
 it onto the Notes screen, so the system back button and the iOS swipe-back
-gesture return you to its parent; each level shows a time-aware greeting —
-which varies through the day and can address you by name, set in Settings —
-and a compact count of direct folders, deeper subfolders, and notes. Headers and
+gesture return you to its parent; each level opens with a compact count of
+direct folders, deeper subfolders, and notes. Headers and
 `**bold**` spans are styled in place
 (the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
 click. Editor checkboxes can also be toggled at the cursor with an accessibility
@@ -97,21 +96,20 @@ items from `Tasks.md` after confirmation.
 The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same
-flow that recovers a stale selection), takes the name used in the Notes
-greeting, switches between system, light, and dark appearance, and shows
+flow that recovers a stale selection), switches between system, light, and
+dark appearance, and shows
 whether notification permission is granted, with a shortcut to enable it. The app has its own icon and launch screen — the
 `CoveMark` stamp, a serif `c` cupping an ember dot, on warm paper in light and
 night-black in dark. Inside, the interface is set in ink on warm paper: a warm
 off-white canvas, screen titles and headlines in the system serif, tracked
 capitals for labels, monospaced digits for every count, and a single burnt-ember
 accent that carries interaction — with moss for folders and lists and a warm
-rust for anything overdue. The Notes screen opens with a masthead — a short
-accent rule, a label, a serif title, and the screen's own content beneath it —
-while the screens you come to *do* something on lead with the thing itself: a
-compact panel puts the quick-capture field and the open count at the top with
-the first task right under them. Every list row shares one icon-and-text grid,
-and setup, loading, empty, and search states are all drawn from that one
-system. On Mac, Tasks,
+rust for anything overdue. Every screen opens with the same compact panel — a
+short accent rule, a label, an optional count, and the screen's own content
+right under it — so the quick-capture field, the folder you opened, and the
+first task are all near the top rather than below a headline. Every list row
+shares one icon-and-text grid, and setup, loading, empty, and search states
+are all drawn from that one system. On Mac, Tasks,
 Notes, Lists, and Settings live in a native branded sidebar; iPhone and iPad
 keep the familiar tab bar. Tasks leads both and is where Cove opens
 everywhere — including the Today widget's deep link, so both ways in land on

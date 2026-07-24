@@ -44,18 +44,16 @@ struct MoveDestinationPicker: View {
                     onPick(destination.url)
                     dismiss()
                 } label: {
-                    HStack(spacing: 10) {
-                        CoveIconTile(systemName: "folder.fill", tint: CoveTheme.moss)
+                    CoveRow(systemName: "folder.fill", tint: CoveTheme.moss) {
                         Text(destination.name)
                             .font(.body.weight(.medium))
-                        Spacer()
+                        Spacer(minLength: 0)
                         // Without this the row is simply inert, which reads
                         // as a bug rather than as "it is already here".
                         if isCurrent {
                             CoveCountBadge("Current", tint: .secondary)
                         }
                     }
-                    .padding(.vertical, 3)
                     // Deep vaults should still leave room for the folder
                     // name; cap visual indentation while preserving order.
                     .padding(.leading, CGFloat(min(destination.depth, 4)) * 16)

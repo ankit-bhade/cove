@@ -187,26 +187,11 @@ struct QuickCaptureField: View {
     @ViewBuilder
     private func metadata(due: String, draft: TaskDraft) -> some View {
         if !due.isEmpty {
-            dueCapsule(due, hasTime: draft.dueTimeString != nil)
+            CoveDueCapsule(text: due, hasTime: draft.dueTimeString != nil)
         }
         if let rule = draft.recurrence {
-            Label(rule.displayName, systemImage: "repeat")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
+            CoveRecurrenceLabel(rule.displayName)
         }
-    }
-
-    private func dueCapsule(_ due: String, hasTime: Bool) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: hasTime ? "clock" : "calendar")
-            Text(due)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(CoveTheme.accent)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(CoveTheme.accent.opacity(0.11), in: Capsule())
-        .overlay { Capsule().stroke(CoveTheme.accent.opacity(0.14), lineWidth: 1) }
     }
 
     private var trimmedText: String {

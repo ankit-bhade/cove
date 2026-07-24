@@ -58,10 +58,28 @@ enum CoveTheme {
         static let snug: CGFloat = 10
         static let regular: CGFloat = 16
         static let loose: CGFloat = 22
+
+        /// The gap between a row's leading glyph and what it labels, and the
+        /// breathing room above and below that row. Every list in the app is
+        /// read against the one directly before it in the tab bar, so these
+        /// two numbers are the app's grid — a row that picks its own is a
+        /// row that visibly doesn't line up with its neighbours.
+        static let rowGap: CGFloat = 12
+        static let rowPadding: CGFloat = 4
     }
 
     static let cardRadius: CGFloat = 18
     static let fieldRadius: CGFloat = 12
+
+    /// Every tinted surface in the app — an icon tile, a count badge, a due
+    /// capsule, an editor banner — is the same two values: a wash of the hue
+    /// with a hairline of the same hue a little stronger over it. Held as
+    /// tokens because hand-tuned pairs drift, and a screen carrying three
+    /// tints at three strengths reads as three components rather than one.
+    enum Tint {
+        static let fill: Double = 0.12
+        static let stroke: Double = 0.18
+    }
 
     static func mastheadRowInsets(bottom: CGFloat = 14) -> EdgeInsets {
         EdgeInsets(top: 8, leading: 0, bottom: bottom, trailing: 0)
@@ -113,6 +131,15 @@ extension Font {
 }
 
 extension View {
+    /// Fills a shape with a wash of `tint` and traces it with a hairline of
+    /// the same hue, at the one strength the whole app uses.
+    func coveTintedSurface<S: InsettableShape>(_ tint: Color, in shape: S) -> some View {
+        background(tint.opacity(CoveTheme.Tint.fill), in: shape)
+            .overlay {
+                shape.stroke(tint.opacity(CoveTheme.Tint.stroke), lineWidth: 1)
+            }
+    }
+
     func coveEyebrow(tint: Color? = nil) -> some View {
         self
             .font(.caption2.weight(.semibold))

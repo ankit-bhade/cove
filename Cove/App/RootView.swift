@@ -4,7 +4,11 @@ struct RootView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
-    @State private var selectedSection: AppSection = .notes
+    /// Tasks is the landing screen on every surface: it is the one section
+    /// that is *about* right now, and it is where the Today widget's deep
+    /// link goes — a launch from the Home Screen and a launch from the icon
+    /// should not arrive at different places.
+    @State private var selectedSection: AppSection = .tasks
 
     var body: some View {
         Group {
@@ -46,7 +50,7 @@ struct RootView: View {
         #if os(macOS)
             NavigationSplitView {
                 List(AppSection.allCases, selection: $selectedSection) { section in
-                    HStack(spacing: 10) {
+                    HStack(spacing: CoveTheme.Space.rowGap) {
                         Image(systemName: section.symbol)
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(
@@ -58,7 +62,7 @@ struct RootView: View {
                             .font(.body.weight(selectedSection == section ? .semibold : .regular))
                     }
                     .tag(section)
-                    .padding(.vertical, 5)
+                    .padding(.vertical, CoveTheme.Space.rowPadding)
                 }
                 .safeAreaInset(edge: .top) {
                     HStack(spacing: 11) {

@@ -14,10 +14,12 @@ been paid for.
 ## Status
 
 All eleven build phases are complete; work since then is reliability
-hardening and, most recently, a new visual direction — ink on warm paper,
-marked in ember, replacing the coastal palette the app shipped with. See
-`CHANGELOG.md` for what has shipped and "The visual system" below for what the
-direction commits to.
+hardening and a new visual direction — ink on warm paper, marked in ember,
+replacing the coastal palette the app shipped with. Most recently that
+direction was pushed down into the grid: one `CoveRow` behind every list row
+and one pair of tint tokens behind every tinted surface, and Tasks became the
+section the app opens on. See `CHANGELOG.md` for what has shipped and "The
+visual system" below for what the direction commits to.
 
 The phases were: folder picker and bookmarks (1), editor and file operations
 (2), live Markdown styling (3), iCloud change detection (4), search (5), tasks
@@ -478,6 +480,14 @@ external changes, and scene activation.
 branded `NavigationSplitView` sidebar on macOS, sharing one selection model so
 no behavior diverges.
 
+**Tasks is the landing section on every surface.** It is the one screen that
+is about *right now*, and it is where the Today widget's `cove://tasks` deep
+link already went — leaving the default on Notes meant a launch from the Home
+Screen and a launch from the app icon arrived at different places. The tab
+*order* is unchanged: Notes stays first because the browser is the app's
+structural root, and reordering the bar would move a target under a thumb
+that already knows where it is.
+
 **The browser shows one folder level at a time, bound directly to
 `NavigationStack(path:)`.** A folder row is a real push, so the system back
 button, its parent-folder title, and iOS swipe-back all work — the earlier
@@ -551,6 +561,36 @@ and `@ScaledMetric`-sized), and `CoveCountBadge` the one shape for "how many".
 **Section headers are text, never `Label`s.** Caption-size SF Symbols with
 fine detail — a sunrise, a calendar grid — render as smudges, and a header
 that already says "Tomorrow · 1" has nothing left for a glyph to add.
+
+**`CoveRow` owns the grid every list is read against.** Rows used to be built
+by hand at each call site, which produced three gaps between a tile and its
+text, four vertical paddings, and — in Settings — `Label`-based rows whose
+system-derived icon column sat several points left of the `HStack` rows
+directly above them. Two tabs apart that goes unnoticed; three rows apart in
+one `Form` it is the misalignment a reader sees without being able to name.
+The component holds `Space.rowGap` and `Space.rowPadding` so a folder row, a
+list row, and a settings row cannot disagree, and `CoveRowTitle` carries the
+title-plus-caption pairing (tracked capitals when the caption is data, plain
+secondary text when it is a path or a snippet).
+
+**Tinted surfaces come from `Tint.fill`/`Tint.stroke`, applied through
+`coveTintedSurface(_:in:)`.** A tile, a badge, a due capsule, an editor
+banner, and the recovery emblem are all one idea — a wash of a hue under a
+hairline of the same hue — and they had drifted to five hand-tuned pairs
+across 0.11–0.13 fills and 0.14–0.22 strokes. The modifier takes any
+`InsettableShape`, so the caller keeps the shape it already had.
+
+**`CoveDueCapsule` and `CoveRecurrenceLabel` are shared by the task row and
+the capture preview.** The preview *becomes* the row it sits one keystroke
+above, so two implementations could word or shade the same date two ways.
+`CoveRecurrenceLabel` takes the rule's wording rather than a `RecurrenceRule`,
+which keeps the design system clear of the task model.
+
+**A completed task's capsule is `.secondary`, not its live tint.** Overdue is
+loud and today takes the accent, but a struck-through grey row under a
+full-strength ember capsule put the loudest thing on screen on the one task
+that no longer wants attention — the same reasoning the widget's muted
+checkboxes already followed.
 
 **`CoveMark` is drawn, not loaded.** A serif `c` cupping an ember dot — the
 shape of a sheltered inlet said abstractly, with no water in it. Drawing it
@@ -706,7 +746,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
 ```
 
-Current verified suite: **324 tests** (macOS host), plus clean macOS and
+Current verified suite: **326 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 ### Documentation rule

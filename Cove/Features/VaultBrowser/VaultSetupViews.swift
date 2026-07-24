@@ -66,20 +66,16 @@ struct VaultRecoveryView: View {
             GeometryReader { proxy in
                 ScrollView {
                     VStack(spacing: CoveTheme.Space.loose) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .fill(CoveTheme.alert.opacity(0.12))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                        .stroke(CoveTheme.alert.opacity(0.18), lineWidth: 1)
-                                }
-                            Image(systemName: "folder.badge.questionmark")
-                                .font(.system(size: 34, weight: .medium))
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(CoveTheme.alert)
-                        }
-                        .frame(width: 84, height: 84)
-                        .accessibilityHidden(true)
+                        Image(systemName: "folder.badge.questionmark")
+                            .font(.system(size: 34, weight: .medium))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(CoveTheme.alert)
+                            .frame(width: 84, height: 84)
+                            .coveTintedSurface(
+                                CoveTheme.alert,
+                                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            )
+                            .accessibilityHidden(true)
                         VStack(spacing: CoveTheme.Space.snug) {
                             Text("Let’s Reconnect Your Vault")
                                 .font(.coveDisplay)
@@ -167,15 +163,16 @@ struct VaultPickerButton: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.roundedRectangle(radius: CoveTheme.fieldRadius))
         } else {
-            // Inside Settings this button is one row among several, all of
-            // which lead with a `CoveIconTile`. A bare symbol here rendered
-            // at body size — larger and heavier than every tile above it,
-            // and starting at a different leading edge.
+            // Inside Settings this button is one row among several, so it is
+            // built from the same `CoveRow` as the rest. A `Label` here put
+            // its glyph in the system's own icon column, several points left
+            // of every row above it — the kind of misalignment that reads as
+            // sloppiness without being nameable.
             Button(action: action) {
-                Label {
+                CoveRow(systemName: "folder.badge.plus") {
                     Text(title)
-                } icon: {
-                    CoveIconTile(systemName: "folder.badge.plus")
+                        .font(.body.weight(.medium))
+                    Spacer(minLength: 0)
                 }
             }
             .buttonStyle(.borderless)

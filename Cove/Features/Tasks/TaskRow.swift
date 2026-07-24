@@ -114,33 +114,24 @@ struct TaskRow: View {
     }
 
     private func recurrenceLabel(_ rule: RecurrenceRule) -> some View {
-        Label(rule.displayName, systemImage: "repeat")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.tertiary)
+        CoveRecurrenceLabel(rule.displayName)
     }
 
-    /// Overdue is the loudest state, today is the accent, and everything
-    /// further out is quiet — a list where every capsule is colored tells the
-    /// reader nothing about which one to look at first.
     private func dueLabel(overdue: Bool) -> some View {
-        let tint: Color =
-            overdue
-            ? CoveTheme.alert
-            : task.isDue(onSameDayAs: now)
-                ? CoveTheme.accent
-                : .secondary
-        return HStack(spacing: 5) {
-            Image(
-                systemName: overdue
-                    ? "exclamationmark.circle.fill"
-                    : task.dueTimeString != nil ? "clock" : "calendar")
-            Text(task.relativeDueDescription(at: now))
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(tint)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(tint.opacity(0.11), in: Capsule())
-        .overlay { Capsule().stroke(tint.opacity(0.14), lineWidth: 1) }
+        CoveDueCapsule(
+            text: task.relativeDueDescription(at: now),
+            hasTime: task.dueTimeString != nil,
+            isOverdue: overdue,
+            tint: dueTint(overdue: overdue))
+    }
+
+    /// A completed task's capsule goes quiet with the rest of its row.
+    /// Struck-through grey text under a full-strength ember capsule left the
+    /// loudest thing in the row attached to the one task that no longer wants
+    /// attention — finishing something should quiet a row, not light it up.
+    private func dueTint(overdue: Bool) -> Color {
+        if task.isCompleted { return .secondary }
+        if overdue { return CoveTheme.alert }
+        return task.isDue(onSameDayAs: now) ? CoveTheme.accent : .secondary
     }
 }

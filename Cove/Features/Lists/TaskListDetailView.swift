@@ -27,7 +27,7 @@ struct TaskListDetailView: View {
         List {
             Section {
                 captureCard
-                    .listRowInsets(CoveTheme.mastheadRowInsets())
+                    .listRowInsets(CoveTheme.headerRowInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -130,14 +130,10 @@ struct TaskListDetailView: View {
     /// List items stay undated unless the sentence actually names a date,
     /// which passing `listName` through to the field takes care of.
     private var captureCard: some View {
-        // The navigation bar already carries the list's name, so the masthead
-        // spends its words on what this card is for — and names itself the
-        // same way the Tasks screen's capture card does.
-        CoveMasthead(
-            eyebrow: "Quick Capture",
-            title: "Add an item",
-            subtitle: "A date is optional — “milk” is a perfectly good item."
-        ) {
+        // The navigation bar carries the list's name and the field's
+        // placeholder repeats it, so the card itself only has to say what it
+        // is — the same compact panel the Tasks screen captures through.
+        CovePanel(eyebrow: "Quick Capture") {
             if let list, !list.isEmpty {
                 CoveCountBadge("\(list.openTasks.count) open")
                     .accessibilityLabel("\(list.openTasks.count) open items")

@@ -81,8 +81,10 @@ enum CoveTheme {
         static let stroke: Double = 0.18
     }
 
-    static func mastheadRowInsets(bottom: CGFloat = 14) -> EdgeInsets {
-        EdgeInsets(top: 8, leading: 0, bottom: bottom, trailing: 0)
+    /// The insets a masthead or a panel takes as the first row of a list:
+    /// no side padding, since the card already draws its own edge.
+    static func headerRowInsets() -> EdgeInsets {
+        EdgeInsets(top: 8, leading: 0, bottom: 14, trailing: 0)
     }
 
     static func taskRowInsets(hasMetadata: Bool) -> EdgeInsets {

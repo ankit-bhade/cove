@@ -183,7 +183,7 @@ struct VaultBrowserView: View {
             if let folder {
                 Section {
                     overview(for: folder, isRoot: folder.url == vaultManager.vaultURL)
-                        .listRowInsets(CoveTheme.mastheadRowInsets())
+                        .listRowInsets(CoveTheme.headerRowInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }

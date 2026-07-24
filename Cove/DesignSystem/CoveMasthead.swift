@@ -16,7 +16,10 @@ struct CoveCardBackground: View {
     }
 }
 
-private struct CoveMastheadBackground: View {
+/// The warm card every header sits on: surface, a wash of ember off the top
+/// corner, a hairline, and a shadow. Shared by `CoveMasthead` and `CovePanel`
+/// so an introducing header and a working one read as the same material.
+struct CoveMastheadBackground: View {
     var cornerRadius: CGFloat = CoveTheme.cardRadius
 
     var body: some View {
@@ -44,30 +47,22 @@ private struct CoveMastheadBackground: View {
     }
 }
 
-/// The shared header card at the top of every main screen.
-struct CoveMasthead<Trailing: View, Content: View>: View {
+/// The introducing header: the card the vault browser opens with, carrying a
+/// title that says something a person can't read anywhere else on the screen —
+/// the greeting at the root, the folder's own name a level down.
+///
+/// It no longer takes a trailing accessory. The two screens that passed one
+/// were the capture screens, and they moved to `CovePanel`, where a count
+/// badge sits beside a one-line label instead of beside a serif title.
+struct CoveMasthead<Content: View>: View {
     let eyebrow: String
     let title: String
     var subtitle: String?
-    @ViewBuilder var trailing: () -> Trailing
     @ViewBuilder var content: () -> Content
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: CoveTheme.Space.regular) {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: CoveTheme.Space.snug) {
-                    heading
-                    trailing()
-                }
-            } else {
-                HStack(alignment: .top, spacing: CoveTheme.Space.snug) {
-                    heading
-                    Spacer(minLength: 0)
-                    trailing()
-                }
-            }
+            heading
             content()
         }
         .padding(CoveTheme.Space.loose - 2)
@@ -99,32 +94,61 @@ struct CoveMasthead<Trailing: View, Content: View>: View {
     }
 }
 
-extension CoveMasthead where Trailing == EmptyView {
-    init(
-        eyebrow: String,
-        title: String,
-        subtitle: String? = nil,
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.init(
-            eyebrow: eyebrow,
-            title: title,
-            subtitle: subtitle,
-            trailing: { EmptyView() },
-            content: content
-        )
+/// The working header: one label line and the thing the screen is actually
+/// for, on the same card as a masthead but without the serif title and the
+/// sentence under it.
+///
+/// A masthead earns its height when its title says something that *changes* —
+/// the greeting at the vault root, the name of the folder you pushed into. A
+/// fixed slogan does not: "Write it, naturally" and the syntax hint below it
+/// were read once and then paid for on every launch, and on the app's landing
+/// screen they pushed the first real task most of the way down the display.
+/// Quick capture and the lists overview use this instead, so the field and the
+/// figures start near the top where they belong.
+struct CovePanel<Trailing: View, Content: View>: View {
+    let eyebrow: String
+    @ViewBuilder var trailing: () -> Trailing
+    @ViewBuilder var content: () -> Content
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CoveTheme.Space.snug + 2) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: CoveTheme.Space.snug) {
+                    label
+                    trailing()
+                }
+            } else {
+                HStack(spacing: CoveTheme.Space.snug) {
+                    label
+                    Spacer(minLength: 0)
+                    trailing()
+                }
+            }
+            content()
+        }
+        .padding(CoveTheme.Space.regular)
+        .background { CoveMastheadBackground() }
+    }
+
+    /// The app's one repeated ornament, kept inline here rather than stacked
+    /// above the label: a compact card has no room for a rule on its own line.
+    private var label: some View {
+        HStack(spacing: CoveTheme.Space.snug - 2) {
+            Capsule()
+                .fill(CoveTheme.accent)
+                .frame(width: 14, height: 2)
+                .accessibilityHidden(true)
+            Text(eyebrow)
+                .coveEyebrow()
+        }
     }
 }
 
-extension CoveMasthead where Trailing == EmptyView, Content == EmptyView {
-    init(eyebrow: String, title: String, subtitle: String? = nil) {
-        self.init(
-            eyebrow: eyebrow,
-            title: title,
-            subtitle: subtitle,
-            trailing: { EmptyView() },
-            content: { EmptyView() }
-        )
+extension CovePanel where Trailing == EmptyView {
+    init(eyebrow: String, @ViewBuilder content: @escaping () -> Content) {
+        self.init(eyebrow: eyebrow, trailing: { EmptyView() }, content: content)
     }
 }
 

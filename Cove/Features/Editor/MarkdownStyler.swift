@@ -35,10 +35,14 @@ enum MarkdownStyler {
         }
     #endif
 
+    /// Paragraph spacing has to beat line spacing or the two are
+    /// indistinguishable: at 4 and 2 a wrapped sentence and the next task line
+    /// opened the same gap, and a note of checkboxes read as one block of
+    /// text. Seven against four is enough to see where a line ends.
     static var bodyAttributes: [NSAttributedString.Key: Any] {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = 4
-        paragraphStyle.paragraphSpacing = 2
+        paragraphStyle.paragraphSpacing = 7
         return [
             .font: bodyFont,
             .foregroundColor: textColor,
@@ -46,10 +50,20 @@ enum MarkdownStyler {
         ]
     }
 
+    /// Headers are set in the serif face, like every other title in the app.
+    /// A `#` line is the one thing in a note that is read once rather than
+    /// scanned, which is exactly the split the type system draws — and it puts
+    /// the note's own title in the same voice as the screen title above it.
     private static func headerFont(level: Int) -> PlatformFont {
         let multipliers: [CGFloat] = [1.8, 1.55, 1.35, 1.2, 1.1, 1.0]
         let size = (bodyFont.pointSize * multipliers[max(0, min(5, level - 1))]).rounded()
-        return .systemFont(ofSize: size, weight: .bold)
+        let base = PlatformFont.systemFont(ofSize: size, weight: .bold)
+        guard let descriptor = base.fontDescriptor.withDesign(.serif) else { return base }
+        #if os(iOS)
+            return UIFont(descriptor: descriptor, size: size)
+        #else
+            return NSFont(descriptor: descriptor, size: size) ?? base
+        #endif
     }
 
     /// Restyles the whole document. Attribute-only edits, so the selection

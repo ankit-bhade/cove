@@ -480,13 +480,15 @@ external changes, and scene activation.
 branded `NavigationSplitView` sidebar on macOS, sharing one selection model so
 no behavior diverges.
 
-**Tasks is the landing section on every surface.** It is the one screen that
-is about *right now*, and it is where the Today widget's `cove://tasks` deep
-link already went — leaving the default on Notes meant a launch from the Home
-Screen and a launch from the app icon arrived at different places. The tab
-*order* is unchanged: Notes stays first because the browser is the app's
-structural root, and reordering the bar would move a target under a thumb
-that already knows where it is.
+**Tasks is the landing section, and it leads the bar.** It is the one screen
+that is about *right now*, and it is where the Today widget's `cove://tasks`
+deep link already went — leaving the default on Notes meant a launch from the
+Home Screen and a launch from the app icon arrived at different places.
+`AppSection`'s declaration order *is* the order of the tab bar and the
+sidebar, so opening on Tasks while Notes still held the first slot left the
+landing screen under the second target and the first one unvisited. Tasks
+first, then Notes, then Lists, then Settings: what's due now, the structure
+it lives in, the groupings beside it, and configuration last.
 
 **The browser shows one folder level at a time, bound directly to
 `NavigationStack(path:)`.** A folder row is a real push, so the system back

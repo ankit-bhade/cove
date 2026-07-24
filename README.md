@@ -108,10 +108,11 @@ accent that carries interaction — with moss for folders and lists and a warm
 rust for anything overdue. Each main screen opens with the same masthead
 (a short accent rule, a label, a serif title, and the screen's own content
 beneath it), every list row shares one icon-and-text grid, and setup, loading,
-empty, and search states are all drawn from that one system. On Mac, Notes,
-Tasks, Lists, and Settings live in a native branded sidebar; iPhone and iPad
-keep the familiar tab bar. Cove opens on Tasks everywhere — including the
-Today widget's deep link, so both ways in land on the same screen. Wide screens use
+empty, and search states are all drawn from that one system. On Mac, Tasks,
+Notes, Lists, and Settings live in a native branded sidebar; iPhone and iPad
+keep the familiar tab bar. Tasks leads both and is where Cove opens
+everywhere — including the Today widget's deep link, so both ways in land on
+the same screen. Wide screens use
 comfortable readable content widths, the editor keeps long lines under
 control, refresh actions show their progress, and compact layouts adapt for
 large text and short windows without hiding primary controls. Command-R

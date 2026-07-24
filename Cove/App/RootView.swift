@@ -116,9 +116,14 @@ struct RootView: View {
     }
 }
 
+/// Declaration order is the order of the iOS tab bar and the macOS sidebar,
+/// and Tasks leads both: it is the section the app opens on, so leaving it
+/// second put the landing screen under the second target while the first one
+/// sat unvisited. Notes follows, then Lists, then Settings — structure, then
+/// grouping, then configuration.
 private enum AppSection: String, CaseIterable, Identifiable {
-    case notes
     case tasks
+    case notes
     case lists
     case settings
 

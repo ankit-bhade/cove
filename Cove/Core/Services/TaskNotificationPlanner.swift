@@ -32,9 +32,9 @@ enum TaskNotificationPlanner {
     static func plans(
         for tasks: [TaskItem],
         now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> [TaskNotificationPlan] {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        let calendar = TaskCalendar.gregorian(timeZone: timeZone)
         // The cap is applied before the bodies are worded: the tasks past it
         // are never scheduled, so formatting a date for each of them is work
         // thrown away.

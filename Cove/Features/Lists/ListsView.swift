@@ -112,9 +112,7 @@ struct ListsView: View {
         .coveReadableWidth()
         .confirmationDialog(
             "Delete “\(pendingDeletion ?? "")”?",
-            isPresented: Binding(
-                get: { pendingDeletion != nil },
-                set: { if !$0 { pendingDeletion = nil } }),
+            isPresented: $pendingDeletion.covePresence(),
             titleVisibility: .visible
         ) {
             Button("Delete List", role: .destructive) {

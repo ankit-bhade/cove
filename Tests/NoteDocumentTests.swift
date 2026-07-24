@@ -63,7 +63,7 @@ final class NoteDocumentTests: XCTestCase {
         try "changed externally".write(to: noteURL, atomically: true, encoding: .utf8)
         let modified = try modificationDate()
         await document.reloadAfterExternalChange()
-        await document.saveNow()
+        await document.flush()
         XCTAssertEqual(try modificationDate(), modified)
     }
 
@@ -74,7 +74,7 @@ final class NoteDocumentTests: XCTestCase {
         await document.load()
         document.text = "unsaved local edit"
 
-        await document.saveNow()
+        await document.flush()
 
         XCTAssertTrue(document.isDirty)
         XCTAssertEqual(document.saveStatus, .failed)

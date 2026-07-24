@@ -111,7 +111,7 @@ final class TaskPresentationTests: XCTestCase {
             XCTAssertEqual(
                 DueDescription.text(
                     dueDateString: date, dueTimeString: time,
-                    at: today, calendar: calendar),
+                    at: today, timeZone: calendar.timeZone),
                 task(due: date, time: time).relativeDueDescription(at: today),
                 "\(date) \(time ?? "-")")
         }
@@ -123,7 +123,7 @@ final class TaskPresentationTests: XCTestCase {
         XCTAssertEqual(
             DueDescription.text(
                 dueDateString: nil, dueTimeString: nil,
-                at: now(2026, 7, 19), calendar: calendar),
+                at: now(2026, 7, 19), timeZone: calendar.timeZone),
             "")
     }
 

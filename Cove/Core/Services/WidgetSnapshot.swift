@@ -34,9 +34,6 @@ enum CoveSharedContainer {
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier)
     }
-
-    static var snapshotURL: URL? { containerURL?.appendingPathComponent("today.json") }
-    static var bookmarkURL: URL? { containerURL?.appendingPathComponent("vault.bookmark") }
 }
 
 /// One task as the widget needs it: enough to draw the row, and enough to
@@ -117,9 +114,11 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             listName: nil)
     }
 
-    /// The same task with its checkbox flipped, for the widget's optimistic
-    /// redraw before the note has been re-indexed.
-    func toggled() -> SnapshotTask {
+    /// The same task in a given completion state, for the widget's optimistic
+    /// redraw before the note has been re-indexed. Desired state rather than
+    /// a flip, matching `PendingTaskOperation` — the two are written from the
+    /// same tap and must not disagree about what it meant.
+    func settingCompleted(_ isCompleted: Bool) -> SnapshotTask {
         SnapshotTask(
             filePath: filePath,
             lineNumber: lineNumber,
@@ -127,7 +126,7 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             dueDateString: dueDateString,
             dueTimeString: dueTimeString,
             recurrenceTag: recurrenceTag,
-            isCompleted: !isCompleted)
+            isCompleted: isCompleted)
     }
 }
 
@@ -159,9 +158,9 @@ struct TodaySnapshot: Codable, Sendable {
     static func building(
         for now: Date,
         from allTasks: [TaskItem],
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> TodaySnapshot {
-        let dayString = QuickTaskParser.ymdString(from: now, calendar: calendar)
+        let dayString = QuickTaskParser.ymdString(from: now, timeZone: timeZone)
         return TodaySnapshot(
             dayString: dayString,
             generatedAt: now,
@@ -171,9 +170,9 @@ struct TodaySnapshot: Codable, Sendable {
     /// The snapshot as of `now`, emptied if it was built for another day.
     func valid(
         at now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> TodaySnapshot {
-        dayString == QuickTaskParser.ymdString(from: now, calendar: calendar) ? self : .empty
+        dayString == QuickTaskParser.ymdString(from: now, timeZone: timeZone) ? self : .empty
     }
 }
 
@@ -392,48 +391,26 @@ struct WidgetSnapshotStore: Sendable {
     }
 
     private func coordinatedQueueRead(at url: URL) throws -> [PendingTaskOperation] {
-        let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
-        var result: Result<[PendingTaskOperation], Error>?
-        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) {
-            coordinatedURL in
-            result = Result {
-                let data = try Data(contentsOf: coordinatedURL)
-                return try JSONDecoder().decode([PendingTaskOperation].self, from: data)
-            }
+        try FileCoordination.read(at: url) { coordinatedURL in
+            let data = try Data(contentsOf: coordinatedURL)
+            return try JSONDecoder().decode([PendingTaskOperation].self, from: data)
         }
-        if let coordinationError { throw coordinationError }
-        guard let result else { throw CocoaError(.fileReadUnknown) }
-        return try result.get()
     }
 
     private func coordinatedQueueUpdate(
         _ transform: (inout [PendingTaskOperation]) throws -> Void
     ) throws {
         guard let url = pendingOperationsURL else { throw CocoaError(.fileNoSuchFile) }
-        let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
-        var result: Result<Void, Error>?
-        coordinator.coordinate(
-            writingItemAt: url, options: .forMerging,
-            error: &coordinationError
-        ) { coordinatedURL in
-            result = Result {
-                var operations: [PendingTaskOperation]
-                if FileManager.default.fileExists(atPath: coordinatedURL.path) {
-                    let data = try Data(contentsOf: coordinatedURL)
-                    operations = try JSONDecoder().decode(
-                        [PendingTaskOperation].self, from: data)
-                } else {
-                    operations = []
-                }
-                try transform(&operations)
-                let data = try JSONEncoder().encode(operations)
-                try data.write(to: coordinatedURL, options: .atomic)
+        try FileCoordination.write(at: url, options: .forMerging) { coordinatedURL in
+            var operations: [PendingTaskOperation] = []
+            if FileManager.default.fileExists(atPath: coordinatedURL.path) {
+                let data = try Data(contentsOf: coordinatedURL)
+                operations = try JSONDecoder().decode(
+                    [PendingTaskOperation].self, from: data)
             }
+            try transform(&operations)
+            let data = try JSONEncoder().encode(operations)
+            try data.write(to: coordinatedURL, options: .atomic)
         }
-        if let coordinationError { throw coordinationError }
-        guard let result else { throw CocoaError(.fileWriteUnknown) }
-        try result.get()
     }
 }

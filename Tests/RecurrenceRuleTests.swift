@@ -10,7 +10,7 @@ final class RecurrenceRuleTests: XCTestCase {
     }()
 
     private func next(_ rule: RecurrenceRule, after: String) -> String? {
-        rule.nextDueDateString(after: after, calendar: calendar)
+        rule.nextDueDateString(after: after, timeZone: calendar.timeZone)
     }
 
     // MARK: - Tags

@@ -1,5 +1,4 @@
 import SwiftUI
-import OSLog
 
 /// All due tasks collected by the in-memory index: incomplete tasks sorted
 /// by due date, completed ones below, with a quick-entry field on top that
@@ -8,11 +7,8 @@ import OSLog
 /// rolls forward to its next occurrence); tapping the row opens the note.
 struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
-    @Environment(\.undoManager) private var undoManager
-    @State private var errorMessage: String?
-    @State private var isClearingCompleted = false
+    @State private var actions = TaskActions()
     @State private var showsClearCompletedConfirmation = false
-    @State private var pendingTaskIDs: Set<String> = []
     /// Ticks each minute so "Overdue" and "Today" stay accurate while the
     /// tab sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -31,14 +27,16 @@ struct TasksView: View {
                         }
                     }
                 }
-                .coveErrorAlert($errorMessage)
+                .coveErrorAlert($actions.errorMessage)
                 .confirmationDialog(
                     "Clear All Completed Tasks?",
                     isPresented: $showsClearCompletedConfirmation,
                     titleVisibility: .visible
                 ) {
                     Button("Clear All", role: .destructive) {
-                        clearCompletedTasks()
+                        actions.clearCompleted {
+                            try await vaultManager.clearCompletedTasks()
+                        }
                     }
                 } message: {
                     Text("This permanently removes every completed task line from its Markdown note.")
@@ -48,12 +46,7 @@ struct TasksView: View {
                 .task {
                     await vaultManager.refresh()
                 }
-                .task {
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(60))
-                        now = Date()
-                    }
-                }
+                .coveMinuteTick($now)
         }
     }
 
@@ -69,13 +62,7 @@ struct TasksView: View {
             }
             ForEach(TaskGroup.grouping(incomplete, now: now)) { group in
                 Section {
-                    ForEach(group.tasks) { task in
-                        TaskRow(
-                            task: task, now: now,
-                            onToggle: { toggle(task) },
-                            onDelete: { delete(task) },
-                            isProcessing: pendingTaskIDs.contains(task.id))
-                    }
+                    TaskRows(tasks: group.tasks, now: now, actions: actions)
                 } header: {
                     // Tracked capitals with the count set apart, like every
                     // other section header in the app. The glyphs these
@@ -90,21 +77,14 @@ struct TasksView: View {
             }
             if !completed.isEmpty {
                 Section {
-                    ForEach(completed) { task in
-                        TaskRow(
-                            task: task, now: now,
-                            onToggle: { toggle(task) },
-                            onDelete: { delete(task) },
-                            isProcessing: pendingTaskIDs.contains(task.id))
-                    }
+                    TaskRows(tasks: completed, now: now, actions: actions)
                 } header: {
-                    CoveSectionHeader(title: "Completed", count: completed.count) {
-                        Button("Clear All", role: .destructive) {
-                            showsClearCompletedConfirmation = true
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption2.weight(.semibold))
-                        .disabled(isClearingCompleted)
+                    CompletedTasksHeader(
+                        title: "Completed",
+                        count: completed.count,
+                        isClearing: actions.isClearingCompleted
+                    ) {
+                        showsClearCompletedConfirmation = true
                     }
                 }
             }
@@ -144,60 +124,4 @@ struct TasksView: View {
         }
     }
 
-    /// Removes the task's line from its note. Deliberately not confirmed —
-    /// a swipe (or a context-menu pick) is already a deliberate gesture, and
-    /// the bulk Clear All is the destructive action worth a dialog.
-    private func delete(_ task: TaskItem) {
-        guard pendingTaskIDs.insert(task.id).inserted else { return }
-        Task {
-            defer { pendingTaskIDs.remove(task.id) }
-            do {
-                let record = try await vaultManager.deleteTask(task)
-                undoManager?.registerUndo(withTarget: vaultManager) { manager in
-                    Task {
-                        do { try await manager.restoreDeletedTask(record) } catch {
-                            CoveLog.vault.error("Task undo failed: \(error.localizedDescription, privacy: .private)")
-                        }
-                    }
-                }
-                undoManager?.setActionName("Delete Task")
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func toggle(_ task: TaskItem) {
-        guard pendingTaskIDs.insert(task.id).inserted else { return }
-        Task {
-            defer { pendingTaskIDs.remove(task.id) }
-            do {
-                try await vaultManager.toggleTask(task)
-                let previousCompletion = task.isCompleted
-                undoManager?.registerUndo(withTarget: vaultManager) { manager in
-                    Task {
-                        do { try await manager.setTaskCompleted(task, to: previousCompletion) } catch {
-                            CoveLog.vault.error(
-                                "Task toggle undo failed: \(error.localizedDescription, privacy: .private)")
-                        }
-                    }
-                }
-                undoManager?.setActionName("Toggle Task")
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func clearCompletedTasks() {
-        isClearingCompleted = true
-        Task {
-            defer { isClearingCompleted = false }
-            do {
-                try await vaultManager.clearCompletedTasks()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
 }

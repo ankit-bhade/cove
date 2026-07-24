@@ -179,15 +179,32 @@ extension View {
     func coveErrorAlert(_ message: Binding<String?>) -> some View {
         alert(
             "Something Went Wrong",
-            isPresented: Binding(
-                get: { message.wrappedValue != nil },
-                set: { if !$0 { message.wrappedValue = nil } }
-            )
+            isPresented: message.covePresence()
         ) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(message.wrappedValue ?? "")
         }
+    }
+}
+
+extension Binding {
+    /// Optional state as the `Bool` every `isPresented:` wants: present while
+    /// the value is non-nil, and cleared when the presentation dismisses.
+    ///
+    /// Alerts, dialogs, and sheets throughout the app are driven by optional
+    /// state — the item being renamed, deleted, or reported. Written inline
+    /// each time, the getter and the setter are two lines that must agree at
+    /// every call site; here they agree once.
+    ///
+    /// `Wrapped: Sendable` is what keeps the returned binding's `@Sendable`
+    /// accessors clean under strict concurrency; every optional this drives is
+    /// a value type already.
+    func covePresence<Wrapped: Sendable>() -> Binding<Bool> where Value == Wrapped? {
+        Binding<Bool>(
+            get: { wrappedValue != nil },
+            set: { if !$0 { wrappedValue = nil } }
+        )
     }
 }
 

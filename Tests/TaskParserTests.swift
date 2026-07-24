@@ -143,6 +143,8 @@ final class TaskParserTests: XCTestCase {
 
     // MARK: - Toggling
 
+    /// Toggling is `settingTaskCompleted` to the opposite of the state the
+    /// index last saw, which is the call the app and the widget both make.
     private func toggling(
         _ text: String,
         taskText: String = "Buy milk",
@@ -154,10 +156,29 @@ final class TaskParserTests: XCTestCase {
         line: Int = 0,
         today: String = "2026-07-18"
     ) -> String? {
-        TaskParser.togglingTask(
-            withText: taskText, dueDateString: due, dueTimeString: time,
-            recurrence: recurrence, isCompleted: isCompleted, listName: list,
-            preferredLineNumber: line, todayDateString: today, in: text)
+        TaskParser.settingTaskCompleted(
+            identity(
+                taskText, due: due, time: time,
+                recurrence: recurrence, list: list, line: line),
+            to: !isCompleted, todayDateString: today, in: text)
+    }
+
+    private func identity(
+        _ taskText: String,
+        due: String?,
+        time: String?,
+        recurrence: RecurrenceRule?,
+        list: String?,
+        line: Int
+    ) -> TaskIdentity {
+        TaskIdentity(
+            filePath: "/vault/Tasks.md",
+            lineNumber: line,
+            text: taskText,
+            dueDateString: due,
+            dueTimeString: time,
+            recurrenceTag: recurrence?.tagText,
+            listName: list)
     }
 
     func testTogglingIncompleteTaskChecksIt() {
@@ -196,10 +217,11 @@ final class TaskParserTests: XCTestCase {
 
     func testTogglingReturnsNilWhenTaskIsGone() {
         XCTAssertNil(toggling("Nothing here\n"))
-        // Same text but the state on disk no longer matches.
-        XCTAssertNil(toggling("- [x] Buy milk @due(2026-07-20)\n"))
         // Same text but the schedule on disk no longer matches.
         XCTAssertNil(toggling("- [ ] Buy milk @due(2026-07-20 09:00)\n"))
+        // A task already in the desired state is *not* gone: completion is
+        // not part of identity, so this is the idempotent no-op covered by
+        // testSetCompletedIsIdempotentWhenAlreadyInDesiredState.
     }
 
     func testCompletingRecurringTaskAdvancesDueDateInstead() {
@@ -267,14 +289,14 @@ final class TaskParserTests: XCTestCase {
         due: String? = "2026-07-20",
         time: String? = nil,
         recurrence: RecurrenceRule? = nil,
-        isCompleted: Bool = false,
         list: String? = nil,
         line: Int = 0
     ) -> String? {
         TaskParser.removingTask(
-            withText: taskText, dueDateString: due, dueTimeString: time,
-            recurrence: recurrence, isCompleted: isCompleted, listName: list,
-            preferredLineNumber: line, in: text)
+            identity(
+                taskText, due: due, time: time,
+                recurrence: recurrence, list: list, line: line),
+            in: text)
     }
 
     private func taskIdentity(_ task: TaskParser.ParsedTask) -> TaskIdentity {
@@ -332,7 +354,13 @@ final class TaskParserTests: XCTestCase {
 
     func testRemovingCompletedTask() {
         let text = "- [x] Buy milk @due(2026-07-20)\nTail\n"
-        XCTAssertEqual(removing(text, isCompleted: true), "Tail\n")
+        XCTAssertEqual(removing(text), "Tail\n")
+    }
+
+    /// Completion is not part of identity, so a task completed between the
+    /// index build and the swipe is still the task the user meant to delete.
+    func testRemovingIgnoresAConcurrentCompletion() {
+        XCTAssertEqual(removing("- [x] Buy milk @due(2026-07-20)\nTail\n"), "Tail\n")
     }
 
     func testRemovingRecurringTaskMatchesOnItsRule() {
@@ -347,8 +375,6 @@ final class TaskParserTests: XCTestCase {
 
     func testRemovingReturnsNilWhenTaskIsGone() {
         XCTAssertNil(removing("Nothing here\n"))
-        // Same text but the state on disk no longer matches.
-        XCTAssertNil(removing("- [x] Buy milk @due(2026-07-20)\n"))
         // Same text but the due date moved.
         XCTAssertNil(removing("- [ ] Buy milk @due(2026-07-25)\n"))
     }

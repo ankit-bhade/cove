@@ -152,9 +152,9 @@ struct RecurrenceRule: Hashable, Sendable {
     /// unparseable input date.
     func nextDueDateString(
         after dateString: String,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> String? {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
+        let calendar = TaskCalendar.gregorian(timeZone: timeZone)
         let parts = dateString.split(separator: "-").compactMap { Int($0) }
         // Anchor at noon so day arithmetic is immune to DST transitions.
         guard parts.count == 3,

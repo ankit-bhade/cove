@@ -45,7 +45,7 @@ struct VaultBrowserView: View {
         }
         .alert(
             namePrompt?.title ?? "",
-            isPresented: dismissBinding($namePrompt),
+            isPresented: $namePrompt.covePresence(),
             presenting: namePrompt
         ) { prompt in
             TextField(prompt.placeholder, text: $nameInput)
@@ -66,7 +66,7 @@ struct VaultBrowserView: View {
         }
         .confirmationDialog(
             "Delete “\(nodeToDelete?.displayName ?? "")”?",
-            isPresented: dismissBinding($nodeToDelete),
+            isPresented: $nodeToDelete.covePresence(),
             titleVisibility: .visible,
             presenting: nodeToDelete
         ) { node in
@@ -81,7 +81,7 @@ struct VaultBrowserView: View {
         }
         .alert(
             "Original Name In Use",
-            isPresented: dismissBinding($recoveryNeedingName),
+            isPresented: $recoveryNeedingName.covePresence(),
             presenting: recoveryNeedingName
         ) { record in
             TextField("New name", text: $nameInput)
@@ -95,14 +95,7 @@ struct VaultBrowserView: View {
         } message: { record in
             Text("“\(record.originalURL.lastPathComponent)” now exists. Choose a new name for the recovered item.")
         }
-        .alert(
-            "Something Went Wrong",
-            isPresented: dismissBinding($errorMessage)
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "")
-        }
+        .coveErrorAlert($errorMessage)
     }
 
     private func delete(_ node: VaultNode) {
@@ -420,19 +413,11 @@ struct VaultBrowserView: View {
         }
     }
 
-    /// Presentation binding for optional state: reads presence, and clears
-    /// the state when the presentation is dismissed.
-    private func dismissBinding<T>(_ state: Binding<T?>) -> Binding<Bool> {
-        Binding(
-            get: { state.wrappedValue != nil },
-            set: { if !$0 { state.wrappedValue = nil } }
-        )
-    }
 }
 
 /// One pending create-or-rename prompt: what to do and where.
-struct NamePrompt: Identifiable {
-    enum Kind {
+struct NamePrompt: Identifiable, Sendable {
+    enum Kind: Sendable {
         case newNote(in: URL)
         case newFolder(in: URL)
         case rename(VaultNode)

@@ -15,11 +15,15 @@ been paid for.
 
 All eleven build phases are complete; work since then is reliability
 hardening and a new visual direction — ink on warm paper, marked in ember,
-replacing the coastal palette the app shipped with. Most recently that
-direction was pushed down into the grid: one `CoveRow` behind every list row
-and one pair of tint tokens behind every tinted surface, and Tasks became the
-section the app opens on. See `CHANGELOG.md` for what has shipped and "The
-visual system" below for what the direction commits to.
+replacing the coastal palette the app shipped with. That direction was pushed
+down into the grid — one `CoveRow` behind every list row and one pair of tint
+tokens behind every tinted surface — and Tasks became the section the app
+opens on. Most recently the same consolidation was applied to behavior rather
+than appearance: one `TaskActions` behind both task screens, one
+`FileCoordination` behind every coordinated access, one `covePresence()`
+behind every optional-driven presentation, and a time zone rather than a
+discarded `Calendar` in every date API. See `CHANGELOG.md` for what has
+shipped and "The visual system" below for what the direction commits to.
 
 The phases were: folder picker and bookmarks (1), editor and file operations
 (2), live Markdown styling (3), iCloud change detection (4), search (5), tasks
@@ -233,6 +237,19 @@ that *creates* the capture note — stays on the full rescan.
 read/save under per-item `NSFileCoordinator` coordination. Mutations run off
 the main actor via `Task.detached` and rescan afterward.
 
+**`FileCoordination` is the one coordinator call shape.** Every coordinated
+access is the same five lines — make a coordinator, hand it an `NSError`
+out-parameter, capture the accessor's value or its throw, then work out which
+of the two failed — and written per call site that had become five
+near-identical copies across `VaultFileOperations` and the widget queue. It
+lives in `VaultFileOperations.swift` deliberately: that file is already in the
+widget target's shared-sources group, so both processes get it with no pbxproj
+edit. The dual-URL variant hands the coordinator itself to its body, which is
+the only reason it is exposed — a move has to report `item(at:didMoveTo:)`
+from inside the coordination. A coordinator that reported no error and never
+ran its accessor is treated as a failure rather than success, since the
+alternative is silently claiming a write that never happened.
+
 **`VaultRepository` is the atomic-mutation boundary.** It coordinates one
 write, reads the latest text *inside* that coordination, applies a throwing
 semantic transform, and replaces only changed content. Every task, capture,
@@ -381,6 +398,27 @@ free, and the sentinel puts undated list items last.
 **Dates are always Gregorian** (`TaskCalendar`), regardless of the user's
 system calendar: the stored `YYYY-MM-DD` is a file format, not a display.
 Presentation keeps the user's locale and zone.
+
+**So date APIs take a time zone, not a calendar.** Fourteen of them used to
+accept a `Calendar` and open by rebuilding it as Gregorian from the incoming
+one's time zone — correct, but a signature that asked for something it then
+threw away, so a caller passing a Hebrew or Buddhist calendar was silently
+overridden with nothing saying so. The zone was the only part ever honored.
+Private helpers that do the arithmetic and the locale-aware formatting still
+take the resolved `Calendar`, because that is what they genuinely need.
+
+**Both task screens run one `TaskActions`.** The Tasks tab and a list's detail
+view show different sections of different tasks, but a checkbox means the same
+thing in both, so check-off, swipe-to-delete, the in-flight row set, and the
+names those actions take in the Edit menu live in one `@Observable` model
+rather than being written out twice. They *were* written out twice, and they
+had already drifted: the same gesture registered its Undo as "Toggle Task" on
+one screen and "Toggle Checkbox" on the other. `TaskRows` renders any run of
+rows against it, and `CompletedTasksHeader` is the one Done/Completed header,
+so the two screens differ in wording alone — "To Do"/"Done" against the due
+groups and "Completed" — and not in what a tap does. `clearCompleted` takes
+the sweep as a closure, because *which* tasks a screen clears is the one thing
+the two genuinely disagree about.
 
 **A task row omits its source note** — tasks nearly all live in the capture
 note, so the caption repeated "Tasks" under every row.
@@ -610,6 +648,16 @@ sidebar, where outline is the platform convention.
 The visual system is standard SwiftUI throughout — no assets beyond
 `LaunchIcon`, no dependencies, no persistence changes.
 
+**`covePresence()` is the one optional-to-`Bool` presentation binding.**
+Alerts, dialogs, and sheets are driven by optional state — the item being
+renamed, deleted, or reported — and the getter/setter pair that turns it into
+an `isPresented:` had three implementations, one of them a private copy in the
+browser sitting beside a hand-built "Something Went Wrong" alert that
+`coveErrorAlert` already produced character for character. `Wrapped: Sendable`
+on the extension is what keeps the returned binding's `@Sendable` accessors
+clean under strict concurrency; every optional it drives is a value type
+already, which is why `NamePrompt` carries the conformance.
+
 `SettingsView` has no About section: the app's identity and version are
 visible from the system. `AppearanceSetting` is applied by `RootView` around
 *every* vault state, so the preference also covers the welcome and recovery
@@ -748,7 +796,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
 ```
 
-Current verified suite: **326 tests** (macOS host), plus clean macOS and
+Current verified suite: **327 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 ### Documentation rule
@@ -1000,5 +1048,9 @@ Rough edges and surprises, not restatements of the design above.
   operation queue is still the fallback for when it can't. Adding a widget
   needs tap injection (long-press the Home Screen → Edit → Add Widget), not
   `simctl` alone.
-* Date handling is tested against non-Gregorian system calendars, UTC-ahead
-  and -behind zones, New York DST transitions, and midnight.
+* Date handling is tested against UTC-ahead and -behind zones, New York DST
+  transitions, and midnight. A non-Gregorian calendar can no longer be handed
+  to a date API at all — the parameter is a `TimeZone` — so what was a runtime
+  assertion is now a type constraint, and the surviving test pins
+  `TaskCalendar` to Gregorian and checks the stored strings carry Gregorian
+  years (Buddhist would read 2569 where the fixture reads 2026).

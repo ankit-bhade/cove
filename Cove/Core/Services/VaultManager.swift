@@ -257,9 +257,7 @@ final class VaultManager {
     /// retries. The transform re-parses the newest coordinated file text.
     func setTaskCompleted(_ task: TaskItem, to desiredCompletion: Bool) async throws {
         let identity = task.identity
-        let today = QuickTaskParser.ymdString(
-            from: Date(),
-            calendar: TaskCalendar.gregorian())
+        let today = QuickTaskParser.ymdString(from: Date())
         var toggleError: Error?
         do {
             _ = try await repository.updateNote(at: task.fileURL) { text in
@@ -657,9 +655,7 @@ final class VaultManager {
         }
         guard !pending.isEmpty else { return }
 
-        let today = QuickTaskParser.ymdString(
-            from: Date(),
-            calendar: TaskCalendar.gregorian())
+        let today = QuickTaskParser.ymdString(from: Date())
         for operation in pending {
             // A queued path that doesn't resolve inside the vault now open —
             // a note deleted and replaced by a folder, an operation left over

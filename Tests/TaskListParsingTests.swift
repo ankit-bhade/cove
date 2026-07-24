@@ -87,11 +87,23 @@ final class TaskListParsingTests: XCTestCase {
 
     // MARK: - Toggling and removing list items
 
+    /// An undated list item, identified the way the Lists screen identifies
+    /// one: no date, no time, no rule — just its text and its heading.
+    private func listItem(_ text: String, list: String, line: Int) -> TaskIdentity {
+        TaskIdentity(
+            filePath: "/vault/Tasks.md",
+            lineNumber: line,
+            text: text,
+            dueDateString: nil,
+            dueTimeString: nil,
+            recurrenceTag: nil,
+            listName: list)
+    }
+
     func testTogglingAnUndatedListItemChecksIt() {
-        let result = TaskParser.togglingTask(
-            withText: "Milk", dueDateString: nil, dueTimeString: nil,
-            recurrence: nil, isCompleted: false, listName: "Groceries",
-            preferredLineNumber: 3, todayDateString: "2026-07-19", in: note)
+        let result = TaskParser.settingTaskCompleted(
+            listItem("Milk", list: "Groceries", line: 3),
+            to: true, todayDateString: "2026-07-19", in: note)
         XCTAssertEqual(
             result,
             note.replacingOccurrences(
@@ -106,10 +118,9 @@ final class TaskListParsingTests: XCTestCase {
             ## Pantry
             - [ ] Milk
             """
-        let result = TaskParser.togglingTask(
-            withText: "Milk", dueDateString: nil, dueTimeString: nil,
-            recurrence: nil, isCompleted: false, listName: "Pantry",
-            preferredLineNumber: 3, todayDateString: "2026-07-19", in: text)
+        let result = TaskParser.settingTaskCompleted(
+            listItem("Milk", list: "Pantry", line: 3),
+            to: true, todayDateString: "2026-07-19", in: text)
         XCTAssertEqual(
             result,
             """
@@ -122,9 +133,7 @@ final class TaskListParsingTests: XCTestCase {
 
     func testRemovingAnUndatedListItemDropsItsLine() {
         let result = TaskParser.removingTask(
-            withText: "Milk", dueDateString: nil, dueTimeString: nil,
-            recurrence: nil, isCompleted: false, listName: "Groceries",
-            preferredLineNumber: 3, in: note)
+            listItem("Milk", list: "Groceries", line: 3), in: note)
         XCTAssertEqual(result, note.replacingOccurrences(of: "- [ ] Milk\n", with: ""))
     }
 

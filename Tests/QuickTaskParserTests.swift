@@ -21,7 +21,7 @@ final class QuickTaskParserTests: XCTestCase {
     }
 
     private func parse(_ input: String) -> TaskDraft {
-        QuickTaskParser.parse(input, now: now, calendar: calendar)
+        QuickTaskParser.parse(input, now: now, timeZone: calendar.timeZone)
     }
 
     // MARK: - Plain capture
@@ -286,7 +286,7 @@ final class QuickTaskParserTests: XCTestCase {
     /// no date word stays undated instead of landing on today.
     private func parseUndated(_ input: String) -> TaskDraft {
         QuickTaskParser.parse(
-            input, now: now, calendar: calendar,
+            input, now: now, timeZone: calendar.timeZone,
             defaultingToToday: false)
     }
 

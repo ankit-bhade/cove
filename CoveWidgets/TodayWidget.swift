@@ -43,13 +43,12 @@ struct TodayProvider: TimelineProvider {
     static func entries(
         for snapshot: TodaySnapshot,
         from now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> [TodayEntry] {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
         let dueMoments = snapshot.openTasks
-            .compactMap { $0.taskItem.dueDateTime(in: calendar) }
+            .compactMap { $0.taskItem.dueDateTime(in: timeZone) }
             .filter { $0 > now }
-        let midnight = TaskCalendar.nextMidnight(after: now, calendar: calendar)
+        let midnight = TaskCalendar.nextMidnight(after: now, timeZone: timeZone)
         let moments = Array(Set([now] + dueMoments))
             .filter { $0 >= now && $0 < midnight }
             .sorted()
@@ -66,10 +65,9 @@ struct TodayProvider: TimelineProvider {
     /// nudge so a snapshot written while the widget slept is picked up.
     static func nextRefresh(
         after now: Date,
-        calendar: Calendar = TaskCalendar.gregorian()
+        timeZone: TimeZone = .autoupdatingCurrent
     ) -> Date {
-        let calendar = TaskCalendar.gregorian(timeZone: calendar.timeZone)
-        let midnight = TaskCalendar.nextMidnight(after: now, calendar: calendar)
+        let midnight = TaskCalendar.nextMidnight(after: now, timeZone: timeZone)
         return min(now.addingTimeInterval(30 * 60), midnight)
     }
 }

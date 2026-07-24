@@ -14,7 +14,7 @@ final class TaskCalendarTests: XCTestCase {
         let calendar = newYorkCalendar()
         let noon = try date(2026, 3, 8, hour: 12, calendar: calendar)
         let start = calendar.startOfDay(for: noon)
-        let next = TaskCalendar.nextMidnight(after: noon, calendar: calendar)
+        let next = TaskCalendar.nextMidnight(after: noon, timeZone: calendar.timeZone)
 
         XCTAssertEqual(next.timeIntervalSince(start), 23 * 60 * 60)
         XCTAssertGreaterThan(next, noon)
@@ -24,7 +24,7 @@ final class TaskCalendarTests: XCTestCase {
         let calendar = newYorkCalendar()
         let noon = try date(2026, 11, 1, hour: 12, calendar: calendar)
         let start = calendar.startOfDay(for: noon)
-        let next = TaskCalendar.nextMidnight(after: noon, calendar: calendar)
+        let next = TaskCalendar.nextMidnight(after: noon, timeZone: calendar.timeZone)
 
         XCTAssertEqual(next.timeIntervalSince(start), 25 * 60 * 60)
         XCTAssertGreaterThan(next, noon)
@@ -42,10 +42,10 @@ final class TaskCalendarTests: XCTestCase {
             tasks: [])
 
         XCTAssertEqual(
-            snapshot.valid(at: before, calendar: calendar).dayString,
+            snapshot.valid(at: before, timeZone: calendar.timeZone).dayString,
             "2026-07-20")
-        XCTAssertTrue(snapshot.valid(at: after, calendar: calendar).tasks.isEmpty)
-        XCTAssertEqual(snapshot.valid(at: after, calendar: calendar).dayString, "")
+        XCTAssertTrue(snapshot.valid(at: after, timeZone: calendar.timeZone).tasks.isEmpty)
+        XCTAssertEqual(snapshot.valid(at: after, timeZone: calendar.timeZone).dayString, "")
     }
 
     func testFormattingUsesInjectedZoneBehindUTC() throws {
@@ -58,10 +58,17 @@ final class TaskCalendarTests: XCTestCase {
             expected.year!, expected.month!, expected.day!)
 
         XCTAssertEqual(
-            QuickTaskParser.ymdString(from: instant, calendar: calendar),
+            QuickTaskParser.ymdString(from: instant, timeZone: calendar.timeZone),
             expectedText)
     }
 
+    /// Date APIs take a time zone rather than a calendar, so a non-Gregorian
+    /// calendar can no longer be handed to one at all — the type now enforces
+    /// what this used to check at run time. What remains worth asserting is
+    /// that `TaskCalendar` itself builds a Gregorian calendar and that the
+    /// stored strings come out in Gregorian years: a Buddhist reading of this
+    /// instant is 2569 and a Hebrew one 5786, so "2026-07-20" could not
+    /// survive either.
     private func assertSystemCalendarDoesNotChangeStoredDate(
         _ identifier: Calendar.Identifier,
         file: StaticString = #filePath,
@@ -69,20 +76,22 @@ final class TaskCalendarTests: XCTestCase {
     ) {
         let zone = TimeZone(secondsFromGMT: 0)!
         let gregorian = TaskCalendar.gregorian(timeZone: zone)
+        XCTAssertEqual(gregorian.identifier, .gregorian, file: file, line: line)
+        XCTAssertNotEqual(gregorian.identifier, identifier, file: file, line: line)
+
         let instant = gregorian.date(
             from: DateComponents(
                 year: 2026, month: 7, day: 20,
                 hour: 12))!
-        var systemCalendar = Calendar(identifier: identifier)
-        systemCalendar.timeZone = zone
 
-        let draft = QuickTaskParser.parse(
-            "Buy milk", now: instant,
-            calendar: systemCalendar)
+        let draft = QuickTaskParser.parse("Buy milk", now: instant, timeZone: zone)
         XCTAssertEqual(draft.dueDateString, "2026-07-20", file: file, line: line)
         XCTAssertEqual(
+            QuickTaskParser.ymdString(from: instant, timeZone: zone),
+            "2026-07-20", file: file, line: line)
+        XCTAssertEqual(
             RecurrenceRule(frequency: .daily).nextDueDateString(
-                after: "2026-12-31", calendar: systemCalendar),
+                after: "2026-12-31", timeZone: zone),
             "2027-01-01", file: file, line: line)
     }
 

@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cove opens on Tasks on every surface — the iPhone and iPad tab bar, the
   macOS sidebar, and the Today widget's deep link, which already landed there.
   A launch from the Home Screen and a launch from the app icon now arrive at
-  the same screen.
+  the same screen. Tasks also leads the tab bar and the sidebar, so the
+  section the app opens on is the first target rather than the second:
+  Tasks, Notes, Lists, Settings.
 - Second visual consistency pass, this time on the grid every list is drawn
   on. Rows were hand-built at each call site with three different gaps between
   a row's icon tile and its text, four vertical paddings, and — in Settings —

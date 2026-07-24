@@ -20,6 +20,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Cove opens on Tasks on every surface — the iPhone and iPad tab bar, the
+  macOS sidebar, and the Today widget's deep link, which already landed there.
+  A launch from the Home Screen and a launch from the app icon now arrive at
+  the same screen.
+- Second visual consistency pass, this time on the grid every list is drawn
+  on. Rows were hand-built at each call site with three different gaps between
+  a row's icon tile and its text, four vertical paddings, and — in Settings —
+  a `Label` whose system-derived icon column started several points left of
+  the rows directly above it, so the vault, appearance, and notification rows
+  visibly failed to line up. Every row in the app is now one `CoveRow`, and
+  tinted surfaces (icon tiles, count badges, due capsules, editor banners,
+  the recovery emblem) draw their wash and hairline from one pair of tokens
+  instead of five hand-tuned pairs. The due capsule and repeat label existed
+  twice — once in a task row and once in the capture preview it becomes — and
+  are now one component each.
+- A completed task's due capsule goes quiet with the rest of its row. Struck
+  through grey text under a full-strength ember capsule left the loudest thing
+  in the row attached to the one task that no longer wants attention.
+- The quick-capture draft sheet's section headers are Cove's tracked capitals
+  rather than the system's plain form headers, and the greeting row's icon
+  takes the accent rather than moss, which the palette reserves for the things
+  that contain other things.
 - Task captures, toggles, deletions, and list edits rebuild the index over the
   tree already in memory instead of re-enumerating every folder in the vault.
   The mutated note is re-read, every other note reuses its index entry, and

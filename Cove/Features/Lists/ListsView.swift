@@ -70,7 +70,7 @@ struct ListsView: View {
                             showsNewListPrompt = true
                         }
                         .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.roundedRectangle(radius: 10))
+                        .buttonBorderShape(.roundedRectangle(radius: CoveTheme.fieldRadius))
                     }
                     .listRowBackground(Color.clear)
                 }
@@ -143,20 +143,13 @@ struct ListsView: View {
     }
 
     private func row(for list: TaskList) -> some View {
-        HStack(spacing: 12) {
-            CoveIconTile(systemName: "list.bullet", tint: CoveTheme.moss)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(list.name)
-                    .font(.body.weight(.medium))
-                Text(subtitle(for: list))
-                    .coveEyebrow()
-            }
-            Spacer()
+        CoveRow(systemName: "list.bullet", tint: CoveTheme.moss) {
+            CoveRowTitle(title: list.name, caption: subtitle(for: list))
+            Spacer(minLength: 0)
             if !list.openTasks.isEmpty {
                 CoveCountBadge("\(list.openTasks.count)")
             }
         }
-        .padding(.vertical, 3)
     }
 
     private func subtitle(for list: TaskList) -> String {

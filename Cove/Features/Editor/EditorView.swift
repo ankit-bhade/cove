@@ -134,16 +134,12 @@ private struct EditorBanner: ViewModifier {
             .font(.footnote)
             .foregroundStyle(.primary)
             .padding(11)
-            .background(
-                tint.opacity(0.12),
+            .coveTintedSurface(
+                tint,
                 in: RoundedRectangle(
                     cornerRadius: CoveTheme.fieldRadius,
                     style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: CoveTheme.fieldRadius, style: .continuous)
-                    .stroke(tint.opacity(0.22), lineWidth: 1)
-            }
     }
 }
 

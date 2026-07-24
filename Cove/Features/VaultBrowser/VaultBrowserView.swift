@@ -299,7 +299,6 @@ struct VaultBrowserView: View {
         NavigationLink(value: node.url) {
             nodeLabel(node)
         }
-        .padding(.vertical, 4)
         .contextMenu {
             contextMenu(for: node)
         }
@@ -308,22 +307,20 @@ struct VaultBrowserView: View {
     /// Folders take the supporting hue and notes the accent: the two kinds of
     /// row are told apart by color before the glyph inside them is read.
     private func nodeLabel(_ node: VaultNode) -> some View {
-        HStack(spacing: 12) {
-            CoveIconTile(
-                systemName: node.isDirectory ? "folder.fill" : "doc.text.fill",
-                tint: node.isDirectory ? CoveTheme.moss : CoveTheme.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(node.displayName)
-                    .font(.body.weight(.medium))
-                    .lineLimit(2)
-                if node.isDirectory {
-                    let itemCount = node.children?.count ?? 0
-                    Text("\(itemCount) \(itemCount == 1 ? "item" : "items")")
-                        .coveEyebrow()
-                }
-            }
+        CoveRow(
+            systemName: node.isDirectory ? "folder.fill" : "doc.text.fill",
+            tint: node.isDirectory ? CoveTheme.moss : CoveTheme.accent
+        ) {
+            CoveRowTitle(title: node.displayName, caption: itemCountCaption(for: node))
+            Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func itemCountCaption(for node: VaultNode) -> String? {
+        guard node.isDirectory else { return nil }
+        let itemCount = node.children?.count ?? 0
+        return "\(itemCount) \(itemCount == 1 ? "item" : "items")"
     }
 
     @ViewBuilder

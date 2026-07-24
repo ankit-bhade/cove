@@ -40,8 +40,7 @@ struct TaskDraftSheet: View {
                 }
 
                 Section {
-                    HStack(spacing: 10) {
-                        CoveIconTile(systemName: "quote.bubble.fill")
+                    CoveRow(systemName: "quote.bubble.fill") {
                         TextField("Try “get bread 3p tmr”", text: $sentence)
                             .autocorrectionDisabled()
                             .onChange(of: sentence) { _, newValue in
@@ -51,14 +50,14 @@ struct TaskDraftSheet: View {
                             }
                     }
                 } header: {
-                    Text("Task")
+                    CoveSectionHeader("Task")
                 } footer: {
                     Text(
                         "Dates, times, and repeats at the end of the sentence are understood — e.g. “tmr”, “next fri”, “6pm”, “every sun”."
                     )
                 }
 
-                Section("Details") {
+                Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Title", systemImage: "textformat")
                             .font(.subheadline.weight(.medium))
@@ -96,6 +95,8 @@ struct TaskDraftSheet: View {
                             Label("Repeat", systemImage: "repeat")
                         }
                     }
+                } header: {
+                    CoveSectionHeader("Details")
                 }
 
                 Section {

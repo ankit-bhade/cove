@@ -41,18 +41,17 @@ struct SettingsView: View {
     private var vaultSection: some View {
         Section {
             if let vaultURL = vaultManager.vaultURL {
-                HStack(alignment: .top, spacing: 12) {
-                    CoveIconTile(systemName: "folder.fill", tint: CoveTheme.moss)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(vaultURL.lastPathComponent)
-                            .font(.body.weight(.semibold))
-                        Text(vaultURL.path(percentEncoded: false))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .lineLimit(2)
-                    }
+                // The path wraps, so the tile pins to the top rather than
+                // drifting to the middle of a two-line block.
+                CoveRow(systemName: "folder.fill", tint: CoveTheme.moss, alignment: .top) {
+                    CoveRowTitle(
+                        title: vaultURL.lastPathComponent,
+                        caption: vaultURL.path(percentEncoded: false),
+                        captionIsLabel: false,
+                        lineLimit: 1)
+                    Spacer(minLength: 0)
                 }
+                .textSelection(.enabled)
             }
             VaultPickerButton(title: "Choose a Different Vault…", prominent: false)
                 .controlSize(.regular)
@@ -67,8 +66,10 @@ struct SettingsView: View {
 
     private var nameSection: some View {
         Section {
-            HStack(spacing: 12) {
-                CoveIconTile(systemName: "hand.wave.fill", tint: CoveTheme.moss)
+            // Accent, not moss: moss is reserved for the things that contain
+            // other things — a vault, a folder, a destination — and a
+            // greeting contains nothing.
+            CoveRow(systemName: "hand.wave.fill") {
                 TextField("Your name", text: $greetingName)
                     .textFieldStyle(.plain)
                     #if os(iOS)
@@ -87,12 +88,11 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 12) {
-                Label {
+            VStack(alignment: .leading, spacing: CoveTheme.Space.snug) {
+                CoveRow(systemName: "circle.lefthalf.filled") {
                     Text("Color Theme")
                         .font(.body.weight(.medium))
-                } icon: {
-                    CoveIconTile(systemName: "circle.lefthalf.filled")
+                    Spacer(minLength: 0)
                 }
                 Picker("Appearance", selection: $appearance) {
                     ForEach(AppearanceSetting.allCases) { setting in
@@ -111,15 +111,18 @@ struct SettingsView: View {
 
     private var notificationsSection: some View {
         Section {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: 10) {
-                    notificationLabel
-                    notificationBadge
-                }
-            } else {
-                HStack(spacing: 12) {
-                    notificationLabel
-                    Spacer()
+            CoveRow(
+                systemName: notificationStatusIcon,
+                tint: notificationsEnabled ? CoveTheme.accent : .secondary
+            ) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: CoveTheme.Space.snug) {
+                        notificationTitle
+                        notificationBadge
+                    }
+                } else {
+                    notificationTitle
+                    Spacer(minLength: 0)
                     notificationBadge
                 }
             }
@@ -144,15 +147,9 @@ struct SettingsView: View {
         }
     }
 
-    private var notificationLabel: some View {
-        Label {
-            Text("Task Reminders")
-                .font(.body.weight(.medium))
-        } icon: {
-            CoveIconTile(
-                systemName: notificationStatusIcon,
-                tint: notificationsEnabled ? CoveTheme.accent : .secondary)
-        }
+    private var notificationTitle: some View {
+        Text("Task Reminders")
+            .font(.body.weight(.medium))
     }
 
     private var notificationBadge: some View {

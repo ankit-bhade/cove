@@ -20,21 +20,16 @@ struct SearchResultsView: View {
                 Section {
                     ForEach(results) { result in
                         NavigationLink(value: result.node.url) {
-                            HStack(alignment: .top, spacing: 12) {
-                                CoveIconTile(systemName: "doc.text.fill")
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(result.node.displayName)
-                                        .font(.body.weight(.semibold))
-                                    if let snippet = result.snippet {
-                                        Text(snippet)
-                                            .font(.callout)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                            .lineSpacing(2)
-                                    }
-                                }
+                            // A snippet wraps, so the tile pins to the top —
+                            // and the row is the same note row the browser
+                            // draws, since it opens the same note.
+                            CoveRow(systemName: "doc.text.fill", alignment: .top) {
+                                CoveRowTitle(
+                                    title: result.node.displayName,
+                                    caption: result.snippet,
+                                    captionIsLabel: false)
+                                Spacer(minLength: 0)
                             }
-                            .padding(.vertical, 5)
                         }
                     }
                 } header: {

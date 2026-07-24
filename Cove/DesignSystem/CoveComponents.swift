@@ -12,15 +12,66 @@ struct CoveIconTile: View {
             .font(.system(size: glyph, weight: .semibold))
             .foregroundStyle(tint)
             .frame(width: side, height: side)
-            .background {
-                RoundedRectangle(cornerRadius: side * 0.32, style: .continuous)
-                    .fill(tint.opacity(0.13))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: side * 0.32, style: .continuous)
-                            .stroke(tint.opacity(0.16), lineWidth: 1)
-                    }
-            }
+            .coveTintedSurface(
+                tint,
+                in: RoundedRectangle(cornerRadius: side * 0.32, style: .continuous)
+            )
             .accessibilityHidden(true)
+    }
+}
+
+/// One list row: a leading `CoveIconTile` and whatever the row says beside it.
+///
+/// Rows used to be hand-built at every call site — three different gaps, four
+/// vertical paddings, and a `Label` in Settings whose system-derived icon
+/// column started several points left of the `HStack` rows directly above it,
+/// which is exactly the misalignment a reader notices without being able to
+/// name. The component owns the grid so a folder row, a list row, and a
+/// settings row cannot disagree about it.
+struct CoveRow<Content: View>: View {
+    let systemName: String
+    var tint: Color = CoveTheme.accent
+    /// `.top` for a row whose text runs past a line or two, so the tile pins
+    /// near the title instead of floating beside the middle of a paragraph.
+    var alignment: VerticalAlignment = .center
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(alignment: alignment, spacing: CoveTheme.Space.rowGap) {
+            CoveIconTile(systemName: systemName, tint: tint)
+            content()
+        }
+        .padding(.vertical, CoveTheme.Space.rowPadding)
+    }
+}
+
+/// A row's primary text with an optional caption under it, at the one weight
+/// and gap every titled row in the app uses.
+struct CoveRowTitle: View {
+    let title: String
+    var caption: String?
+    /// Captions that are data ("2 items", "3 open · 1 done") are tracked
+    /// capitals like every other label; a caption that is a path or a
+    /// sentence stays sentence case and readable.
+    var captionIsLabel = true
+    var lineLimit: Int? = 2
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.body.weight(.medium))
+                .lineLimit(lineLimit)
+            if let caption {
+                if captionIsLabel {
+                    Text(caption).coveEyebrow()
+                } else {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
     }
 }
 
@@ -39,10 +90,55 @@ struct CoveCountBadge: View {
             .foregroundStyle(tint)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
-            .background(tint.opacity(0.13), in: Capsule())
-            .overlay {
-                Capsule().stroke(tint.opacity(0.16), lineWidth: 1)
-            }
+            .coveTintedSurface(tint, in: Capsule())
+    }
+}
+
+/// The one due-date capsule: a glyph, the phrasing `DueDescription` settled
+/// on, and a tinted well. Shared because the capture preview and the task row
+/// it becomes sit one keystroke apart on screen — drawn twice, they could
+/// word or shade the same date two ways.
+///
+/// Overdue is the loudest state, today takes the accent, and everything
+/// further out stays quiet: a list where every capsule is colored says
+/// nothing about which one to look at first.
+struct CoveDueCapsule: View {
+    let text: String
+    var hasTime: Bool
+    var isOverdue = false
+    var tint: Color = CoveTheme.accent
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+            Text(text)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .coveTintedSurface(tint, in: Capsule())
+    }
+
+    private var symbol: String {
+        if isOverdue { return "exclamationmark.circle.fill" }
+        return hasTime ? "clock" : "calendar"
+    }
+}
+
+/// The repeat rule under a task. Takes the rule's wording rather than the
+/// rule, so the design system stays clear of the task model.
+struct CoveRecurrenceLabel: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Label(text, systemImage: "repeat")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.tertiary)
     }
 }
 
@@ -91,10 +187,7 @@ struct CoveEmptyState<Actions: View>: View {
             .symbolRenderingMode(.hierarchical)
             .foregroundStyle(CoveTheme.accent)
             .frame(width: 54, height: 54)
-            .background(CoveTheme.accent.opacity(0.12), in: Circle())
-            .overlay {
-                Circle().stroke(CoveTheme.accent.opacity(0.18), lineWidth: 1)
-            }
+            .coveTintedSurface(CoveTheme.accent, in: Circle())
             .background {
                 Circle()
                     .fill(CoveTheme.accent.opacity(0.06))

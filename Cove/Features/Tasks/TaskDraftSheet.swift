@@ -27,18 +27,10 @@ struct TaskDraftSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    CoveMasthead(
-                        eyebrow: "Interpretation",
-                        title: "Check the details",
-                        subtitle: listName.map { "Fine-tune anything before it’s added to \($0)." }
-                            ?? "Fine-tune anything before it’s added to Tasks.md."
-                    )
-                    .listRowInsets(CoveTheme.mastheadRowInsets(bottom: 12))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                }
-
+                // No masthead: a sheet already announces itself in its own
+                // title bar, and "Check the details" under "New Task" was a
+                // second heading that pushed the fields being checked below
+                // the fold on a phone.
                 Section {
                     CoveRow(systemName: "quote.bubble.fill") {
                         TextField("Try “get bread 3p tmr”", text: $sentence)
@@ -58,11 +50,16 @@ struct TaskDraftSheet: View {
                 }
 
                 Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Title", systemImage: "textformat")
-                            .font(.subheadline.weight(.medium))
+                    // The label above and the field below used to be stacked,
+                    // which left the title starting at the section's edge
+                    // while every value under it — date, time, repeat — sat in
+                    // the trailing column. One row, one grid.
+                    LabeledContent {
                         TextField("Task title", text: $draft.title, axis: .vertical)
                             .lineLimit(1...3)
+                            .multilineTextAlignment(.trailing)
+                    } label: {
+                        Label("Title", systemImage: "textformat")
                     }
                     if allowsUndated {
                         Toggle(isOn: dateEnabledBinding) {
@@ -81,7 +78,13 @@ struct TaskDraftSheet: View {
                                 selection: timeBinding,
                                 displayedComponents: .hourAndMinute
                             ) {
-                                Label("At", systemImage: "bell")
+                                // A clock, not a bell: this row sets a time,
+                                // and the section below is the one that speaks
+                                // for what does and doesn't get a reminder.
+                                // The repeat is deliberate — the toggle above
+                                // it and its value share a glyph exactly as
+                                // Due Date and Date do.
+                                Label("At", systemImage: "clock")
                             }
                         }
                         // A repeat rule hangs off the `@due` tag, so it only
@@ -119,6 +122,13 @@ struct TaskDraftSheet: View {
                     .foregroundStyle(.secondary)
                     .font(.callout)
                     .padding(.vertical, 3)
+                } footer: {
+                    // Where the line lands: the removed header used to carry
+                    // this, and it is the one thing about the sheet a person
+                    // can't see from the fields.
+                    Text(
+                        listName.map { "Added to the “\($0)” list in Tasks.md." }
+                            ?? "Added to Tasks.md at the top of your vault.")
                 }
             }
             .disabled(isAdding)

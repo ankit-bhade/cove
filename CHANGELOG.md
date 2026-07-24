@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The screens whose first job is *doing* something lead with the thing itself.
+  Quick capture, a list's capture card, and the lists overview each carried a
+  full masthead — an accent rule, an eyebrow, a serif slogan, and a sentence of
+  instruction — which on the landing screen pushed the first overdue task most
+  of the way down the display for copy that is read once. They now use a
+  compact `CovePanel`: one label line, an optional count badge, and the field
+  or the figures. Six tasks fit above the fold where three did, and the
+  quick-add draft sheet drops its header entirely, so every field fits on one
+  screen without scrolling. `CoveMasthead` stays where its title says something
+  that changes — the greeting at the vault root and a folder's own name.
+- Markdown headers in the editor are set in the system serif, like every other
+  title in the app, and paragraph spacing beats line spacing (7 against 4) so a
+  new line is visibly a new line. At 4 and 2 a wrapped sentence and the next
+  task line opened the same gap, and a note of checkboxes read as one block.
+- The iOS tab bar is left to the system. Forcing a material on it replaced the
+  platform's own bar with a flat pill that content showed through unblurred.
 - Consolidated the duplication that had accumulated across the task screens,
   the coordination layer, and the date APIs, and removed the code nothing but
   the tests still reached. The Tasks tab and a list's detail view kept their
@@ -108,6 +124,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   appearance-aware to match the light icon face; its geometry is unchanged.
 
 ### Fixed
+
+- List rows draw their separators at one depth. SwiftUI derived the inset from
+  whichever nested label it happened to select, so in the same list a folder
+  row carrying a caption and a note row without one broke the line at two
+  different places; `CoveRow` now pins the guide to its text column.
+
+- The repeat rule under a task sits beside its glyph rather than a quarter-inch
+  away — a caption-size `Label` lays its icon out in a column wide enough to
+  strand the words — and reads at secondary rather than tertiary, which was too
+  faint against the due capsule next to it.
+
+- The quick-add sheet's title field lines up with the values below it. Its
+  label and field were stacked, leaving the title at the section's edge while
+  the date, time, and repeat sat in the trailing column.
 
 - One unreadable note no longer takes the whole vault down with it. A note
   whose bytes aren't UTF-8, or that iCloud hasn't materialized yet, used to

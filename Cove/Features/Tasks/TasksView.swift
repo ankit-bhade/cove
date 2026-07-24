@@ -56,7 +56,7 @@ struct TasksView: View {
         return List {
             Section {
                 captureMasthead(openCount: incomplete.count)
-                    .listRowInsets(CoveTheme.mastheadRowInsets())
+                    .listRowInsets(CoveTheme.headerRowInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -106,12 +106,12 @@ struct TasksView: View {
         .coveReadableWidth()
     }
 
+    /// Compact on purpose: this is the screen the app opens on, and a hero
+    /// card with a slogan and a syntax hint spent the top third of it on copy
+    /// that is read once. The field, the open count, and the first overdue
+    /// task now all land above the fold.
     private func captureMasthead(openCount: Int) -> some View {
-        CoveMasthead(
-            eyebrow: "Quick Capture",
-            title: "Write it, naturally",
-            subtitle: "“Get bread tmr 3pm” becomes a dated task in Tasks.md."
-        ) {
+        CovePanel(eyebrow: "Quick Capture") {
             CoveCountBadge("\(openCount) open")
                 .accessibilityLabel("\(openCount) open tasks")
         } content: {

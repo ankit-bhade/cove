@@ -40,6 +40,12 @@ struct CoveRow<Content: View>: View {
         HStack(alignment: alignment, spacing: CoveTheme.Space.rowGap) {
             CoveIconTile(systemName: systemName, tint: tint)
             content()
+                // Left to itself SwiftUI derives the separator's inset from
+                // whichever nested label it happens to select, so a folder row
+                // carrying a caption and a note row without one drew their
+                // separators at two different depths in the same list. Pinning
+                // the guide to the text column makes every row agree.
+                .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
         .padding(.vertical, CoveTheme.Space.rowPadding)
     }
@@ -136,9 +142,18 @@ struct CoveRecurrenceLabel: View {
     }
 
     var body: some View {
-        Label(text, systemImage: "repeat")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.tertiary)
+        // Not a `Label`: at caption size SwiftUI lays its glyph out in an icon
+        // column wide enough to leave the rule floating a quarter-inch from
+        // the words it belongs to. Tertiary was too faint to read against the
+        // capsule beside it, so the pair sits at secondary instead.
+        HStack(spacing: 4) {
+            Image(systemName: "repeat")
+            Text(text)
+        }
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Repeats \(text.lowercased())")
     }
 }
 

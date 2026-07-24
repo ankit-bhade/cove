@@ -18,12 +18,16 @@ hardening and a new visual direction — ink on warm paper, marked in ember,
 replacing the coastal palette the app shipped with. That direction was pushed
 down into the grid — one `CoveRow` behind every list row and one pair of tint
 tokens behind every tinted surface — and Tasks became the section the app
-opens on. Most recently the same consolidation was applied to behavior rather
+opens on. Then the same consolidation was applied to behavior rather
 than appearance: one `TaskActions` behind both task screens, one
 `FileCoordination` behind every coordinated access, one `covePresence()`
 behind every optional-driven presentation, and a time zone rather than a
-discarded `Calendar` in every date API. See `CHANGELOG.md` for what has
-shipped and "The visual system" below for what the direction commits to.
+discarded `Calendar` in every date API. Most recently the headers were
+weighed against what they cost: the three screens that lead with a control
+rather than a greeting traded their mastheads for a compact `CovePanel`, so
+the landing screen opens on tasks rather than on a slogan. See `CHANGELOG.md`
+for what has shipped and "The visual system" below for what the direction
+commits to.
 
 The phases were: folder picker and bookmarks (1), editor and file operations
 (2), live Markdown styling (3), iCloud change detection (4), search (5), tasks
@@ -311,7 +315,14 @@ which a `UITextView` has no return key to do.
 `MarkdownParser` (pure Foundation) returns UTF-16 `NSRange`s that apply
 directly to text storage. `MarkdownStyler` restyles the edited paragraph plus
 its neighbors; whole-document styling is reserved for load and global style
-changes. **Styling is attribute-only** — the stored text stays plain Markdown,
+changes.
+
+**A `#` line is set in the serif face**, which is the same split the rest of
+the type system draws — a heading is read once where the text under it is
+scanned — and it puts a note's own title in the voice of the screen title
+directly above it. **Paragraph spacing has to beat line spacing** (7 against
+4): at 4 and 2 a wrapped sentence and the next task line opened the same gap,
+so a note of checkboxes read as a single block of text. **Styling is attribute-only** — the stored text stays plain Markdown,
 so selection and the undo stack are untouched. Restyling is skipped while IME
 marked text is active.
 
@@ -581,19 +592,22 @@ directly beneath it. Touching `standardAppearance` replaces the whole
 appearance object, so the transparent scroll-edge bar has to be restated or
 every screen gains a material behind its title.
 
-**`CoveMasthead` is one component, not three cards.** Notes, Tasks, and Lists
-sit one tab apart and their headers get compared; three hand-built cards drift
-by definition. It carries a short accent rule (the app's one repeated
-ornament), an eyebrow, a serif title, an optional subtitle, an optional
-trailing accessory, and whatever the screen puts underneath — a `CoveStatStrip`,
-a `QuickCaptureField`, nothing. **An eyebrow never repeats the navigation
-title above it**: at the vault root it names the open vault, which nothing
-else on screen says; on a capture card it names the card.
+**A header earns its height when its title says something that changes.**
+`CoveMasthead` — accent rule, eyebrow, serif title, optional subtitle, and
+whatever the screen puts underneath — is now the vault browser's alone, where
+the title is the time-aware greeting at the root and the folder's own name a
+level down. The capture screens and the lists overview had the same card
+carrying a fixed slogan and a sentence of instruction, which is read once and
+paid for on every launch: on the app's landing screen it pushed the first
+overdue task most of the way down the display. They use `CovePanel` instead —
+the same material and the same ornament, but one label line with an optional
+count badge, then the field or the figures. The masthead lost its trailing
+accessory with them, so its ambiguous convenience inits are gone too and one
+initializer remains.
 
-Only two of the three convenience inits exist. A `Trailing == EmptyView` and a
-`Content == EmptyView` init are both candidates for a single unlabeled
-trailing closure, so the pair is ambiguous at every call site — the
-accessory-carrying form is spelled out instead.
+**An eyebrow never repeats the navigation title above it**: at the vault root
+it names the open vault, which nothing else on screen says; on a capture card
+it names the card.
 
 `CoveSectionHeader` is the one list-section header, `CoveIconTile` the one
 row glyph (decorative, so `accessibilityHidden` — the row carries the label —
@@ -611,7 +625,11 @@ one `Form` it is the misalignment a reader sees without being able to name.
 The component holds `Space.rowGap` and `Space.rowPadding` so a folder row, a
 list row, and a settings row cannot disagree, and `CoveRowTitle` carries the
 title-plus-caption pairing (tracked capitals when the caption is data, plain
-secondary text when it is a path or a snippet).
+secondary text when it is a path or a snippet). It also pins
+`.listRowSeparatorLeading` to its text column: left alone SwiftUI infers that
+inset from whichever nested label it selects, so a folder row with a caption
+and a note row without one broke their separators at two different depths in
+the same list — the same failure `TaskRow` already pins to zero.
 
 **Tinted surfaces come from `Tint.fill`/`Tint.stroke`, applied through
 `coveTintedSurface(_:in:)`.** A tile, a badge, a due capsule, an editor
@@ -644,7 +662,11 @@ the call.)
 
 **Tab and sidebar symbols are outline names.** The iOS tab bar substitutes
 the filled variant itself, so the choice only shows through on the macOS
-sidebar, where outline is the platform convention.
+sidebar, where outline is the platform convention. **The bar itself carries no
+background override.** `toolbarBackground(_:for: .tabBar)` replaces whatever
+the running system draws there, which on iOS 26 meant a flat pill in place of
+the platform's own bar with rows showing through it unblurred — a tab bar is
+the one piece of chrome every app on the device shares, so it is left alone.
 The visual system is standard SwiftUI throughout — no assets beyond
 `LaunchIcon`, no dependencies, no persistence changes.
 

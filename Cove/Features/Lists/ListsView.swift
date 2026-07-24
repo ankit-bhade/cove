@@ -77,7 +77,7 @@ struct ListsView: View {
             } else {
                 Section {
                     listsOverview(lists)
-                        .listRowInsets(CoveTheme.mastheadRowInsets())
+                        .listRowInsets(CoveTheme.headerRowInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
@@ -127,11 +127,9 @@ struct ListsView: View {
         let open = lists.reduce(0) { $0 + $1.openTasks.count }
         let completed = lists.reduce(0) { $0 + $1.completedTasks.count }
 
-        return CoveMasthead(
-            eyebrow: "Overview",
-            title: "Everything in its place",
-            subtitle: "Reusable groups for the things you keep track of."
-        ) {
+        // The three figures are the whole point of this card; the slogan over
+        // them was decoration that pushed the lists themselves down the screen.
+        return CovePanel(eyebrow: "Overview") {
             CoveStatStrip(stats: [
                 CoveStat(lists.count, lists.count == 1 ? "List" : "Lists"),
                 CoveStat(open, "Open"),

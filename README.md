@@ -105,10 +105,13 @@ night-black in dark. Inside, the interface is set in ink on warm paper: a warm
 off-white canvas, screen titles and headlines in the system serif, tracked
 capitals for labels, monospaced digits for every count, and a single burnt-ember
 accent that carries interaction — with moss for folders and lists and a warm
-rust for anything overdue. Each main screen opens with the same masthead
-(a short accent rule, a label, a serif title, and the screen's own content
-beneath it), every list row shares one icon-and-text grid, and setup, loading,
-empty, and search states are all drawn from that one system. On Mac, Tasks,
+rust for anything overdue. The Notes screen opens with a masthead — a short
+accent rule, a label, a serif title, and the screen's own content beneath it —
+while the screens you come to *do* something on lead with the thing itself: a
+compact panel puts the quick-capture field and the open count at the top with
+the first task right under them. Every list row shares one icon-and-text grid,
+and setup, loading, empty, and search states are all drawn from that one
+system. On Mac, Tasks,
 Notes, Lists, and Settings live in a native branded sidebar; iPhone and iPad
 keep the familiar tab bar. Tasks leads both and is where Cove opens
 everywhere — including the Today widget's deep link, so both ways in land on

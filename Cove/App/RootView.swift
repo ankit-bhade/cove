@@ -93,6 +93,11 @@ struct RootView: View {
             }
             .navigationSplitViewStyle(.balanced)
         #else
+            // The tab bar takes no background override. `toolbarBackground`
+            // replaces whatever the running system draws there, which on
+            // iOS 26 meant a flat pill in place of the platform's own bar with
+            // rows showing through it unblurred — and a tab bar is the one
+            // piece of chrome every app on the device shares.
             TabView(selection: $selectedSection) {
                 ForEach(AppSection.allCases) { section in
                     sectionView(section)
@@ -100,8 +105,6 @@ struct RootView: View {
                         .tag(section)
                 }
             }
-            .toolbarBackground(.visible, for: .tabBar)
-            .toolbarBackground(.ultraThinMaterial, for: .tabBar)
         #endif
     }
 

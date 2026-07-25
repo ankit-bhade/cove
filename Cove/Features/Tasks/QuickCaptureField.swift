@@ -199,7 +199,7 @@ struct QuickCaptureField: View {
     @ViewBuilder
     private func metadata(due: String, draft: TaskDraft) -> some View {
         if !due.isEmpty {
-            CoveDueCapsule(text: due, hasTime: draft.dueTimeString != nil)
+            CoveDueLabel(text: due)
         }
         if let rule = draft.recurrence {
             CoveRecurrenceLabel(rule.displayName)

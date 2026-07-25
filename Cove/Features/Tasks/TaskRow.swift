@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// One task line as the Tasks and Lists screens both draw it: a checkbox
-/// with a 44pt target, the text, and its schedule as a tinted capsule.
+/// with a 44pt target, the text, and its schedule on the line beneath it.
 /// Shared so the two screens can't drift apart — the whole point of Lists is
 /// that a list task is an ordinary task kept somewhere else.
 ///
@@ -15,7 +15,7 @@ import SwiftUI
 /// so the text column lines up across all four screens.
 ///
 /// Tapping the row opens the task's note; swiping (or the context menu)
-/// deletes the line. An undated list item simply shows no due capsule.
+/// deletes the line. An undated list item simply shows no due line.
 struct TaskRow: View {
     let task: TaskItem
     let now: Date
@@ -74,11 +74,21 @@ struct TaskRow: View {
                 // The source note is deliberately not shown: tasks nearly
                 // always live in the capture note, so the row read as a
                 // repeated "Tasks" caption under every task.
-                // The title-to-caption gap `CoveRowTitle` uses, and zero when
-                // an undated item's row is nothing but its title.
-                VStack(alignment: .leading, spacing: task.hasDueDate ? 3 : 0) {
+                // A point over `CoveRowTitle`'s title-to-caption gap, which
+                // puts the date the same distance under the title that
+                // Reminders puts it. Zero when an undated item's row is
+                // nothing but its title.
+                VStack(alignment: .leading, spacing: task.hasDueDate ? 4 : 0) {
+                    // Regular, where every other row title in the app is
+                    // medium. A task row is the one row that is a sentence
+                    // with a second line under it rather than a label with a
+                    // tag: at medium the title had enough ink that the date
+                    // read as attached to it, and the pair clumped into a
+                    // block no matter what the gap was set to. Lightening the
+                    // title is what separates them — the same pairing
+                    // Reminders uses, and the reason its rows breathe.
                     Text(task.text)
-                        .font(.body.weight(.medium))
+                        .font(.body)
                         .strikethrough(task.isCompleted)
                         .foregroundStyle(task.isCompleted ? .secondary : .primary)
                     metadata(overdue: overdue)
@@ -111,17 +121,17 @@ struct TaskRow: View {
             EmptyView()
         } else if let rule = task.recurrence, !dynamicTypeSize.isAccessibilitySize {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 6) {
+                HStack(spacing: CoveTheme.Space.tight) {
                     dueLabel(overdue: overdue)
                     recurrenceLabel(rule)
                 }
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     dueLabel(overdue: overdue)
                     recurrenceLabel(rule)
                 }
             }
         } else if let rule = task.recurrence {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 dueLabel(overdue: overdue)
                 recurrenceLabel(rule)
             }
@@ -135,20 +145,26 @@ struct TaskRow: View {
     }
 
     private func dueLabel(overdue: Bool) -> some View {
-        CoveDueCapsule(
+        CoveDueLabel(
             text: task.relativeDueDescription(at: now),
-            hasTime: task.dueTimeString != nil,
             isOverdue: overdue,
             tint: dueTint(overdue: overdue))
     }
 
-    /// A completed task's capsule goes quiet with the rest of its row.
-    /// Struck-through grey text under a full-strength ember capsule left the
-    /// loudest thing in the row attached to the one task that no longer wants
-    /// attention — finishing something should quiet a row, not light it up.
+    /// Lateness is the only state a due line raises its voice for.
+    ///
+    /// Today used to take the accent, which meant that on the landing screen —
+    /// where nearly everything is due today or overdue — almost every row
+    /// carried a saturated second line. A subtitle at the title's own strength
+    /// stops reading as a subtitle: the pair clumps, and a list where every
+    /// date is coloured says nothing about which one to read first. It was
+    /// also redundant twice over, since a row saying "Today" sits under a
+    /// header saying TODAY, and its checkbox is already ember.
+    ///
+    /// A completed task's line goes quiet with the rest of its row for the
+    /// same reason it always did: finishing something should settle a row
+    /// rather than light it up.
     private func dueTint(overdue: Bool) -> Color {
-        if task.isCompleted { return .secondary }
-        if overdue { return CoveTheme.alert }
-        return task.isDue(onSameDayAs: now) ? CoveTheme.accent : .secondary
+        overdue && !task.isCompleted ? CoveTheme.alert : .secondary
     }
 }

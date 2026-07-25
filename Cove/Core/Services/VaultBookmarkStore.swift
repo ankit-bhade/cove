@@ -6,6 +6,14 @@ private let bookmarkLogger = Logger(subsystem: "com.ankitbhade.Cove", category: 
 /// Persists the vault's security-scoped bookmark in `UserDefaults` and
 /// resolves it back into a URL on launch.
 struct VaultBookmarkStore {
+    enum StoreError: LocalizedError {
+        case persistenceFailed
+
+        var errorDescription: String? {
+            "Cove could not persist access to this vault."
+        }
+    }
+
     enum Resolution: Equatable {
         case noBookmark
         case resolved(URL)
@@ -49,11 +57,28 @@ struct VaultBookmarkStore {
 
     /// The URL must be within an active security scope when this is called.
     func saveBookmark(for url: URL) throws {
-        let data = try url.bookmarkData(
+        try saveBookmarkData(makeBookmarkData(for: url))
+    }
+
+    /// Creates bookmark bytes without mutating the currently stored
+    /// selection. Vault switching uses this to fully validate a candidate
+    /// before replacing the last known-good bookmark.
+    func makeBookmarkData(for url: URL) throws -> Data {
+        try url.bookmarkData(
             options: creationOptions,
             includingResourceValuesForKeys: nil,
             relativeTo: nil)
+    }
+
+    /// Commits already-created bookmark bytes and verifies the defaults store
+    /// accepted the exact value. `UserDefaults.set` has no throwing variant,
+    /// so the read-back is what prevents an apparent success from losing the
+    /// selected vault at the next launch.
+    func saveBookmarkData(_ data: Data) throws {
         defaults.set(data, forKey: Self.bookmarkKey)
+        guard defaults.data(forKey: Self.bookmarkKey) == data else {
+            throw StoreError.persistenceFailed
+        }
     }
 
     func clearBookmark() {
@@ -77,23 +102,25 @@ struct VaultBookmarkStore {
             return .stale
         }
         if isStale {
-            refreshBookmark(for: url)
+            do {
+                try refreshBookmark(for: url)
+            } catch {
+                bookmarkLogger.error(
+                    "Stale bookmark refresh failed: \(error.localizedDescription, privacy: .private)")
+                return .stale
+            }
         }
         return .resolved(url)
     }
 
-    /// Best-effort re-creation of a bookmark the system reported stale.
-    /// Failure is fine: the resolved URL is still usable this session, and a
-    /// later failure surfaces the reselect-vault flow.
-    private func refreshBookmark(for url: URL) {
+    /// Re-creates a stale bookmark before reporting restoration success. A
+    /// stale bookmark that cannot be renewed is not silently accepted for one
+    /// session only; the recovery screen asks for a durable re-selection.
+    private func refreshBookmark(for url: URL) throws {
         let didStart = url.startAccessingSecurityScopedResource()
         defer {
             if didStart { url.stopAccessingSecurityScopedResource() }
         }
-        do {
-            try saveBookmark(for: url)
-        } catch {
-            bookmarkLogger.error("Stale bookmark refresh failed: \(error.localizedDescription, privacy: .private)")
-        }
+        try saveBookmark(for: url)
     }
 }

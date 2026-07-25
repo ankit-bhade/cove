@@ -131,10 +131,25 @@ final class QuickTaskParserTests: XCTestCase {
         XCTAssertEqual(parse("gift feb 3rd").dueDateString, "2027-02-03")
     }
 
-    func testInvalidSlashDateIsIgnored() {
-        let p = parse("score was 15/2")
-        XCTAssertEqual(p.title, "Score was 15/2")
-        XCTAssertEqual(p.dueDateString, "2026-07-01")  // undated → today
+    func testOutOfRangeSlashDateProducesBlockingDiagnostic() {
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "score was 15/2", now: now, timeZone: calendar.timeZone)
+        XCTAssertEqual(result.draft.title, "Score was")
+        XCTAssertEqual(result.diagnostics.map(\.kind), [.impossibleDate])
+        XCTAssertFalse(result.canCapture)
+    }
+
+    func testImpossibleDatesDoNotNormalizeIntoAnotherMonth() {
+        for input in ["trip feb 30", "trip 2/30/2027", "trip apr 99"] {
+            let result = QuickTaskParser.parseWithDiagnostics(
+                input, now: now, timeZone: calendar.timeZone)
+            XCTAssertEqual(result.diagnostics.first?.kind, .impossibleDate, input)
+            XCTAssertFalse(result.canCapture, input)
+        }
+    }
+
+    func testLeapDayFindsTheNextLeapYear() {
+        XCTAssertEqual(parse("renew feb 29").dueDateString, "2028-02-29")
     }
 
     // MARK: - Times
@@ -176,6 +191,11 @@ final class QuickTaskParserTests: XCTestCase {
     func testBareTimeMeansTodayEvenWhenPassed() {
         // Now is 10:00; grove keeps a passed bare time on today.
         XCTAssertEqual(parse("standup 9a").dueDateString, "2026-07-01")
+        XCTAssertEqual(
+            QuickTaskParser.parseWithDiagnostics(
+                "standup 9a", now: now, timeZone: calendar.timeZone
+            ).diagnostics.map(\.kind),
+            [.pastTime])
     }
 
     // MARK: - Time ranges
@@ -334,17 +354,87 @@ final class QuickTaskParserTests: XCTestCase {
     /// re-parses on every keystroke — an unclamped one would trap the
     /// process mid-sentence rather than produce a date.
     func testHugeRelativeCountsAreClampedRatherThanOverflowing() {
-        let draft = parse("pay rent in 9223372036854775807 weeks")
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "pay rent in 9223372036854775807 weeks",
+            now: now,
+            timeZone: calendar.timeZone)
+        let draft = result.draft
         XCTAssertEqual(draft.title, "Pay rent")
         XCTAssertEqual(
             draft.dueDateString,
             parse("pay rent in \(QuickTaskParser.maximumRelativeUnits) weeks")
                 .dueDateString)
+        XCTAssertEqual(result.diagnostics.map(\.kind), [.valueTooLarge])
     }
 
     func testHugeRecurrenceIntervalIsClamped() {
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "water plants every 9223372036854775807 weeks",
+            now: now,
+            timeZone: calendar.timeZone)
         XCTAssertEqual(
-            parse("water plants every 9223372036854775807 weeks").recurrence?.interval,
+            result.draft.recurrence?.interval,
             RecurrenceRule.maximumInterval)
+        XCTAssertEqual(result.diagnostics.map(\.kind), [.valueTooLarge])
+    }
+
+    func testInvalidClockTokensProduceBlockingDiagnostics() {
+        for input in ["call 25:00", "call 13pm", "call 9960p"] {
+            let result = QuickTaskParser.parseWithDiagnostics(
+                input, now: now, timeZone: calendar.timeZone)
+            XCTAssertEqual(result.diagnostics.first?.kind, .invalidTime, input)
+            XCTAssertFalse(result.canCapture, input)
+        }
+    }
+
+    func testMultipleDifferentDatesAreAmbiguous() {
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "plan friday tomorrow", now: now, timeZone: calendar.timeZone)
+        XCTAssertTrue(result.diagnostics.contains { $0.kind == .ambiguousDate })
+        // Warned, not refused: the sentence resolves to a real date, the
+        // preview shows which one, and that preview is the whole reason
+        // capture has no confirmation step.
+        XCTAssertTrue(result.canCapture)
+    }
+
+    /// Only a sentence Cove cannot write down correctly is refused. These
+    /// three all produce a valid task line, and two of them are documented
+    /// grove-parity behavior, so blocking return on them would have made
+    /// quick capture refuse input the parser understood perfectly well.
+    func testAdvisoryDiagnosticsWarnWithoutBlockingCapture() {
+        let advisory = [
+            "standup 9a",  // pastTime — a bare time is deliberately today
+            "plan friday tomorrow",  // ambiguousDate
+            "review in 99999 weeks",  // valueTooLarge, silently clamped
+        ]
+        for input in advisory {
+            let result = QuickTaskParser.parseWithDiagnostics(
+                input, now: now, timeZone: calendar.timeZone)
+            XCTAssertFalse(result.diagnostics.isEmpty, input)
+            XCTAssertTrue(result.canCapture, input)
+            XCTAssertTrue(
+                result.diagnostics.allSatisfy { !$0.blocksCapture }, input)
+        }
+    }
+
+    func testUnwritableSentencesStillBlockCapture() {
+        for input in ["trip feb 30", "call 25:00"] {
+            let result = QuickTaskParser.parseWithDiagnostics(
+                input, now: now, timeZone: calendar.timeZone)
+            XCTAssertTrue(
+                result.diagnostics.contains(where: \.blocksCapture), input)
+            XCTAssertFalse(result.canCapture, input)
+        }
+    }
+
+    func testUnsafeTitleMustBeAcknowledgedInsteadOfSilentlyRewritten() {
+        let draft = TaskDraft(
+            title: "First\nSecond @due(fake)",
+            dueDateString: nil,
+            dueTimeString: nil,
+            recurrence: nil)
+        XCTAssertEqual(draft.sanitizedTitle, "First Second @due (fake)")
+        XCTAssertEqual(draft.validationIssues, [.unsafeTitle])
+        XCTAssertThrowsError(try draft.validatedMarkdownLine())
     }
 }

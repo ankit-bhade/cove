@@ -5,8 +5,20 @@ struct TaskNotificationPlan: Equatable, Sendable {
     let identifier: String
     let title: String
     let body: String
-    /// Local year/month/day/hour/minute of the one-shot fire moment.
+    /// Year/month/day/hour/minute of the one-shot fire moment, including the
+    /// Gregorian calendar and the time zone in which Cove interpreted the
+    /// task's otherwise zone-less Markdown due time.
     let fireDateComponents: DateComponents
+}
+
+/// The complete result of planning, including work that could not be handed
+/// to the notification center. Keeping the cap visible avoids presenting
+/// "successfully scheduled 60" as "every reminder is covered."
+struct TaskNotificationPlanInventory: Equatable, Sendable {
+    let plans: [TaskNotificationPlan]
+    let eligibleCount: Int
+    let omittedBySystemLimit: Int
+    let invalidDateCount: Int
 }
 
 /// Pure planning half of task notifications: decides which tasks get a
@@ -23,7 +35,7 @@ struct TaskNotificationPlan: Equatable, Sendable {
 enum TaskNotificationPlanner {
     /// Every app-generated identifier carries this prefix, so a rebuild can
     /// remove exactly the requests the app created and nothing else.
-    static let identifierPrefix = "cove-task:"
+    static let identifierPrefix = CoveTaskNotificationIdentifier.prefix
 
     /// The system keeps at most 64 pending local notifications per app;
     /// stay under it and let the soonest-due tasks win.
@@ -34,38 +46,65 @@ enum TaskNotificationPlanner {
         now: Date,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> [TaskNotificationPlan] {
+        inventory(for: tasks, now: now, timeZone: timeZone).plans
+    }
+
+    /// Plans reminders and reports both invalid local wall-clock values (for
+    /// example 02:30 during a spring-forward gap) and otherwise valid tasks
+    /// omitted because iOS/macOS cap pending local notifications.
+    static func inventory(
+        for tasks: [TaskItem],
+        now: Date,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> TaskNotificationPlanInventory {
         let calendar = TaskCalendar.gregorian(timeZone: timeZone)
-        // The cap is applied before the bodies are worded: the tasks past it
-        // are never scheduled, so formatting a date for each of them is work
-        // thrown away.
-        return
+        var invalidDateCount = 0
+        let eligible =
             tasks
             .filter { !$0.isCompleted && $0.dueTimeString != nil }
             .sorted(by: VaultIndex.byDueDate)
             .compactMap { task -> (task: TaskItem, fireDate: Date, components: DateComponents)? in
-                // A time can only exist alongside a date, so the undated
-                // list items never reach here — but the model allows nil.
-                guard let time = task.timeComponents,
-                    let dueDateString = task.dueDateString
+                guard let dueDateString = task.dueDateString,
+                    let dueTimeString = task.dueTimeString
                 else { return nil }
-                let parts = dueDateString.split(separator: "-").compactMap { Int($0) }
-                guard parts.count == 3 else { return nil }
-                let components = DateComponents(
-                    year: parts[0], month: parts[1], day: parts[2],
+                guard
+                    case .success(let resolution) = TaskCalendar.resolve(
+                        date: dueDateString,
+                        time: dueTimeString,
+                        timeZone: timeZone,
+                        nonexistentTime: .reject,
+                        repeatedTime: .first),
+                    let date = TaskCalendar.dateComponents(from: dueDateString),
+                    let time = TaskCalendar.timeComponents(from: dueTimeString)
+                else {
+                    invalidDateCount += 1
+                    return nil
+                }
+                var components = DateComponents(
+                    year: date.year, month: date.month, day: date.day,
                     hour: time.hour, minute: time.minute)
-                guard let fireDate = calendar.date(from: components),
-                    fireDate > now
-                else { return nil }
-                return (task, fireDate, components)
+                components.calendar = calendar
+                components.timeZone = timeZone
+                guard resolution.date > now else { return nil }
+                return (task, resolution.date, components)
             }
+
+        let plans =
+            eligible
             .prefix(maximumPlans)
             .map { scheduled in
                 TaskNotificationPlan(
-                    identifier: identifierPrefix + scheduled.task.id,
+                    identifier: CoveTaskNotificationIdentifier.identifier(
+                        forTaskID: scheduled.task.id),
                     title: scheduled.task.text,
                     body: "\(formattedDueMoment(scheduled.fireDate, calendar: calendar)).",
                     fireDateComponents: scheduled.components)
             }
+        return TaskNotificationPlanInventory(
+            plans: Array(plans),
+            eligibleCount: eligible.count,
+            omittedBySystemLimit: max(0, eligible.count - maximumPlans),
+            invalidDateCount: invalidDateCount)
     }
 
     /// A compact, human-readable reminder date, for example

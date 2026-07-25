@@ -1,11 +1,9 @@
 import XCTest
 @testable import Cove
 
-/// The App Group channel's pure parts: which tasks reach the widget, how a
-/// snapshot survives a round trip through JSON, and when a stale one expires.
-/// The container I/O itself isn't covered — an App Group container isn't
-/// available to the test host — nor is the widget extension, which can't be
-/// loaded in-process.
+/// The App Group channel's pure parts and its coordinated file store. Tests
+/// use a temporary container; the signed App Group entitlement and widget
+/// extension lifecycle still require device coverage.
 final class WidgetSnapshotTests: XCTestCase {
 
     private let calendar = Calendar.current
@@ -101,6 +99,24 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.openTasks.map(\.text), ["Open"])
     }
 
+    func testBuiltSnapshotIsCappedButPreservesFullCounts() {
+        let tasks = (0..<(TodaySnapshot.maximumStoredTasks + 8)).map { line in
+            task(
+                "Task \(line)",
+                due: "2026-07-19",
+                line: line)
+        }
+
+        let now = calendar.date(
+            from: DateComponents(
+                year: 2026, month: 7, day: 19, hour: 9))!
+        let snapshot = TodaySnapshot.building(for: now, from: tasks)
+
+        XCTAssertEqual(snapshot.tasks.count, TodaySnapshot.maximumStoredTasks)
+        XCTAssertEqual(snapshot.totalTaskCount, tasks.count)
+        XCTAssertEqual(snapshot.totalOpenTaskCount, tasks.count)
+    }
+
     // MARK: - Staleness
 
     func testSnapshotFromAnotherDayReadsAsEmpty() {
@@ -116,7 +132,9 @@ final class WidgetSnapshotTests: XCTestCase {
             from: DateComponents(
                 year: 2026, month: 7, day: 19,
                 hour: 9))!
-        XCTAssertTrue(yesterday.valid(at: now).tasks.isEmpty)
+        let valid = yesterday.valid(at: now)
+        XCTAssertTrue(valid.tasks.isEmpty)
+        XCTAssertEqual(valid.availability, .stale)
     }
 
     func testSnapshotFromTheSameDaySurvives() {
@@ -127,6 +145,16 @@ final class WidgetSnapshotTests: XCTestCase {
         let snapshot = TodaySnapshot.building(
             for: now, from: [task("Keep me", due: "2026-07-19")])
         XCTAssertEqual(snapshot.valid(at: now).tasks.map(\.text), ["Keep me"])
+    }
+
+    func testUnavailableSnapshotDoesNotTurnIntoAllClearAtMidnight() {
+        let unavailable = TodaySnapshot.unavailable(
+            .vaultUnavailable,
+            at: Date(timeIntervalSince1970: 1))
+
+        XCTAssertEqual(
+            unavailable.valid(at: Date(timeIntervalSince1970: 10_000_000)).availability,
+            .vaultUnavailable)
     }
 
     // MARK: - Round trips
@@ -147,17 +175,92 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(decoded.recurrence, RecurrenceRule(frequency: .weekly, interval: 2))
     }
 
+    func testSnapshotTaskRoundTripPreservesAnchorAndSectionedIdentity() throws {
+        let original = SnapshotTask(
+            filePath: "/vault/tasks.md",
+            lineNumber: 7,
+            text: "Billing",
+            dueDateString: "2026-02-28",
+            dueTimeString: "09:30",
+            recurrenceTag: "monthly",
+            isCompleted: false,
+            recurrenceAnchorDateString: "2026-01-30",
+            isSectionedDocument: true)
+
+        let decoded = try JSONDecoder().decode(
+            SnapshotTask.self,
+            from: JSONEncoder().encode(original))
+
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(
+            decoded.identity.recurrenceAnchorDateString,
+            "2026-01-30")
+        XCTAssertTrue(decoded.identity.isSectionedDocument)
+        XCTAssertEqual(
+            decoded.taskItem.recurrenceAnchorDateString,
+            "2026-01-30")
+        XCTAssertTrue(decoded.taskItem.isSectionedDocument)
+    }
+
+    func testLegacySnapshotTaskDefaultsNewIdentityFields() throws {
+        let legacy = Data(
+            """
+            {
+              "filePath": "/vault/tasks.md",
+              "lineNumber": 2,
+              "text": "Legacy",
+              "dueDateString": "2026-07-19",
+              "recurrenceTag": "daily",
+              "isCompleted": false
+            }
+            """.utf8)
+
+        let decoded = try JSONDecoder().decode(
+            SnapshotTask.self,
+            from: legacy)
+
+        XCTAssertNil(decoded.recurrenceAnchorDateString)
+        XCTAssertFalse(decoded.isSectionedDocument)
+        XCTAssertNil(decoded.identity.recurrenceAnchorDateString)
+        XCTAssertFalse(decoded.identity.isSectionedDocument)
+    }
+
+    func testLegacySnapshotWithoutSchemaMigratesWithDefaults() throws {
+        let legacy = LegacyTodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(timeIntervalSince1970: 123),
+            tasks: [SnapshotTask(task("Legacy", due: "2026-07-19"))])
+
+        let decoded = try JSONDecoder().decode(
+            TodaySnapshot.self,
+            from: JSONEncoder().encode(legacy))
+
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.revision, 0)
+        XCTAssertEqual(decoded.availability, .available)
+        XCTAssertEqual(decoded.totalOpenTaskCount, 1)
+    }
+
     func testSnapshotTaskConvertsBackToATaskItem() {
         // The widget reuses the app's own display logic, so the round trip
         // has to preserve everything that logic reads.
         let item = task("Reply to Maya", due: "2026-07-19", time: "08:30", line: 3)
-        let restored = SnapshotTask(item).taskItem
+        let snapshotTask = SnapshotTask(item)
+        let restored = snapshotTask.taskItem
         XCTAssertEqual(restored.text, item.text)
         XCTAssertEqual(restored.dueDateString, item.dueDateString)
         XCTAssertEqual(restored.dueTimeString, item.dueTimeString)
         XCTAssertEqual(restored.lineNumber, item.lineNumber)
         XCTAssertEqual(restored.fileURL.path, item.fileURL.path)
+        // In-app identity is unchanged by the round trip; it is the *widget*
+        // id that must never carry a vault path, because an App Intent
+        // parameter can be persisted by the system.
         XCTAssertEqual(restored.id, item.id)
+        XCTAssertTrue(snapshotTask.id.hasPrefix("cove-widget:"))
+        XCTAssertFalse(snapshotTask.id.contains(item.fileURL.path))
+        XCTAssertEqual(
+            snapshotTask.notificationIdentifier,
+            CoveTaskNotificationIdentifier.identifier(forTaskID: item.id))
     }
 
     func testSettingCompletedChangesOnlyCompletion() {
@@ -169,6 +272,91 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(completed.settingCompleted(false), original)
         // Desired state, not a flip: applying it twice is the same as once.
         XCTAssertEqual(completed.settingCompleted(true), completed)
+    }
+
+    func testDeferredCompletionRemainsAuthoritativelyOpenAndShowsPending() throws {
+        var snapshot = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(),
+            tasks: [
+                SnapshotTask(task("First", due: "2026-07-19", line: 1)),
+                SnapshotTask(task("Second", due: "2026-07-19", line: 2)),
+            ])
+        let firstID = try XCTUnwrap(snapshot.tasks.first?.id)
+
+        try snapshot.applyOptimisticCompletion(
+            taskID: firstID,
+            desiredCompletion: true,
+            operationID: UUID(),
+            outcome: .deferred,
+            at: Date())
+
+        let pending = try XCTUnwrap(snapshot.tasks.first { $0.id == firstID })
+        XCTAssertFalse(pending.isCompleted)
+        XCTAssertEqual(pending.pendingCompletion, true)
+        XCTAssertEqual(snapshot.totalOpenTaskCount, 2)
+        XCTAssertEqual(snapshot.optimisticMutations.count, 1)
+    }
+
+    func testConfirmedCompletionResortsBelowOpenWork() throws {
+        var snapshot = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(),
+            tasks: [
+                SnapshotTask(task("First", due: "2026-07-19", line: 1)),
+                SnapshotTask(task("Second", due: "2026-07-19", line: 2)),
+            ])
+        let firstID = try XCTUnwrap(snapshot.tasks.first?.id)
+
+        try snapshot.applyOptimisticCompletion(
+            taskID: firstID,
+            desiredCompletion: true,
+            operationID: UUID(),
+            outcome: .changed,
+            at: Date())
+
+        XCTAssertEqual(snapshot.tasks.map(\.text), ["Second", "First"])
+        XCTAssertTrue(try XCTUnwrap(snapshot.tasks.last).isCompleted)
+        XCTAssertEqual(snapshot.totalOpenTaskCount, 1)
+    }
+
+    func testAuthoritativePublishMergesThenRetiresOptimisticState() throws {
+        let originalTasks = [
+            SnapshotTask(task("First", due: "2026-07-19", line: 1)),
+            SnapshotTask(task("Second", due: "2026-07-19", line: 2)),
+        ]
+        var previous = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(),
+            tasks: originalTasks)
+        let taskID = try XCTUnwrap(previous.tasks.first?.id)
+        try previous.applyOptimisticCompletion(
+            taskID: taskID,
+            desiredCompletion: true,
+            operationID: UUID(),
+            outcome: .changed,
+            at: Date())
+
+        let stalePublish = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(),
+            tasks: originalTasks
+        )
+        .mergingOptimisticMutations(from: previous, at: Date())
+        XCTAssertTrue(
+            try XCTUnwrap(stalePublish.tasks.first { $0.id == taskID }).isCompleted)
+        XCTAssertEqual(stalePublish.optimisticMutations.count, 1)
+
+        let freshTasks = originalTasks.map {
+            $0.id == taskID ? $0.settingCompleted(true) : $0
+        }
+        let freshPublish = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(),
+            tasks: freshTasks
+        )
+        .mergingOptimisticMutations(from: stalePublish, at: Date())
+        XCTAssertTrue(freshPublish.optimisticMutations.isEmpty)
     }
 
     func testPendingTogglePreservesThePreTapState() {
@@ -230,6 +418,79 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(
             Set(try firstStore.loadPendingOperations().map(\.id)),
             Set([first.id, second.id]))
+    }
+
+    func testConcurrentSnapshotTransformsDoNotLoseOptimisticChanges() async throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let snapshot = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(),
+            tasks: [
+                SnapshotTask(task("First", due: "2026-07-19", line: 1)),
+                SnapshotTask(task("Second", due: "2026-07-19", line: 2)),
+            ])
+        _ = try store.writeSnapshot(snapshot).get()
+        let ids = snapshot.tasks.map(\.id)
+
+        async let first: TodaySnapshot = Task.detached {
+            try store.applyOptimisticCompletion(
+                taskID: ids[0],
+                desiredCompletion: true,
+                operationID: UUID(),
+                outcome: .deferred,
+                at: Date())
+        }.value
+        async let second: TodaySnapshot = Task.detached {
+            try store.applyOptimisticCompletion(
+                taskID: ids[1],
+                desiredCompletion: true,
+                operationID: UUID(),
+                outcome: .deferred,
+                at: Date())
+        }.value
+        _ = try await (first, second)
+
+        let final = try store.readSnapshotResult().get()
+        XCTAssertTrue(final.tasks.allSatisfy { !$0.isCompleted })
+        XCTAssertTrue(final.tasks.allSatisfy { $0.pendingCompletion == true })
+        XCTAssertEqual(final.optimisticMutations.count, 2)
+        XCTAssertEqual(final.revision, 3)
+    }
+
+    func testRepeatedDesiredStateOperationsCoalesce() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let snapshotTask = SnapshotTask(
+            task("Same", due: "2026-07-19", line: 1))
+        let first = PendingTaskOperation(
+            task: snapshotTask,
+            desiredCompletion: true)
+        let duplicate = PendingTaskOperation(
+            task: snapshotTask,
+            desiredCompletion: true)
+
+        let durableFirst = try store.append(first)
+        let durableDuplicate = try store.append(duplicate)
+
+        XCTAssertEqual(durableDuplicate.id, durableFirst.id)
+        XCTAssertEqual(try store.loadPendingOperations().count, 1)
+    }
+
+    func testLatestOppositeDesiredStateReplacesOlderOperation() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let snapshotTask = SnapshotTask(
+            task("Same", due: "2026-07-19", line: 1))
+        try store.append(
+            PendingTaskOperation(task: snapshotTask, desiredCompletion: true))
+        let latest = try store.append(
+            PendingTaskOperation(task: snapshotTask, desiredCompletion: false))
+
+        XCTAssertEqual(try store.loadPendingOperations(), [latest])
     }
 
     func testQueueAcknowledgesOnlySuccessfulOperation() throws {
@@ -295,6 +556,36 @@ final class WidgetSnapshotTests: XCTestCase {
 
         XCTAssertTrue(dropped)
         XCTAssertEqual(try store.loadPendingOperations().map(\.id), [healthy.id])
+        let receipt = try XCTUnwrap(store.loadFailureReceipts().first)
+        XCTAssertEqual(receipt.operationID, stuck.id)
+        XCTAssertFalse(receipt.taskFingerprint.contains("/vault/"))
+        XCTAssertEqual(receipt.reason, .retryLimitExceeded)
+    }
+
+    func testBatchQueueResolutionUsesOneResultAndKeepsFailureReceipt() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let first = PendingTaskOperation(
+            task: SnapshotTask(task("First", due: "2026-07-19", line: 1)),
+            desiredCompletion: true)
+        let second = PendingTaskOperation(
+            task: SnapshotTask(task("Second", due: "2026-07-19", line: 2)),
+            desiredCompletion: true)
+        try store.enqueue([first, second])
+
+        let result = try store.applyQueueResolutions(
+            [
+                .acknowledge(first.id),
+                .recordFailure(second.id, .retryLimitExceeded),
+            ],
+            maxAttempts: 1)
+
+        XCTAssertEqual(result.acknowledgedCount, 1)
+        XCTAssertEqual(result.failedPermanentlyCount, 1)
+        XCTAssertEqual(result.pendingCount, 0)
+        XCTAssertEqual(try store.loadFailureReceipts().count, 1)
+        XCTAssertEqual(store.health().state, .needsAttention)
     }
 
     func testRecordingFailureForAnUnknownOperationLeavesTheQueueAlone() throws {
@@ -349,6 +640,168 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(first.map(\.id), second.map(\.id))
     }
 
+    func testUnavailableSnapshotIsDurablyPublished() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        _ = try store.writeUnavailableSnapshot(
+            .vaultUnavailable,
+            at: Date(timeIntervalSince1970: 123)
+        ).get()
+
+        XCTAssertEqual(
+            try store.readSnapshotResult().get().availability,
+            .vaultUnavailable)
+    }
+
+    func testMissingAppGroupReturnsTypedHealthAndSnapshotState() {
+        let store = WidgetSnapshotStore(containerURL: nil)
+
+        guard case .failure(let error) = store.readSnapshotResult() else {
+            return XCTFail("Expected a typed App Group failure")
+        }
+        XCTAssertEqual(error, .appGroupUnavailable)
+        XCTAssertEqual(store.health().state, .unavailable)
+        XCTAssertEqual(store.readSnapshot().availability, .sharedContainerUnavailable)
+    }
+
+    func testFutureSnapshotSchemaIsRejectedWithoutReplacement() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let snapshotURL = root.appendingPathComponent("today.json")
+        let future = Data(
+            """
+            {"schemaVersion":999,"revision":0,"dayString":"2026-07-19","generatedAt":0,"availability":"available","tasks":[],"totalTaskCount":0,"totalOpenTaskCount":0,"optimisticMutations":[]}
+            """.utf8)
+        try future.write(to: snapshotURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        guard case .failure(let error) = store.readSnapshotResult() else {
+            return XCTFail("Expected a future-schema failure")
+        }
+        XCTAssertEqual(
+            error,
+            .unsupportedSchema(
+                artifact: .snapshot,
+                found: 999,
+                supported: TodaySnapshot.currentSchemaVersion))
+        XCTAssertEqual(try Data(contentsOf: snapshotURL), future)
+    }
+
+    func testZeroSnapshotSchemaIsRejected() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let snapshotURL = root.appendingPathComponent("today.json")
+        try Data(
+            """
+            {"schemaVersion":0,"revision":0,"dayString":"2026-07-19","generatedAt":0,"availability":"available","tasks":[],"totalTaskCount":0,"totalOpenTaskCount":0,"optimisticMutations":[]}
+            """.utf8
+        ).write(to: snapshotURL)
+
+        guard
+            case .failure(let error) =
+                WidgetSnapshotStore(containerURL: root).readSnapshotResult()
+        else { return XCTFail("Expected an invalid-schema failure") }
+        XCTAssertEqual(
+            error,
+            .unsupportedSchema(
+                artifact: .snapshot,
+                found: 0,
+                supported: TodaySnapshot.currentSchemaVersion))
+    }
+
+    func testPendingQueueRejectsNewDistinctWorkAtCapacityWithoutDroppingOldWork() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let operations = (0..<WidgetSnapshotStore.maximumPendingOperations).map { line in
+            PendingTaskOperation(
+                task: SnapshotTask(
+                    task("Task \(line)", due: "2026-07-19", line: line)),
+                desiredCompletion: true)
+        }
+        try store.enqueue(operations)
+        let overflow = PendingTaskOperation(
+            task: SnapshotTask(
+                task("Overflow", due: "2026-07-19", line: operations.count)),
+            desiredCompletion: true)
+
+        XCTAssertThrowsError(try store.append(overflow)) { error in
+            XCTAssertEqual(
+                error as? WidgetStoreError,
+                .queueCapacityReached(
+                    limit: WidgetSnapshotStore.maximumPendingOperations))
+        }
+        XCTAssertEqual(
+            try store.loadPendingOperations().map(\.id),
+            operations.map(\.id))
+        XCTAssertTrue(store.health().pendingQueueAtCapacity)
+    }
+
+    func testFailureReceiptsKeepNewestBoundedHistoryAndReportCompaction() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        let count = WidgetSnapshotStore.maximumFailureReceipts + 2
+        let operations = (0..<count).map { line in
+            PendingTaskOperation(
+                task: SnapshotTask(
+                    task("Failure \(line)", due: "2026-07-19", line: line)),
+                desiredCompletion: true)
+        }
+        try store.enqueue(operations)
+
+        _ = try store.applyQueueResolutions(
+            operations.enumerated().map { _, operation in
+                .recordFailure(operation.id, .retryLimitExceeded)
+            },
+            maxAttempts: 1,
+            now: Date(timeIntervalSince1970: 123))
+
+        XCTAssertEqual(
+            try store.loadFailureReceipts().count,
+            WidgetSnapshotStore.maximumFailureReceipts)
+        let health = store.health()
+        XCTAssertEqual(health.discardedFailureReceiptCount, 2)
+        XCTAssertEqual(health.state, .needsAttention)
+    }
+
+    func testZeroQueueSchemaIsRejectedWithoutReplacingIt() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let queueURL = root.appendingPathComponent(
+            "pending-task-operations-v2.json")
+        let invalid = Data(
+            """
+            {"schemaVersion":0,"operations":[],"failureReceipts":[]}
+            """.utf8)
+        try invalid.write(to: queueURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        XCTAssertThrowsError(try store.loadPendingOperations()) { error in
+            XCTAssertEqual(
+                error as? WidgetStoreError,
+                .unsupportedSchema(
+                    artifact: .operationQueue,
+                    found: 0,
+                    supported: 4))
+        }
+        XCTAssertEqual(try Data(contentsOf: queueURL), invalid)
+    }
+
+    func testUnavailableSnapshotHealthIsNotReady() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(containerURL: root)
+        _ = try store.writeUnavailableSnapshot(.vaultUnavailable).get()
+
+        XCTAssertEqual(store.health().state, .needsAttention)
+        XCTAssertEqual(
+            store.health().snapshotAvailability,
+            .vaultUnavailable)
+    }
+
     private func temporaryContainer() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -357,4 +810,10 @@ final class WidgetSnapshotTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
     }
+}
+
+private struct LegacyTodaySnapshot: Codable {
+    let dayString: String
+    let generatedAt: Date
+    let tasks: [SnapshotTask]
 }

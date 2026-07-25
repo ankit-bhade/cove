@@ -30,6 +30,42 @@ final class TaskCalendarTests: XCTestCase {
         XCTAssertGreaterThan(next, noon)
     }
 
+    func testRejectsNonexistentSpringForwardWallTime() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        XCTAssertEqual(
+            TaskCalendar.resolve(
+                date: "2026-03-08",
+                time: "02:30",
+                timeZone: zone,
+                nonexistentTime: .reject,
+                repeatedTime: .first),
+            .failure(
+                .nonexistentLocalTime(
+                    date: "2026-03-08",
+                    time: "02:30")))
+    }
+
+    func testRepeatedFallBackWallTimeHasExplicitFirstAndLastPolicies() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let first = try TaskCalendar.resolve(
+            date: "2026-11-01",
+            time: "01:30",
+            timeZone: zone,
+            nonexistentTime: .reject,
+            repeatedTime: .first
+        ).get()
+        let last = try TaskCalendar.resolve(
+            date: "2026-11-01",
+            time: "01:30",
+            timeZone: zone,
+            nonexistentTime: .reject,
+            repeatedTime: .last
+        ).get()
+        XCTAssertEqual(first.kind, .firstRepeatedTime)
+        XCTAssertEqual(last.kind, .lastRepeatedTime)
+        XCTAssertEqual(last.date.timeIntervalSince(first.date), 60 * 60)
+    }
+
     func testTodaySnapshotChangesAcrossLocalMidnightAheadOfUTC() throws {
         var calendar = TaskCalendar.gregorian(
             timeZone: try XCTUnwrap(TimeZone(identifier: "Pacific/Kiritimati")))
@@ -44,8 +80,15 @@ final class TaskCalendarTests: XCTestCase {
         XCTAssertEqual(
             snapshot.valid(at: before, timeZone: calendar.timeZone).dayString,
             "2026-07-20")
-        XCTAssertTrue(snapshot.valid(at: after, timeZone: calendar.timeZone).tasks.isEmpty)
-        XCTAssertEqual(snapshot.valid(at: after, timeZone: calendar.timeZone).dayString, "")
+
+        // Past local midnight the snapshot is yesterday's, so it stops being
+        // presentable. It reports itself stale rather than empty: an empty
+        // list of today's tasks is a claim that there is nothing due, which
+        // is exactly what a widget that hasn't refreshed cannot know.
+        let stale = snapshot.valid(at: after, timeZone: calendar.timeZone)
+        XCTAssertTrue(stale.tasks.isEmpty)
+        XCTAssertEqual(stale.availability, .stale)
+        XCTAssertNotEqual(stale.availability, .available)
     }
 
     func testFormattingUsesInjectedZoneBehindUTC() throws {

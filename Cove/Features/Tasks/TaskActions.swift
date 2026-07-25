@@ -35,13 +35,13 @@ final class TaskActions {
         undoManager: UndoManager?
     ) {
         perform(task) {
-            try await vaultManager.toggleTask(task)
-            let previousCompletion = task.isCompleted
-            undoManager?.registerUndo(withTarget: vaultManager) { manager in
+            let record = try await vaultManager.toggleTask(task)
+            undoManager?.registerUndo(withTarget: vaultManager) { [weak self] manager in
                 Task {
                     do {
-                        try await manager.setTaskCompleted(task, to: previousCompletion)
+                        try await manager.undoTaskToggle(record)
                     } catch {
+                        self?.errorMessage = error.localizedDescription
                         CoveLog.vault.error(
                             "Task toggle undo failed: \(error.localizedDescription, privacy: .private)"
                         )
@@ -62,11 +62,12 @@ final class TaskActions {
     ) {
         perform(task) {
             let record = try await vaultManager.deleteTask(task)
-            undoManager?.registerUndo(withTarget: vaultManager) { manager in
+            undoManager?.registerUndo(withTarget: vaultManager) { [weak self] manager in
                 Task {
                     do {
                         try await manager.restoreDeletedTask(record)
                     } catch {
+                        self?.errorMessage = error.localizedDescription
                         CoveLog.vault.error(
                             "Task undo failed: \(error.localizedDescription, privacy: .private)")
                     }

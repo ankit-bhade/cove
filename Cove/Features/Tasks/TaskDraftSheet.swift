@@ -17,11 +17,25 @@ struct TaskDraftSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isAdding = false
     @State private var errorMessage: String?
+    @State private var didEditDetails = false
 
     private var allowsUndated: Bool { listName != nil }
 
+    /// The sheet is the place a blocking diagnostic gets resolved, so once
+    /// the details have been touched even an unwritable sentence can be
+    /// added — the fields, not the sentence, are what gets saved by then.
+    /// Advisory diagnostics never gate the button here either.
     private var canAdd: Bool {
-        !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        draft.validationIssues.isEmpty
+            && (didEditDetails || !parseDiagnostics.contains(where: \.blocksCapture))
+    }
+
+    private var parseDiagnostics: [QuickTaskParser.Diagnostic] {
+        QuickTaskParser.parseWithDiagnostics(
+            sentence,
+            now: .now,
+            defaultingToToday: !allowsUndated
+        ).diagnostics
     }
 
     var body: some View {
@@ -36,10 +50,29 @@ struct TaskDraftSheet: View {
                         TextField("Try “get bread 3p tmr”", text: $sentence)
                             .autocorrectionDisabled()
                             .onChange(of: sentence) { _, newValue in
-                                draft = QuickTaskParser.parse(
-                                    newValue, now: .now,
-                                    defaultingToToday: !allowsUndated)
+                                draft =
+                                    QuickTaskParser.parseWithDiagnostics(
+                                        newValue, now: .now,
+                                        defaultingToToday: !allowsUndated
+                                    ).draft
+                                didEditDetails = false
                             }
+                    }
+                    if let diagnostic = parseDiagnostics.first {
+                        Label(
+                            diagnostic.message,
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                    }
+                    if let issue = draft.validationIssues.first {
+                        Label(
+                            issue.message,
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.callout)
+                        .foregroundStyle(.orange)
                     }
                 } header: {
                     CoveSectionHeader("Task")
@@ -55,7 +88,7 @@ struct TaskDraftSheet: View {
                     // while every value under it — date, time, repeat — sat in
                     // the trailing column. One row, one grid.
                     LabeledContent {
-                        TextField("Task title", text: $draft.title, axis: .vertical)
+                        TextField("Task title", text: titleBinding, axis: .vertical)
                             .lineLimit(1...3)
                             .multilineTextAlignment(.trailing)
                     } label: {
@@ -89,7 +122,7 @@ struct TaskDraftSheet: View {
                         }
                         // A repeat rule hangs off the `@due` tag, so it only
                         // exists for a dated task.
-                        Picker(selection: $draft.recurrence) {
+                        Picker(selection: recurrenceBinding) {
                             ForEach(recurrenceOptions, id: \.self) { rule in
                                 Text(rule?.displayName ?? "Never")
                                     .tag(rule)
@@ -168,6 +201,12 @@ struct TaskDraftSheet: View {
 
     private func addTask() {
         guard canAdd, !isAdding else { return }
+        do {
+            _ = try draft.validatedMarkdownLine()
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
         isAdding = true
         Task {
             do {
@@ -205,6 +244,7 @@ struct TaskDraftSheet: View {
         Binding {
             draft.dueDateString != nil
         } set: { enabled in
+            didEditDetails = true
             if enabled {
                 draft.dueDateString = draft.dueDateString ?? QuickTaskParser.ymdString(from: .now)
             } else {
@@ -226,6 +266,7 @@ struct TaskDraftSheet: View {
             else { return .now }
             return date
         } set: { newValue in
+            didEditDetails = true
             draft.dueDateString = QuickTaskParser.ymdString(from: newValue)
         }
     }
@@ -234,6 +275,7 @@ struct TaskDraftSheet: View {
         Binding {
             draft.dueTimeString != nil
         } set: { enabled in
+            didEditDetails = true
             draft.dueTimeString = enabled ? (draft.dueTimeString ?? "09:00") : nil
         }
     }
@@ -247,10 +289,29 @@ struct TaskDraftSheet: View {
                 minute: parts.count > 1 ? parts[1] : 0)
             return TaskCalendar.gregorian().date(from: components) ?? .now
         } set: { newValue in
+            didEditDetails = true
             let parts = TaskCalendar.gregorian().dateComponents(
                 [.hour, .minute],
                 from: newValue)
             draft.dueTimeString = String(format: "%02d:%02d", parts.hour!, parts.minute!)
+        }
+    }
+
+    private var titleBinding: Binding<String> {
+        Binding {
+            draft.title
+        } set: { value in
+            didEditDetails = true
+            draft.title = value
+        }
+    }
+
+    private var recurrenceBinding: Binding<RecurrenceRule?> {
+        Binding {
+            draft.recurrence
+        } set: { value in
+            didEditDetails = true
+            draft.recurrence = value
         }
     }
 }

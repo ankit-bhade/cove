@@ -129,6 +129,103 @@ final class VaultManagerRefreshTests: XCTestCase {
             // Expected.
         }
     }
+
+    func testFailedVaultSwitchKeepsLastGoodVaultAndBookmark() async throws {
+        let failingRoot = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                "cove-failing-switch-\(UUID().uuidString)",
+                isDirectory: true)
+        try fileManager.createDirectory(
+            at: failingRoot,
+            withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: failingRoot) }
+        struct InjectedFailure: LocalizedError {
+            var errorDescription: String? { "Injected candidate failure" }
+        }
+        let bookmarkStore = VaultBookmarkStore(
+            defaults: defaults,
+            creationOptions: [],
+            resolutionOptions: [])
+        let manager = VaultManager(bookmarkStore: bookmarkStore) {
+            url, previous, changed, existing in
+            if url.standardizedFileURL == failingRoot.standardizedFileURL {
+                throw InjectedFailure()
+            }
+            let node = try existing ?? VaultTreeScanner().scanTree(at: url)
+            let index = try VaultIndexBuilder().buildCancellableIndex(
+                from: node,
+                previous: previous,
+                changedURLs: changed)
+            return (node, index)
+        }
+
+        await manager.openVault(at: root)
+        let originalBookmark = bookmarkStore.bookmarkData
+        await manager.openVault(at: failingRoot)
+
+        XCTAssertEqual(manager.state, .open)
+        XCTAssertEqual(
+            manager.vaultURL?.standardizedFileURL,
+            root.standardizedFileURL)
+        XCTAssertEqual(bookmarkStore.bookmarkData, originalBookmark)
+        XCTAssertTrue(
+            manager.lastErrorDescription?.contains(
+                "Injected candidate failure") == true)
+    }
+
+    func testTransientRefreshFailureRetainsLastGoodIndex() async throws {
+        let loader = ControllableVaultLoader()
+        let bookmarkStore = VaultBookmarkStore(
+            defaults: defaults,
+            creationOptions: [],
+            resolutionOptions: [])
+        let manager = VaultManager(bookmarkStore: bookmarkStore) {
+            url, previous, changed, existing in
+            try await loader.load(
+                url: url,
+                previous: previous,
+                changed: changed,
+                existing: existing)
+        }
+
+        await manager.openVault(at: root)
+        let oldTasks = manager.index.allTasks
+        await loader.failNextLoad()
+        await manager.refresh()
+
+        XCTAssertEqual(manager.state, .open)
+        XCTAssertEqual(manager.index.allTasks, oldTasks)
+        XCTAssertEqual(
+            manager.vaultURL?.standardizedFileURL,
+            root.standardizedFileURL)
+        XCTAssertTrue(
+            manager.lastErrorDescription?.contains(
+                "last known-good") == true)
+    }
+
+    func testDirtyEditorProtectionBlocksVaultSwitch() async throws {
+        let secondRoot = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                "cove-protected-switch-\(UUID().uuidString)",
+                isDirectory: true)
+        try fileManager.createDirectory(
+            at: secondRoot,
+            withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: secondRoot) }
+        let manager = makeManager(recorder: ScanRecorder())
+
+        await manager.openVault(at: root)
+        let note = root.appendingPathComponent("Tasks.md")
+        manager.setEditorProtection(true, for: note)
+        await manager.openVault(at: secondRoot)
+
+        XCTAssertEqual(
+            manager.vaultURL?.standardizedFileURL,
+            root.standardizedFileURL)
+        XCTAssertTrue(
+            manager.lastErrorDescription?.contains(
+                "before switching vaults") == true)
+    }
 }
 
 private actor ScanRecorder {
@@ -136,5 +233,31 @@ private actor ScanRecorder {
 
     func record(reusedTree: Bool) {
         reuse.append(reusedTree)
+    }
+}
+
+private actor ControllableVaultLoader {
+    private var shouldFail = false
+
+    func failNextLoad() {
+        shouldFail = true
+    }
+
+    func load(
+        url: URL,
+        previous: VaultIndex,
+        changed: Set<URL>?,
+        existing: VaultNode?
+    ) throws -> (VaultNode, VaultIndex) {
+        if shouldFail {
+            shouldFail = false
+            throw CocoaError(.fileReadUnknown)
+        }
+        let node = try existing ?? VaultTreeScanner().scanTree(at: url)
+        let index = try VaultIndexBuilder().buildCancellableIndex(
+            from: node,
+            previous: previous,
+            changedURLs: changed)
+        return (node, index)
     }
 }

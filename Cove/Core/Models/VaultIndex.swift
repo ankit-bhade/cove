@@ -11,6 +11,49 @@ import Foundation
 /// is the only part that was ever honored, and now it is the only part asked
 /// for.
 enum TaskCalendar {
+    enum NonexistentTimePolicy: Equatable, Sendable {
+        case reject
+        case nextValidTime
+    }
+
+    enum RepeatedTimePolicy: Equatable, Sendable {
+        case reject
+        case first
+        case last
+    }
+
+    enum ResolutionKind: Equatable, Sendable {
+        case exact
+        case shiftedForward
+        case firstRepeatedTime
+        case lastRepeatedTime
+    }
+
+    struct Resolution: Equatable, Sendable {
+        let date: Date
+        let kind: ResolutionKind
+    }
+
+    enum ResolutionError: LocalizedError, Equatable, Sendable {
+        case invalidDate(String)
+        case invalidTime(String)
+        case nonexistentLocalTime(date: String, time: String)
+        case repeatedLocalTime(date: String, time: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidDate(let date):
+                return "The date \(date) does not exist."
+            case .invalidTime(let time):
+                return "The time \(time) is not a valid 24-hour time."
+            case .nonexistentLocalTime(let date, let time):
+                return "\(date) at \(time) does not exist in this time zone because the clock moves forward."
+            case .repeatedLocalTime(let date, let time):
+                return "\(date) at \(time) occurs twice in this time zone because the clock moves backward."
+            }
+        }
+    }
+
     static func gregorian(timeZone: TimeZone = .autoupdatingCurrent) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
@@ -24,6 +67,123 @@ enum TaskCalendar {
         let calendar = gregorian(timeZone: timeZone)
         let start = calendar.startOfDay(for: date)
         return calendar.date(byAdding: .day, value: 1, to: start)!
+    }
+
+    /// Resolves a stored wall-clock date and time with explicit DST policy.
+    /// Foundation's plain `Calendar.date(from:)` silently normalizes missing
+    /// times and silently chooses one copy of repeated times; task reminders
+    /// should make both decisions deliberately.
+    static func resolve(
+        date dateString: String,
+        time timeString: String,
+        timeZone: TimeZone = .autoupdatingCurrent,
+        nonexistentTime: NonexistentTimePolicy = .nextValidTime,
+        repeatedTime: RepeatedTimePolicy = .first
+    ) -> Result<Resolution, ResolutionError> {
+        let calendar = gregorian(timeZone: timeZone)
+        guard let dateParts = dateComponents(from: dateString),
+            dateParts.isValidDate(in: calendar),
+            let noon = calendar.date(
+                from: DateComponents(
+                    year: dateParts.year,
+                    month: dateParts.month,
+                    day: dateParts.day,
+                    hour: 12))
+        else { return .failure(.invalidDate(dateString)) }
+        guard let timeParts = timeComponents(from: timeString) else {
+            return .failure(.invalidTime(timeString))
+        }
+
+        let components = DateComponents(
+            year: dateParts.year,
+            month: dateParts.month,
+            day: dateParts.day,
+            hour: timeParts.hour,
+            minute: timeParts.minute)
+        let start = calendar.startOfDay(for: noon)
+        let searchStart = calendar.date(byAdding: .second, value: -1, to: start)!
+
+        func strict(_ policy: Calendar.RepeatedTimePolicy) -> Date? {
+            calendar.nextDate(
+                after: searchStart,
+                matching: components,
+                matchingPolicy: .strict,
+                repeatedTimePolicy: policy,
+                direction: .forward
+            ).flatMap { sameWallClock($0, as: components, calendar: calendar) ? $0 : nil }
+        }
+
+        let first = strict(.first)
+        let last = strict(.last)
+        if let first, let last {
+            if first == last { return .success(Resolution(date: first, kind: .exact)) }
+            switch repeatedTime {
+            case .reject:
+                return .failure(
+                    .repeatedLocalTime(date: dateString, time: timeString))
+            case .first:
+                return .success(Resolution(date: first, kind: .firstRepeatedTime))
+            case .last:
+                return .success(Resolution(date: last, kind: .lastRepeatedTime))
+            }
+        }
+
+        guard nonexistentTime == .nextValidTime,
+            let shifted = calendar.nextDate(
+                after: searchStart,
+                matching: components,
+                matchingPolicy: .nextTimePreservingSmallerComponents,
+                repeatedTimePolicy: .first,
+                direction: .forward),
+            sameDay(shifted, as: components, calendar: calendar)
+        else {
+            return .failure(
+                .nonexistentLocalTime(date: dateString, time: timeString))
+        }
+        return .success(Resolution(date: shifted, kind: .shiftedForward))
+    }
+
+    static func dateComponents(from string: String) -> DateComponents? {
+        let parts = string.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3, parts[0].count == 4, parts[1].count == 2,
+            parts[2].count == 2, let year = Int(parts[0]), let month = Int(parts[1]),
+            let day = Int(parts[2])
+        else { return nil }
+        return DateComponents(year: year, month: month, day: day)
+    }
+
+    static func timeComponents(from string: String) -> (hour: Int, minute: Int)? {
+        let parts = string.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts[0].count == 2, parts[1].count == 2,
+            let hour = Int(parts[0]), let minute = Int(parts[1]),
+            (0...23).contains(hour), (0...59).contains(minute)
+        else { return nil }
+        return (hour, minute)
+    }
+
+    private static func sameWallClock(
+        _ date: Date,
+        as components: DateComponents,
+        calendar: Calendar
+    ) -> Bool {
+        let actual = calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute], from: date)
+        return actual.year == components.year
+            && actual.month == components.month
+            && actual.day == components.day
+            && actual.hour == components.hour
+            && actual.minute == components.minute
+    }
+
+    private static func sameDay(
+        _ date: Date,
+        as components: DateComponents,
+        calendar: Calendar
+    ) -> Bool {
+        let actual = calendar.dateComponents([.year, .month, .day], from: date)
+        return actual.year == components.year
+            && actual.month == components.month
+            && actual.day == components.day
     }
 }
 
@@ -39,9 +199,27 @@ struct TaskIdentity: Codable, Hashable, Sendable {
     let dueTimeString: String?
     let recurrenceTag: String?
     let listName: String?
+    /// Original recurrence-series anchor. Optional for identities decoded
+    /// from pre-anchor widget snapshots and for non-recurring tasks.
+    let recurrenceAnchorDateString: String?
+    let isSectionedDocument: Bool
 
     var fileURL: URL { URL(fileURLWithPath: filePath) }
     var recurrence: RecurrenceRule? { recurrenceTag.flatMap(RecurrenceRule.init(tagText:)) }
+
+    /// Canonical grouping key for list comparisons. The displayed spelling
+    /// remains untouched, while case/diacritic-only external renames do not
+    /// make an otherwise identical task impossible to re-find.
+    var canonicalListName: String? { listName.map(TaskListDocument.canonicalName) }
+
+    /// Legacy snapshots did not store this bit. A file named `Tasks.md` is
+    /// conservatively parsed as sectioned so an unlisted task can never match
+    /// an identical task under a list heading.
+    var requiresSectionedParsing: Bool {
+        isSectionedDocument
+            || listName != nil
+            || fileURL.lastPathComponent.caseInsensitiveCompare("Tasks.md") == .orderedSame
+    }
 
     /// The note to mutate, but only when the recorded path still resolves
     /// inside `vaultRoot`. An identity is persisted state: it crosses the App
@@ -70,7 +248,9 @@ struct TaskIdentity: Codable, Hashable, Sendable {
         dueDateString: String?,
         dueTimeString: String?,
         recurrenceTag: String?,
-        listName: String?
+        listName: String?,
+        recurrenceAnchorDateString: String? = nil,
+        isSectionedDocument: Bool = false
     ) {
         self.filePath = filePath
         self.lineNumber = lineNumber
@@ -79,6 +259,8 @@ struct TaskIdentity: Codable, Hashable, Sendable {
         self.dueTimeString = dueTimeString
         self.recurrenceTag = recurrenceTag
         self.listName = listName
+        self.recurrenceAnchorDateString = recurrenceAnchorDateString
+        self.isSectionedDocument = isSectionedDocument
     }
 
     init(_ task: TaskItem) {
@@ -89,7 +271,52 @@ struct TaskIdentity: Codable, Hashable, Sendable {
             dueDateString: task.dueDateString,
             dueTimeString: task.dueTimeString,
             recurrenceTag: task.recurrence?.tagText,
-            listName: task.listName)
+            listName: task.listName,
+            recurrenceAnchorDateString: task.recurrenceAnchorDateString,
+            isSectionedDocument: task.isSectionedDocument)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case filePath
+        case lineNumber
+        case text
+        case dueDateString
+        case dueTimeString
+        case recurrenceTag
+        case listName
+        case recurrenceAnchorDateString
+        case isSectionedDocument
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            filePath: try values.decode(String.self, forKey: .filePath),
+            lineNumber: try values.decode(Int.self, forKey: .lineNumber),
+            text: try values.decode(String.self, forKey: .text),
+            dueDateString: try values.decodeIfPresent(String.self, forKey: .dueDateString),
+            dueTimeString: try values.decodeIfPresent(String.self, forKey: .dueTimeString),
+            recurrenceTag: try values.decodeIfPresent(String.self, forKey: .recurrenceTag),
+            listName: try values.decodeIfPresent(String.self, forKey: .listName),
+            recurrenceAnchorDateString: try values.decodeIfPresent(
+                String.self, forKey: .recurrenceAnchorDateString),
+            isSectionedDocument:
+                try values.decodeIfPresent(Bool.self, forKey: .isSectionedDocument)
+                ?? false)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(filePath, forKey: .filePath)
+        try values.encode(lineNumber, forKey: .lineNumber)
+        try values.encode(text, forKey: .text)
+        try values.encodeIfPresent(dueDateString, forKey: .dueDateString)
+        try values.encodeIfPresent(dueTimeString, forKey: .dueTimeString)
+        try values.encodeIfPresent(recurrenceTag, forKey: .recurrenceTag)
+        try values.encodeIfPresent(listName, forKey: .listName)
+        try values.encodeIfPresent(
+            recurrenceAnchorDateString, forKey: .recurrenceAnchorDateString)
+        try values.encode(isSectionedDocument, forKey: .isSectionedDocument)
     }
 }
 
@@ -111,11 +338,45 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     /// tasks get notifications.
     let dueTimeString: String?
     let recurrence: RecurrenceRule?
+    let recurrenceAnchorDateString: String?
+    let isSectionedDocument: Bool
+    /// Original task line, including its line ending, captured during indexing.
+    /// Keeping it lets a delete Undo restore the user's bullet, indentation,
+    /// spacing, and CRLF convention instead of reconstructing normalized text.
+    let sourceLine: String?
     let isCompleted: Bool
     /// The list this task belongs to, for tasks under a `##` heading in the
     /// capture note. Nil for an ordinary task, which is what the Tasks
     /// screen shows.
     let listName: String?
+
+    init(
+        fileURL: URL,
+        fileTitle: String,
+        lineNumber: Int,
+        text: String,
+        dueDateString: String?,
+        dueTimeString: String?,
+        recurrence: RecurrenceRule?,
+        isCompleted: Bool,
+        listName: String?,
+        recurrenceAnchorDateString: String? = nil,
+        isSectionedDocument: Bool = false,
+        sourceLine: String? = nil
+    ) {
+        self.fileURL = fileURL
+        self.fileTitle = fileTitle
+        self.lineNumber = lineNumber
+        self.text = text
+        self.dueDateString = dueDateString
+        self.dueTimeString = dueTimeString
+        self.recurrence = recurrence
+        self.recurrenceAnchorDateString = recurrenceAnchorDateString
+        self.isSectionedDocument = isSectionedDocument
+        self.sourceLine = sourceLine
+        self.isCompleted = isCompleted
+        self.listName = listName
+    }
 
     var id: String { "\(fileURL.path)#\(lineNumber)" }
 
@@ -129,7 +390,10 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     }
 
     func dueDate(in timeZone: TimeZone) -> Date? {
-        dateComponents.flatMap(TaskCalendar.gregorian(timeZone: timeZone).date(from:))
+        guard let components = dateComponents,
+            components.isValidDate(in: TaskCalendar.gregorian(timeZone: timeZone))
+        else { return nil }
+        return TaskCalendar.gregorian(timeZone: timeZone).date(from: components)
     }
 
     /// The due moment including the time of day, when a time is set.
@@ -138,9 +402,25 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     }
 
     func dueDateTime(in timeZone: TimeZone) -> Date? {
-        guard var components = dateComponents, let time = timeComponents else { return nil }
-        (components.hour, components.minute) = time
-        return TaskCalendar.gregorian(timeZone: timeZone).date(from: components)
+        guard let resolution = dueDateTimeResolution(in: timeZone) else { return nil }
+        return try? resolution.get().date
+    }
+
+    /// Typed resolution for callers that can surface an invalid/nonexistent
+    /// wall-clock time rather than silently dropping it. Cove rejects spring
+    /// DST-gap times and consistently chooses the first copy of a repeated
+    /// fall-back time.
+    func dueDateTimeResolution(
+        in timeZone: TimeZone
+    ) -> Result<TaskCalendar.Resolution, TaskCalendar.ResolutionError>? {
+        guard let dueDateString, let dueTimeString else { return nil }
+        return TaskCalendar.resolve(
+            date: dueDateString,
+            time: dueTimeString,
+            timeZone: timeZone,
+            nonexistentTime: .reject,
+            repeatedTime: .first
+        )
     }
 
     private var dateComponents: DateComponents? {
@@ -153,9 +433,7 @@ struct TaskItem: Identifiable, Hashable, Sendable {
     /// Parsed `(hour, minute)` of `dueTimeString`, when present.
     var timeComponents: (hour: Int, minute: Int)? {
         guard let dueTimeString else { return nil }
-        let parts = dueTimeString.split(separator: ":").compactMap { Int($0) }
-        guard parts.count == 2 else { return nil }
-        return (parts[0], parts[1])
+        return TaskCalendar.timeComponents(from: dueTimeString)
     }
 }
 
@@ -169,6 +447,12 @@ struct NoteIndexEntry: Hashable, Sendable {
     let title: String
     let tasks: [TaskItem]
     let listNames: [String]
+    /// Malformed/ambiguous task syntax discovered without modifying the note.
+    /// UI can surface these instead of silently omitting task-looking lines.
+    let taskDiagnostics: [TaskParser.Diagnostic]
+    /// A transient read/indexing failure. A last-known-good task projection may
+    /// still be present, but the UI can disclose that it is stale.
+    let indexingErrorDescription: String?
     let modificationDate: Date?
     let fileSize: Int?
 
@@ -177,6 +461,8 @@ struct NoteIndexEntry: Hashable, Sendable {
         title: String,
         tasks: [TaskItem],
         listNames: [String] = [],
+        taskDiagnostics: [TaskParser.Diagnostic] = [],
+        indexingErrorDescription: String? = nil,
         modificationDate: Date? = nil,
         fileSize: Int? = nil
     ) {
@@ -184,6 +470,8 @@ struct NoteIndexEntry: Hashable, Sendable {
         self.title = title
         self.tasks = tasks
         self.listNames = listNames
+        self.taskDiagnostics = taskDiagnostics
+        self.indexingErrorDescription = indexingErrorDescription
         self.modificationDate = modificationDate
         self.fileSize = fileSize
     }
@@ -199,7 +487,7 @@ struct TaskList: Identifiable, Hashable, Sendable {
     let openTasks: [TaskItem]
     let completedTasks: [TaskItem]
 
-    var id: String { name }
+    var id: String { TaskListDocument.canonicalName(name) }
     var isEmpty: Bool { openTasks.isEmpty && completedTasks.isEmpty }
 }
 
@@ -213,6 +501,18 @@ struct VaultIndex: Sendable {
     var listNames: [String] = []
 
     var allTasks: [TaskItem] { entries.flatMap(\.tasks) }
+
+    var taskDiagnostics: [(fileURL: URL, diagnostic: TaskParser.Diagnostic)] {
+        entries.flatMap { entry in
+            entry.taskDiagnostics.map { (entry.url, $0) }
+        }
+    }
+
+    var indexingFailures: [(fileURL: URL, description: String)] {
+        entries.compactMap { entry in
+            entry.indexingErrorDescription.map { (entry.url, $0) }
+        }
+    }
 
     /// Incomplete tasks sorted by due date, then time (date-only tasks
     /// first within a day), then note title and line. List tasks are
@@ -229,10 +529,10 @@ struct VaultIndex: Sendable {
     /// Every list in the capture note, heading order preserved.
     var lists: [TaskList] {
         let tasksByList = Dictionary(grouping: allTasks.filter { $0.listName != nil }) {
-            $0.listName!
+            TaskListDocument.canonicalName($0.listName!)
         }
         return listNames.map { name in
-            let tasks = tasksByList[name] ?? []
+            let tasks = tasksByList[TaskListDocument.canonicalName(name)] ?? []
             return TaskList(
                 name: name,
                 openTasks: tasks.filter { !$0.isCompleted }.sorted(by: Self.byDueDate),

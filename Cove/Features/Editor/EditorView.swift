@@ -6,6 +6,7 @@ import SwiftUI
 /// (iCloud) changes as long as there are no unsaved local edits.
 struct EditorView: View {
     @State private var document: NoteDocument
+    @State private var checkboxErrorMessage: String?
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
 
@@ -28,15 +29,67 @@ struct EditorView: View {
                 // The measure a person can actually read a line at. Left
                 // unbounded, a maximized Mac window sets Markdown across
                 // two feet of screen.
-                MarkdownTextView(text: $document.text)
-                    .frame(maxWidth: 760)
-                    .frame(maxWidth: .infinity)
+                MarkdownTextView(
+                    text: $document.text,
+                    sectionedTaskDocument:
+                        vaultManager.vaultURL.map {
+                            VaultManager.isCaptureNote(
+                                document.fileURL,
+                                vaultRoot: $0)
+                        } ?? false,
+                    checkboxError: $checkboxErrorMessage
+                )
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
             }
         }
         .background(CoveTheme.canvas.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) {
-            if document.saveErrorDescription != nil || document.conflictDescription != nil {
+            if document.saveErrorDescription != nil || document.conflictDescription != nil
+                || document.recoveredDraftDescription != nil
+                || checkboxErrorMessage != nil
+            {
                 VStack(spacing: 8) {
+                    if let checkboxErrorMessage {
+                        Label(
+                            checkboxErrorMessage,
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: .leading
+                        )
+                        .modifier(EditorBanner(tint: CoveTheme.alert))
+                    }
+                    if let message = document.recoveredDraftDescription {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(message, systemImage: "clock.arrow.circlepath")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack {
+                                Button("Discard Draft", role: .destructive) {
+                                    Task { await document.discardRecoveredDraft() }
+                                }
+                                Spacer()
+                                if document.saveErrorDescription != nil,
+                                    let vaultRoot = vaultManager.vaultURL
+                                {
+                                    Button("Save Recovery Copy") {
+                                        Task {
+                                            await document.saveRecoveryCopy(
+                                                in: vaultRoot)
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                } else {
+                                    Button("Save Recovered Edits") {
+                                        Task { await document.acceptRecoveredDraft() }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                            }
+                        }
+                        .modifier(EditorBanner(tint: CoveTheme.moss))
+                    }
                     if let message = document.saveErrorDescription {
                         HStack {
                             Label(message, systemImage: "exclamationmark.triangle")
@@ -45,6 +98,17 @@ struct EditorView: View {
                                 Task { await document.retrySave() }
                             }
                             .buttonStyle(.bordered)
+                            if document.isDirty,
+                                let vaultRoot = vaultManager.vaultURL
+                            {
+                                Button("Save Copy") {
+                                    Task {
+                                        await document.saveRecoveryCopy(
+                                            in: vaultRoot)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                            }
                         }
                         .modifier(EditorBanner(tint: CoveTheme.alert))
                     }
@@ -79,22 +143,48 @@ struct EditorView: View {
             #endif
         }
         .task {
+            document.onPersisted = { url in
+                Task { await vaultManager.noteDidPersist(at: url) }
+            }
             await document.load()
+            updateEditorProtection()
         }
         .onDisappear {
             let document = document
-            Task { await document.flush() }
+            document.prepareForSuspension()
+            Task {
+                await document.flush()
+                vaultManager.setEditorProtection(false, for: document.fileURL)
+                if let error = document.saveErrorDescription {
+                    vaultManager.reportStorageIssue(error)
+                }
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 Task { await document.reloadAfterExternalChange() }
             } else {
+                document.prepareForSuspension()
                 Task { await document.flush() }
+            }
+        }
+        .onChange(of: document.protectsAgainstNavigationPruning) { _, _ in
+            updateEditorProtection()
+        }
+        .onChange(of: document.saveErrorDescription) { _, message in
+            if let message {
+                vaultManager.reportStorageIssue(message)
             }
         }
         .onChange(of: vaultManager.externalChangeCount) { _, _ in
             Task { await document.reloadAfterExternalChange() }
         }
+    }
+
+    private func updateEditorProtection() {
+        vaultManager.setEditorProtection(
+            document.protectsAgainstNavigationPruning,
+            for: document.fileURL)
     }
 
     /// Reflects the document's real state rather than asserting that saving
@@ -150,6 +240,7 @@ private extension NoteDocument.SaveStatus {
         case .pending: "Editing…"
         case .saving: "Saving…"
         case .failed: "Not Saved"
+        case .awaitingReview: "Held for Review"
         }
     }
 
@@ -158,6 +249,7 @@ private extension NoteDocument.SaveStatus {
         case .saved: "checkmark.circle.fill"
         case .pending: "pencil.circle"
         case .saving: "arrow.triangle.2.circlepath"
+        case .awaitingReview: "clock.arrow.circlepath"
         case .failed: "exclamationmark.triangle.fill"
         }
     }
@@ -168,6 +260,8 @@ private extension NoteDocument.SaveStatus {
         case .pending: "Unsaved changes, saving shortly"
         case .saving: "Saving"
         case .failed: "Save failed"
+        case .awaitingReview:
+            "Recovered edits are held until you save or discard them"
         }
     }
 }

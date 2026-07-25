@@ -59,6 +59,14 @@ final class NoteSearcherTests: XCTestCase {
         XCTAssertNil(NoteSearcher.firstMatchingLine(for: "bread", in: "- [ ] Milk\n"))
     }
 
+    func testFirstMatchingLineCapsAnEnormousLine() {
+        let line = "match " + String(repeating: "x", count: 1_000)
+        let snippet = NoteSearcher.firstMatchingLine(
+            for: "match", in: line, maximumCharacters: 20)
+        XCTAssertEqual(snippet?.count, 21)
+        XCTAssertTrue(snippet?.hasSuffix("…") == true)
+    }
+
     // MARK: - Tree flattening
 
     func testAllFilesFlattensTreeInDisplayOrder() throws {
@@ -97,5 +105,31 @@ final class NoteSearcherTests: XCTestCase {
 
         let all = try await NoteSearcher().search(for: "e", in: scannedTree())
         XCTAssertEqual(all.map(\.node.name), ["Plan.md", "Groceries.md", "Journal.md"])
+    }
+
+    func testSearchReportCapsResultsAndReportsTheLimit() async throws {
+        let searcher = NoteSearcher(
+            limits: .init(
+                maximumResults: 2,
+                maximumSnippetCharacters: 240,
+                maximumContentFileBytes: 8 * 1_024 * 1_024))
+        let report = try await searcher.searchReport(for: "e", in: scannedTree())
+
+        XCTAssertEqual(report.results.count, 2)
+        XCTAssertTrue(report.isResultLimitReached)
+        XCTAssertEqual(report.skippedFileCount, 0)
+    }
+
+    func testSearchReportReportsFilesOverTheContentLimit() async throws {
+        let searcher = NoteSearcher(
+            limits: .init(
+                maximumResults: 200,
+                maximumSnippetCharacters: 240,
+                maximumContentFileBytes: 1))
+        let report = try await searcher.searchReport(for: "roadmap", in: scannedTree())
+
+        XCTAssertTrue(report.results.isEmpty)
+        XCTAssertEqual(report.skippedFileCount, 3)
+        XCTAssertFalse(report.isResultLimitReached)
     }
 }

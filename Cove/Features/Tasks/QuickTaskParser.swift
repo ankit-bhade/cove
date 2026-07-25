@@ -1,5 +1,34 @@
 import Foundation
 
+enum TaskDraftValidationIssue: Equatable, Sendable {
+    case emptyTitle
+    case unsafeTitle
+    case invalidDate(String)
+    case invalidTime(String)
+    case scheduleWithoutDate
+
+    var message: String {
+        switch self {
+        case .emptyTitle:
+            return "Enter a task title."
+        case .unsafeTitle:
+            return
+                "Task titles cannot contain line breaks, control characters, or literal @due( / @repeat( / @anchor( tag openers."
+        case .invalidDate(let value):
+            return "The date \(value) does not exist."
+        case .invalidTime(let value):
+            return "The time \(value) is not a valid 24-hour time."
+        case .scheduleWithoutDate:
+            return "A time or repeat rule requires a due date."
+        }
+    }
+}
+
+struct TaskDraftValidationError: LocalizedError, Equatable, Sendable {
+    let issues: [TaskDraftValidationIssue]
+    var errorDescription: String? { issues.map(\.message).joined(separator: " ") }
+}
+
 /// The interpreted result of one quick-entry sentence, shown for
 /// confirmation before it is written to Markdown.
 struct TaskDraft: Equatable, Sendable {
@@ -12,17 +41,67 @@ struct TaskDraft: Equatable, Sendable {
     var dueTimeString: String?
     var recurrence: RecurrenceRule?
 
-    /// The Markdown task line this draft saves as. Without a date there is
-    /// no `@due` tag to hang a time or a repeat rule off, so both are
-    /// dropped — the syntax puts them inside and after the tag.
-    var markdownLine: String {
-        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let dueDateString else { return "- [ ] \(title)" }
-        var line = "- [ ] \(title) @due(\(dueDateString)"
+    /// A one-line title safe to embed before Cove's reserved tags. Control
+    /// characters/newlines become spaces and literal tag openers gain a space
+    /// before `(` so they remain title text on the next parse.
+    var sanitizedTitle: String {
+        var result = ""
+        let space = Unicode.Scalar(0x20)!
+        for scalar in title.unicodeScalars {
+            result.unicodeScalars.append(
+                CharacterSet.controlCharacters.contains(scalar) ? space : scalar)
+        }
+        result = result.replacingOccurrences(
+            of: "@due(", with: "@due (", options: .caseInsensitive)
+        result = result.replacingOccurrences(
+            of: "@repeat(", with: "@repeat (", options: .caseInsensitive)
+        result = result.replacingOccurrences(
+            of: "@anchor(", with: "@anchor (", options: .caseInsensitive)
+        return
+            result
+            .replacingOccurrences(of: #"[ \t]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    var validationIssues: [TaskDraftValidationIssue] {
+        var issues: [TaskDraftValidationIssue] = []
+        if sanitizedTitle.isEmpty { issues.append(.emptyTitle) }
+        if title.trimmingCharacters(in: .whitespaces) != sanitizedTitle {
+            issues.append(.unsafeTitle)
+        }
+        if let dueDateString {
+            let calendar = TaskCalendar.gregorian(
+                timeZone: TimeZone(secondsFromGMT: 0)!)
+            if TaskCalendar.dateComponents(from: dueDateString)?
+                .isValidDate(in: calendar) != true
+            {
+                issues.append(.invalidDate(dueDateString))
+            }
+        }
+        if let dueTimeString, TaskCalendar.timeComponents(from: dueTimeString) == nil {
+            issues.append(.invalidTime(dueTimeString))
+        }
+        if dueDateString == nil, dueTimeString != nil || recurrence != nil {
+            issues.append(.scheduleWithoutDate)
+        }
+        return issues
+    }
+
+    func validatedMarkdownLine() throws -> String {
+        let issues = validationIssues
+        guard issues.isEmpty else { throw TaskDraftValidationError(issues: issues) }
+        guard let dueDateString else { return "- [ ] \(sanitizedTitle)" }
+        var line = "- [ ] \(sanitizedTitle) @due(\(dueDateString)"
         if let dueTimeString { line += " \(dueTimeString)" }
         line += ")"
         if let recurrence { line += " @repeat(\(recurrence.tagText))" }
         return line
+    }
+
+    /// Compatibility for storage code that predates throwing validation.
+    /// UI and storage boundaries should call `validatedMarkdownLine()`.
+    var markdownLine: String {
+        (try? validatedMarkdownLine()) ?? "- [ ] \(sanitizedTitle)"
     }
 }
 
@@ -39,6 +118,47 @@ struct TaskDraft: Equatable, Sendable {
 /// grove, forced by Cove's fixed rules, are noted inline: no hashtag lists,
 /// undated input resolves to today, and a time range keeps its start time.
 enum QuickTaskParser {
+    struct Diagnostic: Equatable, Sendable {
+        enum Kind: Equatable, Sendable {
+            case impossibleDate
+            case ambiguousDate
+            case invalidTime
+            case valueTooLarge
+            case pastTime
+        }
+
+        let kind: Kind
+        let message: String
+        let sourceRange: NSRange
+
+        /// Only a sentence that cannot be written down correctly is refused.
+        /// A date that does not exist or a time that is not a time would
+        /// produce a line the parser then rejects, so those block. The rest
+        /// describe a task Cove *can* record and the user may well have
+        /// meant: a bare past time is deliberately today (grove parity), a
+        /// clamped count still resolves to a real date, and an ambiguous
+        /// date has already been resolved one way in the live preview. Those
+        /// warn under the field and leave return working.
+        var blocksCapture: Bool {
+            switch kind {
+            case .impossibleDate, .invalidTime:
+                return true
+            case .ambiguousDate, .valueTooLarge, .pastTime:
+                return false
+            }
+        }
+    }
+
+    struct ParseResult: Equatable, Sendable {
+        let draft: TaskDraft
+        let diagnostics: [Diagnostic]
+
+        var canCapture: Bool {
+            diagnostics.allSatisfy { !$0.blocksCapture }
+                && draft.validationIssues.isEmpty
+        }
+    }
+
     // MARK: - Grammar fragments (grove's WD / MONTH / MERIDIEM)
 
     private static let wd =
@@ -69,9 +189,9 @@ enum QuickTaskParser {
     private static let weekdayRegex = regex(#"\b(?:this\s+)?("# + wd + #")\b"#)
     private static let inUnitsRegex = regex(#"\bin\s+(\d+)\s*(days?|weeks?|months?|d|w|mo)\b"#)
     private static let monthDayRegex = regex(
-        #"\b("# + month + #")\s+(\d{1,2})(?:st|nd|rd|th)?\b"#)
+        #"\b("# + month + #")\s+(\d{1,3})(?:st|nd|rd|th)?\b"#)
     private static let slashDateRegex = regex(
-        #"(?:^|\s)(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?(?=\s|$)"#)
+        #"(?:^|\s)(\d{1,3})/(\d{1,3})(?:/(\d{2,4}))?(?=\s|$)"#)
 
     // Times
     private static let timeRangeRegex = regex(
@@ -142,6 +262,20 @@ enum QuickTaskParser {
         timeZone: TimeZone = .autoupdatingCurrent,
         defaultingToToday: Bool = true
     ) -> TaskDraft {
+        parseWithDiagnostics(
+            input,
+            now: now,
+            timeZone: timeZone,
+            defaultingToToday: defaultingToToday
+        ).draft
+    }
+
+    static func parseWithDiagnostics(
+        _ input: String,
+        now: Date,
+        timeZone: TimeZone = .autoupdatingCurrent,
+        defaultingToToday: Bool = true
+    ) -> ParseResult {
         let calendar = TaskCalendar.gregorian(timeZone: timeZone)
         let lower = input.lowercased() as NSString
         // Title spans slice the original input; fall back to the lowered
@@ -155,6 +289,9 @@ enum QuickTaskParser {
         var time: String?
         var recurrence: RecurrenceRule?
         var tonight = false
+        var diagnostics: [Diagnostic] = []
+        var dateCandidates: Set<String> = []
+        var timeSourceRange: NSRange?
 
         func text(_ match: NSTextCheckingResult, _ group: Int) -> String? {
             let range = match.range(at: group)
@@ -162,16 +299,25 @@ enum QuickTaskParser {
             return lower.substring(with: range)
         }
         func setDate(_ dayOffsetFromNow: Int) {
-            if date == nil {
-                date = ymdString(
-                    from: addDays(
-                        dayOffsetFromNow, to: now,
-                        calendar: calendar),
-                    calendar: calendar)
-            }
+            let resolved = ymdString(
+                from: addDays(
+                    dayOffsetFromNow, to: now,
+                    calendar: calendar),
+                calendar: calendar)
+            dateCandidates.insert(resolved)
+            if date == nil { date = resolved }
         }
         func setDate(to resolved: Date) {
-            if date == nil { date = ymdString(from: resolved, calendar: calendar) }
+            let string = ymdString(from: resolved, calendar: calendar)
+            dateCandidates.insert(string)
+            if date == nil { date = string }
+        }
+        func recordInvalidTime(_ range: NSRange) {
+            diagnostics.append(
+                Diagnostic(
+                    kind: .invalidTime,
+                    message: "That is not a valid clock time.",
+                    sourceRange: range))
         }
 
         // ---- 1. Recurrence ("every ...") ---------------------------------
@@ -181,9 +327,19 @@ enum QuickTaskParser {
             else { return }
             let singular = unit.hasSuffix("s") ? String(unit.dropLast()) : unit
             guard let frequency = unitFrequencies[singular] else { return }
+            let typedInterval =
+                text(m, 1).map { Int($0) ?? Int.max } ?? 1
+            if typedInterval > RecurrenceRule.maximumInterval {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .valueTooLarge,
+                        message:
+                            "Repeat intervals cannot exceed \(RecurrenceRule.maximumInterval). Choose a smaller interval.",
+                        sourceRange: m.range))
+            }
             recurrence = RecurrenceRule(
                 frequency: frequency,
-                interval: text(m, 1).flatMap(Int.init) ?? 1)
+                interval: typedInterval)
         }
 
         everyWeekdaySetRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
@@ -255,10 +411,19 @@ enum QuickTaskParser {
                     calendar: calendar))
         }
         inUnitsRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, let typed = text(m, 1).flatMap(Int.init) else { return }
+            guard let m, let count = text(m, 1) else { return }
+            let typed = Int(count) ?? Int.max
             let n = min(typed, maximumRelativeUnits)
             let unit = text(m, 2)!
             guard claims.tryClaim(m.range) else { return }
+            if typed > maximumRelativeUnits {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .valueTooLarge,
+                        message:
+                            "Relative dates cannot exceed \(maximumRelativeUnits) units. Choose a smaller value.",
+                        sourceRange: m.range))
+            }
             if unit.hasPrefix("d") {
                 setDate(n)
             } else if unit.hasPrefix("mo") {
@@ -271,32 +436,34 @@ enum QuickTaskParser {
         }
         monthDayRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
             guard let m, let monthNumber = monthNumbers[text(m, 1)!],
-                let day = text(m, 2).flatMap(Int.init),
-                (1...31).contains(day),
+                let day = text(m, 2).flatMap(Int.init), claims.tryClaim(m.range)
+            else { return }
+            guard (1...31).contains(day) else {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .impossibleDate,
+                        message: "Day \(day) is outside the valid range 1 through 31.",
+                        sourceRange: m.range))
+                return
+            }
+            guard
                 let resolved = upcomingMonthDay(
                     month: monthNumber, day: day,
-                    now: now, calendar: calendar),
-                claims.tryClaim(m.range)
-            else { return }
+                    now: now, calendar: calendar)
+            else {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .impossibleDate,
+                        message: "That month does not have day \(day).",
+                        sourceRange: m.range))
+                return
+            }
             setDate(to: resolved)
         }
         slashDateRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
             guard let m, let monthNumber = text(m, 1).flatMap(Int.init),
-                let day = text(m, 2).flatMap(Int.init),
-                (1...12).contains(monthNumber), (1...31).contains(day)
+                let day = text(m, 2).flatMap(Int.init)
             else { return }
-            var resolved: Date?
-            if let yearText = text(m, 3), var year = Int(yearText) {
-                if year < 100 { year += 2000 }
-                resolved = calendar.date(
-                    from: DateComponents(
-                        year: year, month: monthNumber, day: day, hour: 12))
-            } else {
-                resolved = upcomingMonthDay(
-                    month: monthNumber, day: day,
-                    now: now, calendar: calendar)
-            }
-            guard let resolved else { return }
             // The rule anchors on leading whitespace; claim only the token.
             let matched = lower.substring(with: m.range)
             let lead = matched.count - matched.drop(while: \.isWhitespace).count
@@ -304,6 +471,37 @@ enum QuickTaskParser {
                 location: m.range.location + lead,
                 length: m.range.length - lead)
             guard claims.tryClaim(token) else { return }
+            guard (1...12).contains(monthNumber), (1...31).contains(day) else {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .impossibleDate,
+                        message:
+                            "\(monthNumber)/\(day) is outside the valid month/day range.",
+                        sourceRange: token))
+                return
+            }
+
+            var resolved: Date?
+            if let yearText = text(m, 3), var year = Int(yearText) {
+                if year < 100 { year += 2000 }
+                let components = DateComponents(
+                    year: year, month: monthNumber, day: day, hour: 12)
+                if components.isValidDate(in: calendar) {
+                    resolved = calendar.date(from: components)
+                }
+            } else {
+                resolved = upcomingMonthDay(
+                    month: monthNumber, day: day,
+                    now: now, calendar: calendar)
+            }
+            guard let resolved else {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .impossibleDate,
+                        message: "\(monthNumber)/\(day) is not a real calendar date.",
+                        sourceRange: token))
+                return
+            }
             setDate(to: resolved)
         }
 
@@ -311,71 +509,102 @@ enum QuickTaskParser {
         // Cove has no calendar events, so the range's start time is used and
         // the end time is dropped; the whole range span still leaves the title.
         timeRangeRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m else { return }
+            guard let m, claims.tryClaim(m.range) else { return }
             let endMeridiem = normalizeMeridiem(text(m, 6))
             let startMeridiem = normalizeMeridiem(text(m, 3)) ?? endMeridiem
-            guard
-                let start = toHHMM(
-                    hour: text(m, 1).flatMap(Int.init) ?? 0,
-                    minute: text(m, 2).flatMap(Int.init) ?? 0,
-                    meridiem: startMeridiem),
-                toHHMM(
-                    hour: text(m, 4).flatMap(Int.init) ?? 0,
-                    minute: text(m, 5).flatMap(Int.init) ?? 0,
-                    meridiem: endMeridiem) != nil,
-                claims.tryClaim(m.range)
-            else { return }
-            if time == nil { time = start }
+            let start = toHHMM(
+                hour: text(m, 1).flatMap(Int.init) ?? 0,
+                minute: text(m, 2).flatMap(Int.init) ?? 0,
+                meridiem: startMeridiem)
+            let end = toHHMM(
+                hour: text(m, 4).flatMap(Int.init) ?? 0,
+                minute: text(m, 5).flatMap(Int.init) ?? 0,
+                meridiem: endMeridiem)
+            guard let start, end != nil else {
+                recordInvalidTime(m.range)
+                return
+            }
+            if time == nil {
+                time = start
+                timeSourceRange = m.range
+            }
         }
 
         // ---- 4. Single times ----------------------------------------------
         noonRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
             guard let m, claims.tryClaim(m.range) else { return }
-            if time == nil { time = "12:00" }
+            if time == nil {
+                time = "12:00"
+                timeSourceRange = m.range
+            }
         }
         midnightRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
             guard let m, claims.tryClaim(m.range) else { return }
-            if time == nil { time = "00:00" }
+            if time == nil {
+                time = "00:00"
+                timeSourceRange = m.range
+            }
         }
         hourMinuteRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m,
+            guard let m, claims.tryClaim(m.range) else { return }
+            guard
                 let resolved = toHHMM(
                     hour: text(m, 1).flatMap(Int.init) ?? 0,
                     minute: text(m, 2).flatMap(Int.init) ?? 0,
-                    meridiem: normalizeMeridiem(text(m, 3))),
-                claims.tryClaim(m.range)
-            else { return }
-            if time == nil { time = resolved }
+                    meridiem: normalizeMeridiem(text(m, 3)))
+            else {
+                recordInvalidTime(m.range)
+                return
+            }
+            if time == nil {
+                time = resolved
+                timeSourceRange = m.range
+            }
         }
         compactTimeRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, let digits = text(m, 1) else { return }
+            guard let m, let digits = text(m, 1), claims.tryClaim(m.range) else {
+                return
+            }
             let hour = Int(digits.dropLast(2)) ?? 0
             let minute = Int(digits.suffix(2)) ?? 0
             guard
                 let resolved = toHHMM(
                     hour: hour, minute: minute,
-                    meridiem: normalizeMeridiem(text(m, 2))),
-                claims.tryClaim(m.range)
-            else { return }
-            if time == nil { time = resolved }
+                    meridiem: normalizeMeridiem(text(m, 2)))
+            else {
+                recordInvalidTime(m.range)
+                return
+            }
+            if time == nil {
+                time = resolved
+                timeSourceRange = m.range
+            }
         }
         hourMeridiemRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m,
+            guard let m, claims.tryClaim(m.range) else { return }
+            guard
                 let resolved = toHHMM(
                     hour: text(m, 1).flatMap(Int.init) ?? 0,
                     minute: 0,
-                    meridiem: normalizeMeridiem(text(m, 2))),
-                claims.tryClaim(m.range)
-            else { return }
-            if time == nil { time = resolved }
+                    meridiem: normalizeMeridiem(text(m, 2)))
+            else {
+                recordInvalidTime(m.range)
+                return
+            }
+            if time == nil {
+                time = resolved
+                timeSourceRange = m.range
+            }
         }
 
         // ---- 5. Finalize ---------------------------------------------------
         if tonight, time == nil { time = "20:00" }
 
         // A bare time means today: `retainer 940p` is tonight's 9:40 PM.
+        var resolvedBareTimeToToday = false
         if time != nil, date == nil, recurrence == nil {
             date = ymdString(from: now, calendar: calendar)
+            resolvedBareTimeToToday = true
         }
 
         if let rule = recurrence, date == nil {
@@ -400,6 +629,23 @@ enum QuickTaskParser {
             ?? (defaultingToToday
                 ? ymdString(from: now, calendar: calendar) : nil)
 
+        if resolvedBareTimeToToday, let resolvedDate, let time,
+            case .success(let resolution) = TaskCalendar.resolve(
+                date: resolvedDate,
+                time: time,
+                timeZone: timeZone,
+                nonexistentTime: .reject,
+                repeatedTime: .first),
+            resolution.date <= now
+        {
+            diagnostics.append(
+                Diagnostic(
+                    kind: .pastTime,
+                    message:
+                        "That time has already passed today. Add a date or choose a future time.",
+                    sourceRange: timeSourceRange ?? whole))
+        }
+
         // ---- 6. Title: input minus consumed spans --------------------------
         var title = ""
         var cursor = 0
@@ -412,9 +658,22 @@ enum QuickTaskParser {
             with: NSRange(location: cursor, length: titleSource.length - cursor))
         title = cleanedTitle(title)
 
-        return TaskDraft(
-            title: title, dueDateString: resolvedDate,
-            dueTimeString: time, recurrence: recurrence)
+        if dateCandidates.count > 1 {
+            diagnostics.append(
+                Diagnostic(
+                    kind: .ambiguousDate,
+                    message:
+                        "This sentence contains dates that resolve differently. Keep one date or choose it explicitly.",
+                    sourceRange: whole))
+        }
+
+        return ParseResult(
+            draft: TaskDraft(
+                title: title,
+                dueDateString: resolvedDate,
+                dueTimeString: time,
+                recurrence: recurrence),
+            diagnostics: diagnostics)
     }
 
     // MARK: - Helpers
@@ -496,18 +755,21 @@ enum QuickTaskParser {
         month: Int, day: Int, now: Date,
         calendar: Calendar
     ) -> Date? {
-        let year = calendar.component(.year, from: now)
-        guard
-            let candidate = calendar.date(
-                from: DateComponents(
-                    year: year, month: month, day: day, hour: 12))
-        else { return nil }
-        if ymdString(from: candidate, calendar: calendar)
-            < ymdString(from: now, calendar: calendar)
-        {
-            return calendar.date(byAdding: .year, value: 1, to: candidate)
+        let currentYear = calendar.component(.year, from: now)
+        let today = ymdString(from: now, calendar: calendar)
+        // Eight years comfortably crosses the Gregorian leap-year cycle for
+        // Feb 29 while still rejecting dates such as Apr 31.
+        for year in currentYear...(currentYear + 8) {
+            let components = DateComponents(
+                year: year, month: month, day: day, hour: 12)
+            guard components.isValidDate(in: calendar),
+                let candidate = calendar.date(from: components)
+            else { continue }
+            if ymdString(from: candidate, calendar: calendar) >= today {
+                return candidate
+            }
         }
-        return candidate
+        return nil
     }
 
     // MARK: - Formatting

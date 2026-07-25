@@ -110,6 +110,15 @@ final class VaultFileOperationsTests: XCTestCase {
         }
     }
 
+    func testCreateNoteRejectsControlCharactersAndOversizedComponents() {
+        XCTAssertThrowsError(
+            try ops.createNote(named: "line\nbreak", in: root))
+        XCTAssertThrowsError(
+            try ops.createNote(
+                named: String(repeating: "é", count: 150),
+                in: root))
+    }
+
     func testCreateFolder() throws {
         let created = try ops.createFolder(named: "Projects", in: root)
         var isDirectory: ObjCBool = false
@@ -129,6 +138,20 @@ final class VaultFileOperationsTests: XCTestCase {
         let contents = "# Héllo 🚀\n- [ ] Do the thing @due(2026-07-20)\n"
         try ops.saveNote(contents, to: note)
         XCTAssertEqual(try ops.readNote(at: note), contents)
+    }
+
+    func testSavePreservesDestinationPermissions() throws {
+        let note = try ops.createNote(named: "Mode", in: root)
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o640],
+            ofItemAtPath: note.path)
+
+        try ops.saveNote("replacement\n", to: note)
+
+        let permissions = try XCTUnwrap(
+            fileManager.attributesOfItem(atPath: note.path)[.posixPermissions]
+                as? NSNumber)
+        XCTAssertEqual(permissions.intValue & 0o777, 0o640)
     }
 
     func testSaveNoteToMissingFileThrows() {
@@ -225,6 +248,39 @@ final class VaultFileOperationsTests: XCTestCase {
         XCTAssertEqual(
             try ops.readNote(at: note),
             "- [x] Retry me @due(2026-07-20)\n")
+    }
+
+    func testConflictCopiesAreContentAddressedAcrossRepeatedExternalChanges() throws {
+        let note = try ops.createNote(named: "Conflict", in: root)
+        try ops.saveNote("base", to: note)
+        try "external one".write(
+            to: note,
+            atomically: true,
+            encoding: .utf8)
+        _ = try ops.saveNote(
+            "local one",
+            to: note,
+            expectedDiskText: "base",
+            conflictIdentifier: "same-session-r1")
+        try "external two".write(
+            to: note,
+            atomically: true,
+            encoding: .utf8)
+        _ = try ops.saveNote(
+            "local two",
+            to: note,
+            expectedDiskText: "local one",
+            conflictIdentifier: "same-session-r1")
+
+        let copies = try fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: nil
+        )
+        .filter { $0.lastPathComponent.contains(".cove-conflict-") }
+        XCTAssertEqual(copies.count, 2)
+        XCTAssertEqual(
+            Set(try copies.map { try String(contentsOf: $0, encoding: .utf8) }),
+            ["external one", "external two"])
     }
 
     // MARK: - Rename
@@ -342,6 +398,57 @@ final class VaultFileOperationsTests: XCTestCase {
         XCTAssertFalse(fileManager.fileExists(atPath: record.recoveryURL.path))
     }
 
+    func testRecoveryManifestSurvivesRelaunchAndKeepsOriginalRelativePath() throws {
+        let deep =
+            root
+            .appendingPathComponent("One", isDirectory: true)
+            .appendingPathComponent("Two", isDirectory: true)
+        try fileManager.createDirectory(
+            at: deep,
+            withIntermediateDirectories: true)
+        let note = try ops.createNote(
+            named: String(repeating: "é", count: 70),
+            in: deep)
+
+        let moved = try ops.moveToRecovery(
+            itemAt: note,
+            vaultRoot: root)
+        let records = try VaultFileOperations().recoveryRecords(
+            vaultRoot: root)
+
+        XCTAssertEqual(records, [moved])
+        XCTAssertLessThanOrEqual(
+            moved.recoveryURL.lastPathComponent.utf8.count,
+            240)
+        XCTAssertEqual(records.first?.originalURL, note)
+    }
+
+    func testRestoreRemovesDurableRecoveryRecord() throws {
+        let note = try ops.createNote(named: "Manifest", in: root)
+        let record = try ops.moveToRecovery(
+            itemAt: note,
+            vaultRoot: root)
+
+        try ops.restore(record)
+
+        XCTAssertTrue(
+            try ops.recoveryRecords(vaultRoot: root).isEmpty)
+    }
+
+    func testRecoveryCopyIsExclusiveAndOperationallyExcluded() throws {
+        let original = url("Missing.md")
+        let copy = try ops.createRecoveryCopy(
+            "- [ ] Do not schedule twice @due(2026-08-01)\n",
+            for: original,
+            in: root)
+
+        XCTAssertTrue(
+            VaultFileOperations.isOperationallyExcludedDocument(copy))
+        XCTAssertEqual(
+            try String(contentsOf: copy, encoding: .utf8),
+            "- [ ] Do not schedule twice @due(2026-08-01)\n")
+    }
+
     func testRecoveryRestoreRefusesToOverwriteOccupiedOriginalPath() throws {
         let note = try ops.createNote(named: "Recoverable", in: root)
         let record = try ops.moveToRecovery(itemAt: note, vaultRoot: root)
@@ -454,6 +561,77 @@ final class VaultFileOperationsTests: XCTestCase {
 
     func testPurgeIsANoOpWithoutARecoveryArea() throws {
         XCTAssertNoThrow(try ops.purgeRecovery(vaultRoot: root))
+    }
+
+    // MARK: - Stranded write temporaries
+
+    /// A process killed between the staging write and the rename leaves the
+    /// temporary behind. It is hidden, so nothing in Cove ever surfaces it,
+    /// and in an iCloud vault it syncs and is stored forever.
+    func testPurgeRemovesStrandedWriteTemporaries() throws {
+        let stranded = url(".cove-write-abc123")
+        let strandedCreate = url("Folder/.cove-create-def456")
+        try fileManager.createDirectory(
+            at: url("Folder"), withIntermediateDirectories: true)
+        try Data("partial".utf8).write(to: stranded)
+        try Data("partial".utf8).write(to: strandedCreate)
+        let old = Date().addingTimeInterval(-24 * 60 * 60)
+        for item in [stranded, strandedCreate] {
+            try fileManager.setAttributes(
+                [.modificationDate: old], ofItemAtPath: item.path)
+        }
+
+        ops.purgeWriteTemporaries(vaultRoot: root)
+
+        XCTAssertFalse(exists(".cove-write-abc123"))
+        XCTAssertFalse(exists("Folder/.cove-create-def456"))
+    }
+
+    /// A temporary younger than the floor may belong to a write running right
+    /// now, here or on another device sharing the folder.
+    func testPurgeLeavesRecentWriteTemporariesAlone() throws {
+        try Data("in flight".utf8).write(to: url(".cove-write-live"))
+
+        ops.purgeWriteTemporaries(vaultRoot: root)
+
+        XCTAssertTrue(exists(".cove-write-live"))
+    }
+
+    func testPurgeLeavesOrdinaryNotesAndTheRecoveryAreaAlone() throws {
+        _ = try ops.createNote(named: "Keep", in: root)
+        let record = try ops.moveToRecovery(
+            itemAt: url("Keep.md"),
+            vaultRoot: root,
+            now: Date())
+
+        ops.purgeWriteTemporaries(vaultRoot: root)
+
+        XCTAssertTrue(fileManager.fileExists(atPath: record.recoveryURL.path))
+    }
+
+    func testCorruptManifestPreventsPurgeFromDeletingRecoveryBytes() throws {
+        let note = try ops.createNote(named: "Keep", in: root)
+        let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let record = try ops.moveToRecovery(
+            itemAt: note,
+            vaultRoot: root,
+            now: deletedAt)
+        let manifest =
+            root
+            .appendingPathComponent(
+                VaultFileOperations.recoveryFolderName,
+                isDirectory: true
+            )
+            .appendingPathComponent(
+                VaultFileOperations.recoveryManifestName)
+        try Data("not-json".utf8).write(to: manifest)
+
+        XCTAssertThrowsError(
+            try ops.purgeRecovery(
+                vaultRoot: root,
+                now: deletedAt.addingTimeInterval(30 * 24 * 60 * 60)))
+        XCTAssertTrue(
+            fileManager.fileExists(atPath: record.recoveryURL.path))
     }
 
     private func modificationDate(of url: URL) throws -> Date {

@@ -37,9 +37,31 @@
         /// Takes the resolved scheme rather than the stored `AppearanceSetting`,
         /// so the caller hands over SwiftUI's own `colorScheme` and the two cannot
         /// disagree about what `.system` resolved to.
+        /// Both `applicationIconImage` and the Dock tile's own content view are
+        /// set, and the tile is told to redraw.
+        ///
+        /// `applicationIconImage` alone is what the app switcher and the
+        /// window menu read, but it reaches the Dock only when the Dock
+        /// chooses to re-read it — it is the app's *icon*, not the tile. The
+        /// tile is `dockTile`, it caches what it last drew, and `display()` is
+        /// the documented way to make it redraw. Setting the content view as
+        /// well means the tile is drawn from the image we handed it rather
+        /// than from whatever the Dock had cached for the bundle.
         static func apply(_ scheme: ColorScheme) {
-            NSApp?.applicationIconImage =
-                scheme == .dark ? NSImage(named: darkImageName) : nil
+            guard let application = NSApp else { return }
+
+            let darkTile = scheme == .dark ? NSImage(named: darkImageName) : nil
+            application.applicationIconImage = darkTile
+
+            if let darkTile {
+                let tileView = NSImageView(image: darkTile)
+                tileView.imageScaling = .scaleProportionallyUpOrDown
+                application.dockTile.contentView = tileView
+            } else {
+                // nil hands the tile back to the bundle's own icon.
+                application.dockTile.contentView = nil
+            }
+            application.dockTile.display()
         }
     }
 

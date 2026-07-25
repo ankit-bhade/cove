@@ -887,14 +887,24 @@ assumed: `platform: macos` is not a recognised value at all, `platform: osx` is
 recognised and still unassigned, and the result does not change at a 15.0 or
 26.0 deployment target.
 
-So `DockIcon` (`Cove/Platform/macOS/`) writes `NSApp.applicationIconImage`
-instead, from a plain `DockIconDark` imageset holding the dark tile at 512 and
-1024. Light sets the property to `nil`, which hands the Dock back to the
-bundle's own icon rather than installing a second copy of the light artwork —
-so the catalog stays the single home of the light tile. `applicationIconImage`
-is writable on every version Cove supports, which macOS 26's `.icon` format is
-not: that needs Icon Composer, a GUI tool with no CLI, and a macOS 26 floor
-against Cove's macOS 14.
+So `DockIcon` (`Cove/Platform/macOS/`) drives the icon at runtime instead, from
+a plain `DockIconDark` imageset holding the dark tile at 512 and 1024. Light
+sets everything back to `nil`, which hands the Dock back to the bundle's own
+icon rather than installing a second copy of the light artwork — so the catalog
+stays the single home of the light tile. This route works on every version Cove
+supports, which macOS 26's `.icon` format does not: that needs Icon Composer, a
+GUI tool with no CLI, and a macOS 26 floor against Cove's macOS 14.
+
+**Setting `applicationIconImage` is not enough on its own, and the way it fails
+is silent.** It is the app's *icon* — what the app switcher and the window menu
+read — while the Dock draws a *tile* that caches what it last drew. Assigning
+the property and stopping there leaves the property visibly correct from inside
+the process (it reads back as the 512pt dark tile) while the Dock goes on
+showing the light one, so nothing in the app can detect the failure. `DockIcon`
+therefore also sets `dockTile.contentView` to an `NSImageView` of the same
+image and calls `dockTile.display()`. This was found the way it had to be
+found — by shipping the property-only version, having it look right in every
+check available here, and being told the Dock had not changed.
 
 **The Dock icon follows SwiftUI's `colorScheme`, not the stored setting.**
 `coveDockIcon()` is applied *before* `preferredColorScheme` in `RootView`'s
@@ -1308,11 +1318,14 @@ Rough edges and surprises, not restatements of the design above.
   Launchpad, and the Dock's own icon for a *quit* app all keep the light tile.
   Closing the gap means adopting macOS 26's `.icon` format, which would raise
   the macOS floor from 14 to 26.
-* The Dock swap is verified by test against `NSApp` inside the test host, not
-  by looking at the Dock: macOS GUI capture needs Screen Recording permission
-  the build shell does not have, so `DockIconTests` asserts that the installed
-  icon gets darker in dark and lighter again in light. Nothing automated has
-  ever seen the actual Dock.
+* **No automated check can see the Dock tile, and the tests would pass without
+  it.** macOS GUI capture needs Screen Recording permission the build shell
+  does not have, so `DockIconTests` asserts against `applicationIconImage`
+  inside the test host — which is exactly the property that was already
+  correct while the Dock was still wrong. The `dockTile` half of `apply` has
+  no automated cover at all. Changing `DockIcon` means looking at the Dock by
+  hand, with Cove **running**: switch the system or Cove's own appearance and
+  watch the tile.
 * The dark iOS icon variant is opaque rather than transparent. Apple's iOS 18
   guidance prefers a transparent dark icon over a system backdrop, but the mark
   supplies its own night-black ground. iOS 17 ignores the variant entirely.

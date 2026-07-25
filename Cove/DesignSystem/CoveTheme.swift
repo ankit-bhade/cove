@@ -74,8 +74,8 @@ enum CoveTheme {
     static let cardRadius: CGFloat = 18
     static let fieldRadius: CGFloat = 12
 
-    /// Every tinted surface in the app — an icon tile, a count badge, a due
-    /// capsule, an editor banner — is the same two values: a wash of the hue
+    /// Every tinted surface in the app — an icon tile, a count badge, the
+    /// recovery emblem, an editor banner — is the same two values: a wash of the hue
     /// with a hairline of the same hue a little stronger over it. Held as
     /// tokens because hand-tuned pairs drift, and a screen carrying three
     /// tints at three strengths reads as three components rather than one.

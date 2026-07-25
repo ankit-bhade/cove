@@ -62,7 +62,7 @@ import SwiftUI
             }
         }
 
-        /// The accent carries small text — due capsules, counts, section counts —
+        /// The accent carries small text — due dates, counts, section counts —
         /// so it has to clear the 4.5:1 floor for normal-size text, not the 3:1
         /// one that would be enough if it only ever filled shapes.
         func testAccentOnCanvasClearsTheContrastFloorInBothAppearances() {

@@ -100,40 +100,38 @@ struct CoveCountBadge: View {
     }
 }
 
-/// The one due-date capsule: a glyph, the phrasing `DueDescription` settled
-/// on, and a tinted well. Shared because the capture preview and the task row
-/// it becomes sit one keystroke apart on screen — drawn twice, they could
-/// word or shade the same date two ways.
+/// The one due-date label: the phrasing `DueDescription` settled on, set as a
+/// subtitle under the task it belongs to. Shared because the capture preview
+/// and the task row it becomes sit one keystroke apart on screen — drawn
+/// twice, they could word or shade the same date two ways.
 ///
-/// Overdue is the loudest state, today takes the accent, and everything
-/// further out stays quiet: a list where every capsule is colored says
-/// nothing about which one to look at first.
-struct CoveDueCapsule: View {
+/// It used to be a tinted capsule with a clock or calendar glyph, and it was
+/// the wrong shape for what it says. A pill is a control's shape, so a row
+/// carrying one under every title read as a list of buttons; the well's hard
+/// edge sat a few points under the title and crowded it in a way a line of
+/// text does not; and the glyph restated the date beside it. What is left is
+/// the wording, one step down from the title and a step quieter — which is
+/// what makes it read as a subtitle rather than as a second title. The tint
+/// defaults to secondary and callers raise it only for lateness; see
+/// `TaskRow.dueTint`.
+///
+/// `isOverdue` no longer picks a glyph; it names the state for VoiceOver,
+/// which is otherwise the one reader the tint doesn't reach.
+struct CoveDueLabel: View {
     let text: String
-    var hasTime: Bool
     var isOverdue = false
-    var tint: Color = CoveTheme.accent
+    var tint: Color = .secondary
 
     var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-            Text(text)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(tint)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .coveTintedSurface(tint, in: Capsule())
-    }
-
-    private var symbol: String {
-        if isOverdue { return "exclamationmark.circle.fill" }
-        return hasTime ? "clock" : "calendar"
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(tint)
+            .accessibilityLabel(isOverdue ? "Overdue, \(text)" : text)
     }
 }
 
-/// The repeat rule under a task. Takes the rule's wording rather than the
-/// rule, so the design system stays clear of the task model.
+/// The repeat rule beside a task's due date. Takes the rule's wording rather
+/// than the rule, so the design system stays clear of the task model.
 struct CoveRecurrenceLabel: View {
     let text: String
 
@@ -142,15 +140,17 @@ struct CoveRecurrenceLabel: View {
     }
 
     var body: some View {
-        // Not a `Label`: at caption size SwiftUI lays its glyph out in an icon
+        // Not a `Label`: at this size SwiftUI lays its glyph out in an icon
         // column wide enough to leave the rule floating a quarter-inch from
-        // the words it belongs to. Tertiary was too faint to read against the
-        // capsule beside it, so the pair sits at secondary instead.
+        // the words it belongs to. It sits at `CoveDueLabel`'s size and tint
+        // rather than a step below, because the two read as one line — a date
+        // and how often it comes back — and two sizes on one line is what made
+        // the pair look assembled from parts.
         HStack(spacing: 4) {
             Image(systemName: "repeat")
             Text(text)
         }
-        .font(.caption2.weight(.semibold))
+        .font(.footnote)
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Repeats \(text.lowercased())")

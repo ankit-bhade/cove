@@ -581,7 +581,7 @@ for exactly one file** — the root `Tasks.md` — so every other note keeps the
 strict rules and no stray checkbox anywhere in the vault becomes a task.
 
 Undated items therefore exist: they sort after dated ones, are never overdue,
-render no due capsule, and can't be scheduled a notification.
+render no due line at all, and can't be scheduled a notification.
 
 **Lists build from the note's headings, not from its tasks**, so a list
 created but not yet filled still exists.
@@ -793,23 +793,57 @@ of difference that is felt before it is seen. It costs roughly a row of
 what fits above the fold, which is the price of the grid being one grid.
 
 **Tinted surfaces come from `Tint.fill`/`Tint.stroke`, applied through
-`coveTintedSurface(_:in:)`.** A tile, a badge, a due capsule, an editor
-banner, and the recovery emblem are all one idea — a wash of a hue under a
-hairline of the same hue — and they had drifted to five hand-tuned pairs
-across 0.11–0.13 fills and 0.14–0.22 strokes. The modifier takes any
-`InsettableShape`, so the caller keeps the shape it already had.
+`coveTintedSurface(_:in:)`.** A tile, a badge, an editor banner, and the
+recovery emblem are all one idea — a wash of a hue under a hairline of the
+same hue — and they had drifted to five hand-tuned pairs across 0.11–0.13
+fills and 0.14–0.22 strokes. The modifier takes any `InsettableShape`, so the
+caller keeps the shape it already had.
 
-**`CoveDueCapsule` and `CoveRecurrenceLabel` are shared by the task row and
-the capture preview.** The preview *becomes* the row it sits one keystroke
-above, so two implementations could word or shade the same date two ways.
+**A due date is a subtitle, not a capsule.** It used to be a tinted pill
+carrying a clock or calendar glyph, and every part of that was wrong for a
+line that says when something is due: a pill is a control's shape, so a list
+with one under every title read as a list of buttons; the well's hard edge sat
+a few points below the title and crowded it in a way a line of text does not;
+and the glyph restated the date beside it. `CoveDueLabel` is what is left —
+the wording, a step down in size and a step quieter — which is the shape Apple
+Reminders uses for the same fact, and the reference this was measured against.
+
+**Lateness is the only thing a due line raises its voice for.** Overdue takes
+`CoveTheme.alert`; everything else, today included, stays secondary. Today
+used to take the accent, and on the landing screen — where nearly everything
+is due today or overdue — that meant almost every row carried a saturated
+second line. A subtitle at the title's own strength stops reading as a
+subtitle: the pair clumps into one block, and a list where every date is
+coloured says nothing about which one to read first. It was also redundant
+twice over, since a row reading "Today" sits under a header reading TODAY and
+its checkbox is already ember. A completed task's line stays quiet for the
+reason it always did — finishing something should settle a row, not light it
+up — which is the same call the widget's muted checkboxes make.
+
+**A task title is regular where every other row title is medium, and that is
+what separates it from its date.** The pair was tried at medium first, with
+the gap opened up to compensate; it did not work, because distance was never
+what was wrong. A medium 17pt title has enough ink that a caption under it
+reads as attached to it no matter how far down it sits, so the two clump into
+one block and the row stops having a hierarchy. Lightening the title is what
+breaks them apart, and the gap then goes back to 4pt — Reminders' own
+geometry, which the rows were measured against.
+
+The divergence from `CoveRowTitle` is deliberate and it is about what the row
+*is*, not about the grid: a folder or list row is a label with a tag under it,
+where a task row is a sentence with a second line about it. The grid — the
+glyph column, the gap after it, the row padding, the separator inset — is
+still the shared one, which is the part that shows when rows sit together.
+The two weights never appear in the same list anyway: the Lists overview is
+`CoveRow`, and a list's tasks are one push below it.
+
+**`CoveDueLabel` and `CoveRecurrenceLabel` are shared by the task row and the
+capture preview.** The preview *becomes* the row it sits one keystroke above,
+so two implementations could word or shade the same date two ways. They sit at
+one size and one tint so the pair reads as a single line — a date and how
+often it comes back — rather than as parts assembled.
 `CoveRecurrenceLabel` takes the rule's wording rather than a `RecurrenceRule`,
 which keeps the design system clear of the task model.
-
-**A completed task's capsule is `.secondary`, not its live tint.** Overdue is
-loud and today takes the accent, but a struck-through grey row under a
-full-strength ember capsule put the loudest thing on screen on the one task
-that no longer wants attention — the same reasoning the widget's muted
-checkboxes already followed.
 
 **`CoveMark` is drawn, not loaded, and it is geometry rather than type.** Two
 concentric arcs opened on one axis: an ink C at r = 0.20 under a 16% stroke,

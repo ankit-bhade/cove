@@ -54,6 +54,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A task's due date reads as a subtitle instead of a tinted capsule, taking
+  Apple Reminders' treatment of the same fact as the reference. The pill it
+  replaces was a control's shape, so a list carrying one under every title
+  read as a list of buttons, and its hard edge sat a few points under the
+  title and crowded it in a way a line of text does not; the clock and
+  calendar glyphs restated the date beside them and are gone. What is left is
+  the wording, a step down in size and a step quieter, with the repeat rule
+  inline after it at the same size so the two read as one line.
+- Only an overdue task colours its due date now. Today used to take the
+  accent, which on the landing screen — where nearly everything is due today
+  or overdue — put a saturated second line under almost every row, clumping
+  each title and date into one block and leaving nothing to say which task to
+  read first. It was redundant twice over besides: a row reading "Today" sits
+  under a header reading TODAY, and its checkbox is already ember. Lateness
+  keeps the alert rust; everything else is secondary.
+- A task's title is set in regular weight, where every other row title in the
+  app is medium. At medium the title had enough ink that its due line read as
+  attached to it and the pair clumped into one block, no matter how far apart
+  the two were set — opening the gap was tried first and did not fix it.
+  Lightening the title is what separates them, and the gap then sits at
+  Reminders' own spacing. The shared row grid is untouched: the checkbox
+  column, the text inset, the padding, and the separator all still match every
+  other row in the app.
 - Redesigned the app icon as two concentric arcs — an ink C with an ember arc
   echoing it, read equally as a ripple leaving an inlet. The serif `c` it
   replaces carried a diagonal stress and tapered terminals, so the mark leaned

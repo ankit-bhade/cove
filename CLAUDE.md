@@ -891,9 +891,39 @@ So `DockIcon` (`Cove/Platform/macOS/`) drives the icon at runtime instead, from
 a plain `DockIconDark` imageset holding the dark tile at 512 and 1024. Light
 sets everything back to `nil`, which hands the Dock back to the bundle's own
 icon rather than installing a second copy of the light artwork — so the catalog
-stays the single home of the light tile. This route works on every version Cove
-supports, which macOS 26's `.icon` format does not: that needs Icon Composer, a
-GUI tool with no CLI, and a macOS 26 floor against Cove's macOS 14.
+stays the single home of the light tile.
+
+**What a bundle-level dark icon would actually cost, since the runtime one
+cannot follow a *quit* app.** Apple's own apps change while closed because they
+do not use an `appiconset` at all: Notes.app's compiled catalog carries
+`AppIcon` keyed by `NSAppearanceNameAqua`, `NSAppearanceNameDarkAqua`, and
+`ISAppearanceTintable`, plus layered `AppIcon_Assets/*` groups. That is macOS
+26's `.icon` (Icon Composer) format, and the variants live in the bundle, so
+the system swaps them with nothing running.
+
+It is not the deployment target that stops Cove adopting it — an earlier
+version of this file claimed a macOS 26 floor, and that is wrong. A
+hand-authored `icon.json` compiles through `actool` cleanly at Cove's **macOS
+14** target, emitting Notes' rendition structure plus an `.icns` fallback. Two
+other things stop it, and they are the ones to weigh if this is revisited:
+
+* **macOS 26 renders `.icon` files with its own material treatment**, and it is
+  not optional — it is why native icons follow appearance at all. Cove's flat
+  ink C comes out as a glossy gradient and the ember arc picks up a metallic
+  sheen, against a direction whose whole premise is flat shapes at one weight.
+* **The light/dark colour schema is undocumented and fails silently.** `actool`
+  accepts an invented `"totally-bogus-key"` without a word, and `dark-color`,
+  `light-color`/`dark-color`, and `fill-specializations` each left the dark
+  rendition byte-identical to a baseline with no dark colour at all. A
+  baseline `.icon` *does* still get a distinct dark rendition — the system
+  derives one — so the format works; it is Cove's specific night-black ground
+  that could not be expressed. Nor can the result be checked here:
+  `NSWorkspace.icon(forFile:)` resolves once, and returns identical pixels for
+  Notes under both appearances.
+
+The flat direction was kept and the quit-app gap accepted. Reversing that means
+authoring the `.icon` in Icon Composer, where the colours are set in a UI
+rather than guessed at.
 
 **Setting `applicationIconImage` is not enough on its own, and the way it fails
 is silent.** It is the app's *icon* — what the app switcher and the window menu
@@ -1316,8 +1346,10 @@ Rough edges and surprises, not restatements of the design above.
   while Cove is running — it is `NSApp.applicationIconImage`, not the bundle's
   icon, because `appiconset` has no dark `mac` slot. Finder, Spotlight,
   Launchpad, and the Dock's own icon for a *quit* app all keep the light tile.
-  Closing the gap means adopting macOS 26's `.icon` format, which would raise
-  the macOS floor from 14 to 26.
+  This is the most visible rough edge in the app: turn on dark mode with Cove
+  closed and its icon is the one thing on the Dock that does not change.
+  Closing it means adopting `.icon`, which costs the flat look rather than the
+  deployment target — see "What a bundle-level dark icon would actually cost".
 * **No automated check can see the Dock tile, and the tests would pass without
   it.** macOS GUI capture needs Screen Recording permission the build shell
   does not have, so `DockIconTests` asserts against `applicationIconImage`

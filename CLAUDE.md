@@ -146,8 +146,8 @@ list section of the capture note. `@repeat` rules are
 Incomplete tasks sort by due date, then time (date-only first within a day).
 Checking a task updates its original file; checking an incomplete recurring
 task advances its due date to the next occurrence instead of completing it.
-Overdue, Today, and Tomorrow are always shown; Upcoming and the completed
-section collapse, and start collapsed.
+Overdue, Today, and Tomorrow are always shown; Upcoming can be collapsed and
+the completed section also starts collapsed.
 
 The screen has a quick-entry field whose interpreter is a port of the
 grove-app capture parser: tokens are recognized anywhere in the sentence and
@@ -525,10 +525,11 @@ note, so the caption repeated "Tasks" under every row.
 Display logic is pure and tested against a fixed `now` (`TaskPresentation`).
 Grouping into Overdue/Today/Tomorrow/Upcoming only *partitions* the sorted
 list, leaving the spec's ordering untouched. Upcoming is the one *group* that
-folds away and the one that arrives folded (`TaskGroup.isCollapsible`): it is
-unbounded — a year of dated tasks all land in it — and open by default it
-pushes what is actually due off the screen. The completed section folds the
-same way for the same reason. Both keep their count in the header while
+folds away (`TaskGroup.isCollapsible`): it is unbounded — a year of dated
+tasks all land in it — so it is the one a reader may want out of the way. It
+still arrives open, because what is further out is work that is coming. The
+completed section folds the same way and is the one that arrives closed,
+being finished by definition. Both keep their count in the header while
 closed, so a section still says how much is behind it. A minute tick keeps those groups
 true across a due moment or midnight, and the tab refreshes on appearance
 because editor autosaves don't trigger a rescan.
@@ -735,15 +736,16 @@ the system red is a decision this app already made, but a rust tile beside
 role-red text puts that near-miss inside a single row, where it reads as a
 mistake rather than as two components a screen apart.
 
-Two sections fold, both closed on arrival: Upcoming (see
-`TaskGroup.isCollapsible`) and the completed section on either task screen.
-Neither is about right now — one hasn't happened and the other already has.
-`CompletedTasksHeader` takes the binding and `ClearCompletedTasksRow` the
-sweep, so Completed on the Tasks tab and Done in a list cannot fold or clear
-differently; those components exist precisely to stop the two from drifting.
-Expansion is session state in both cases, since the point is that a launch
-opens on what is due rather than on a year of what isn't and a pile of what's
-done.
+Two sections fold: Upcoming (see `TaskGroup.isCollapsible`) and the completed
+section on either task screen. Only the completed one arrives closed —
+folding is offered on Upcoming because it is unbounded, but it is still work
+that is coming, and a screen that hides it by default hides most of what a
+reader came to check. `CompletedTasksHeader` takes the binding and
+`ClearCompletedTasksRow` the sweep, so Completed on the Tasks tab and Done in
+a list cannot fold or clear differently; those components exist precisely to
+stop the two from drifting. Expansion is session state in both cases: folding
+Upcoming away lasts as long as the app runs, and a launch opens on what is
+due rather than on a pile of what's done.
 
 `CoveSectionHeader` is the one list-section header, `CoveIconTile` the one
 row glyph (decorative, so `accessibilityHidden` — the row carries the label —
@@ -1123,9 +1125,10 @@ Rough edges and surprises, not restatements of the design above.
   Tasks tab then shows it completed rather than rolled forward.
 * The minute tick re-evaluates the whole list body. Cheap at typical counts; a
   very large list would want it narrowed to rows that can actually change.
-* Upcoming and the completed section reopen collapsed on every launch.
-  Expanding one lasts as long as the app is running and is not remembered,
-  which is the point — but it does mean neither can be left open.
+* Neither section remembers how it was left. Folding Upcoming away lasts as
+  long as the app is running, and the completed section reopens collapsed on
+  every launch — which is the point for the second one, but it does mean
+  Upcoming cannot be left folded.
 * Clearing completed tasks means opening the section first — the sweep is its
   last row, not a control in its header. Deliberate, and it also means the
   rows being removed are on screen when it is pressed.

@@ -49,10 +49,10 @@ text inside fenced code, HTML comments, or YAML front matter is left
 alone. Open tasks are
 sorted by due date and grouped into Overdue, Today, Tomorrow, and Upcoming
 sections, with due dates written the way you'd say them ("Today, 3:00 PM",
-"Tomorrow", "Friday", "Jul 24") and overdue ones shown in red. Upcoming
-starts collapsed, and so does the completed section below it — each header
-shows how many are waiting behind it and a chevron that opens it — so the
-screen leads with what is actually due.
+"Tomorrow", "Friday", "Jul 24") and overdue ones shown in red. Upcoming can
+be folded away with the chevron on its header when it gets long, and the
+completed section below it starts folded — a closed header still shows how
+many are waiting behind it.
 Checking a task off rewrites that line in its original Markdown file.
 Opening the completed section reveals a Clear All Completed row at the end of
 it that, after confirmation, removes every completed Cove task line from its

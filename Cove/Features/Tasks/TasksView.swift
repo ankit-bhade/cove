@@ -9,9 +9,10 @@ struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
     @State private var actions = TaskActions()
     @State private var showsClearCompletedConfirmation = false
-    /// The two sections that aren't about right now start closed: what's
-    /// further out, and what's already done. See `TaskGroup.isCollapsible`.
-    @State private var isUpcomingExpanded = false
+    /// Upcoming folds but arrives open — what's further out is still work
+    /// that's coming. Completed is the one section that starts closed: it is
+    /// finished by definition. See `TaskGroup.isCollapsible`.
+    @State private var isUpcomingExpanded = true
     @State private var isCompletedExpanded = false
     /// Ticks each minute so "Overdue" and "Today" stay accurate while the
     /// tab sits open across a due moment or across midnight.

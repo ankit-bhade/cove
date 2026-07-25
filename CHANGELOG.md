@@ -17,14 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings → Cove Recovery lists deleted items and unsaved drafts, with
   restore, Save Copy, and discard. Recovery was previously session-memory
   only: after a crash, deleted material was unreachable from inside the app.
-- Upcoming and the completed section fold away, and arrive folded — on the
-  Tasks screen and in a list's Done section alike. Neither is about right
-  now: one hasn't happened yet and the other already has, and Upcoming has no
-  ceiling — a year of dated tasks all land in it — so open by default it
-  pushed what is actually due off the screen. Each header keeps its count and
-  takes a chevron at its trailing edge; tapping anywhere along it opens the
-  section for the rest of the session. Overdue, Today, and Tomorrow are never
-  hidden.
+- Upcoming and the completed section fold away — on the Tasks screen and in a
+  list's Done section alike. Upcoming has no ceiling, since a year of dated
+  tasks all land in it, so it can be put away when it gets long; it still
+  arrives open, because what is further out is work that is coming. The
+  completed section is the one that arrives folded, being finished by
+  definition. Each header keeps its count and takes a chevron at its trailing
+  edge; tapping anywhere along it folds or opens the section for the rest of
+  the session. Overdue, Today, and Tomorrow are never hidden.
 - Clearing completed tasks is the completed section's last row rather than a
   button in its header. As a caption-sized red text button it sat a few
   points from the chevron that folds the section — two controls of very

@@ -204,13 +204,14 @@ struct TaskGroup: Identifiable {
     var id: Int { kind.rawValue }
     var isOverdue: Bool { kind == .overdue }
 
-    /// Whether the section folds away, and starts folded. Only Upcoming does:
-    /// it is the one group that is not about right now, it is unbounded — a
-    /// year of dated tasks all land in it — and left open it pushes what *is*
-    /// due off the bottom of the screen. Overdue, Today, and Tomorrow are the
-    /// screen's whole reason for existing and are never hidden behind a
-    /// chevron. The count stays in the header while it is closed, so the
-    /// section still says how much is waiting behind it.
+    /// Whether the section can be folded away. Only Upcoming can: it is
+    /// unbounded — a year of dated tasks all land in it — so it is the one
+    /// group a reader may want out of the way. It still *arrives* open, since
+    /// what is further out is work that is coming; the completed section is
+    /// the one that starts closed, being finished by definition. Overdue,
+    /// Today, and Tomorrow are the screen's whole reason for existing and are
+    /// never hidden behind a chevron. The count stays in the header while a
+    /// section is closed, so it still says how much is waiting behind it.
     var isCollapsible: Bool { kind == .upcoming }
 
     /// The section's name on its own: the header sets the count beside it in

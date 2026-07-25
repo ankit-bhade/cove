@@ -9,6 +9,10 @@ struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
     @State private var actions = TaskActions()
     @State private var showsClearCompletedConfirmation = false
+    /// The two sections that aren't about right now start closed: what's
+    /// further out, and what's already done. See `TaskGroup.isCollapsible`.
+    @State private var isUpcomingExpanded = false
+    @State private var isCompletedExpanded = false
     /// Ticks each minute so "Overdue" and "Today" stay accurate while the
     /// tab sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -62,30 +66,28 @@ struct TasksView: View {
             }
             ForEach(TaskGroup.grouping(incomplete, now: now)) { group in
                 Section {
-                    TaskRows(tasks: group.tasks, now: now, actions: actions)
+                    if isShowing(group) {
+                        TaskRows(tasks: group.tasks, now: now, actions: actions)
+                    }
                 } header: {
-                    // Tracked capitals with the count set apart, like every
-                    // other section header in the app. The glyphs these
-                    // headers used to carry — a sunrise, a calendar — turned
-                    // to mush at caption size and said nothing the title
-                    // didn't already say.
-                    CoveSectionHeader(
-                        group.name,
-                        count: group.tasks.count,
-                        tint: group.isOverdue ? CoveTheme.alert : nil)
+                    header(for: group)
                 }
             }
             if !completed.isEmpty {
                 Section {
-                    TaskRows(tasks: completed, now: now, actions: actions)
+                    if isCompletedExpanded {
+                        TaskRows(tasks: completed, now: now, actions: actions)
+                        ClearCompletedTasksRow(
+                            isClearing: actions.isClearingCompleted
+                        ) {
+                            showsClearCompletedConfirmation = true
+                        }
+                    }
                 } header: {
                     CompletedTasksHeader(
                         title: "Completed",
                         count: completed.count,
-                        isClearing: actions.isClearingCompleted
-                    ) {
-                        showsClearCompletedConfirmation = true
-                    }
+                        isExpanded: $isCompletedExpanded)
                 }
             }
             if incomplete.isEmpty, completed.isEmpty {
@@ -100,10 +102,26 @@ struct TasksView: View {
             }
         }
         .coveListStyle()
-        #if os(iOS)
-            .listSectionSpacing(.compact)
-        #endif
         .coveReadableWidth()
+    }
+
+    /// Tracked capitals with the count set apart, like every other section
+    /// header in the app. The glyphs these headers used to carry — a sunrise,
+    /// a calendar — turned to mush at caption size and said nothing the title
+    /// didn't already say.
+    ///
+    /// A collapsible group hands its expansion state to the header, which
+    /// becomes the control that folds the section away.
+    private func header(for group: TaskGroup) -> some View {
+        CoveSectionHeader(
+            group.name,
+            count: group.tasks.count,
+            tint: group.isOverdue ? CoveTheme.alert : nil,
+            isExpanded: group.isCollapsible ? $isUpcomingExpanded : nil)
+    }
+
+    private func isShowing(_ group: TaskGroup) -> Bool {
+        !group.isCollapsible || isUpcomingExpanded
     }
 
     /// Compact on purpose: this is the screen the app opens on, and a hero

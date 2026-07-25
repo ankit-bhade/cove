@@ -202,7 +202,6 @@ struct VaultBrowserView: View {
                         systemName: "square.and.pencil",
                         description: "Create a Markdown note or folder with the + button above."
                     )
-                    .padding(.vertical, 8)
                     .listRowBackground(Color.clear)
                 }
             } else {

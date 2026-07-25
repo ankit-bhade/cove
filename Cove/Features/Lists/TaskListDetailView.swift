@@ -13,6 +13,10 @@ struct TaskListDetailView: View {
     @State private var renameText = ""
     @State private var showsClearCompletedConfirmation = false
     @State private var showsDeleteConfirmation = false
+    /// Done arrives closed, exactly as Completed does on the Tasks screen —
+    /// the two headers are one component and a fold that happened on only one
+    /// of them is the drift that component exists to prevent.
+    @State private var isDoneExpanded = false
     /// Ticks each minute so a dated item's "Today" stays true while the
     /// list sits open across a due moment or across midnight.
     @State private var now = Date()
@@ -41,15 +45,19 @@ struct TaskListDetailView: View {
                 }
                 if !list.completedTasks.isEmpty {
                     Section {
-                        TaskRows(tasks: list.completedTasks, now: now, actions: actions)
+                        if isDoneExpanded {
+                            TaskRows(tasks: list.completedTasks, now: now, actions: actions)
+                            ClearCompletedTasksRow(
+                                isClearing: actions.isClearingCompleted
+                            ) {
+                                showsClearCompletedConfirmation = true
+                            }
+                        }
                     } header: {
                         CompletedTasksHeader(
                             title: "Done",
                             count: list.completedTasks.count,
-                            isClearing: actions.isClearingCompleted
-                        ) {
-                            showsClearCompletedConfirmation = true
-                        }
+                            isExpanded: $isDoneExpanded)
                     }
                 }
                 if list.isEmpty {
@@ -66,9 +74,6 @@ struct TaskListDetailView: View {
             }
         }
         .coveListStyle()
-        #if os(iOS)
-            .listSectionSpacing(.compact)
-        #endif
         .coveReadableWidth()
         .navigationTitle(listName)
         #if os(iOS)

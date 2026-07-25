@@ -4,7 +4,7 @@ struct CoveIconTile: View {
     let systemName: String
     var tint: Color = CoveTheme.accent
 
-    @ScaledMetric(relativeTo: .body) private var side: CGFloat = 32
+    @ScaledMetric(relativeTo: .body) private var side: CGFloat = CoveTheme.Space.rowGlyph
     @ScaledMetric(relativeTo: .body) private var glyph: CGFloat = 14
 
     var body: some View {

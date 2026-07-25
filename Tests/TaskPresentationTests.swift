@@ -179,6 +179,22 @@ final class TaskPresentationTests: XCTestCase {
         XCTAssertEqual(groups.first?.tasks.count, 2)
     }
 
+    func testOnlyUpcomingFoldsAway() {
+        // Overdue, Today, and Tomorrow are the screen's reason for existing
+        // and are never put behind a chevron; Upcoming is unbounded and is.
+        let today = now(2026, 7, 19, hour: 12)
+        let groups = TaskGroup.grouping(
+            [
+                task(due: "2026-07-17"),
+                task(due: "2026-07-19"),
+                task(due: "2026-07-20"),
+                task(due: "2026-08-01"),
+            ],
+            now: today)
+        XCTAssertEqual(
+            groups.filter(\.isCollapsible).map(\.kind), [.upcoming])
+    }
+
     // MARK: - Undated list items
 
     func testAnUndatedItemIsNeverOverdue() {

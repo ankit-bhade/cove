@@ -22,11 +22,14 @@ opens on. Then the same consolidation was applied to behavior rather
 than appearance: one `TaskActions` behind both task screens, one
 `FileCoordination` behind every coordinated access, one `covePresence()`
 behind every optional-driven presentation, and a time zone rather than a
-discarded `Calendar` in every date API. Most recently the headers were
+discarded `Calendar` in every date API. Then the headers were
 weighed against what they cost, and none of them survived: the tall masthead
 with its serif title, its slogan, and the day-part greeting is replaced
 everywhere by a compact `CovePanel`, so every screen opens on its own content
-rather than on a sentence about itself. See `CHANGELOG.md`
+rather than on a sentence about itself. Most recently the one row that had
+stayed off the shared grid — the task row, with its own insets, its own
+padding, and its own separator inset — was put on it, so the text column and
+the row rhythm are the same on all four screens. See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
 
@@ -143,6 +146,8 @@ list section of the capture note. `@repeat` rules are
 Incomplete tasks sort by due date, then time (date-only first within a day).
 Checking a task updates its original file; checking an incomplete recurring
 task advances its due date to the next occurrence instead of completing it.
+Overdue, Today, and Tomorrow are always shown; Upcoming and the completed
+section collapse, and start collapsed.
 
 The screen has a quick-entry field whose interpreter is a port of the
 grove-app capture parser: tokens are recognized anywhere in the sentence and
@@ -519,7 +524,12 @@ note, so the caption repeated "Tasks" under every row.
 
 Display logic is pure and tested against a fixed `now` (`TaskPresentation`).
 Grouping into Overdue/Today/Tomorrow/Upcoming only *partitions* the sorted
-list, leaving the spec's ordering untouched. A minute tick keeps those groups
+list, leaving the spec's ordering untouched. Upcoming is the one *group* that
+folds away and the one that arrives folded (`TaskGroup.isCollapsible`): it is
+unbounded — a year of dated tasks all land in it — and open by default it
+pushes what is actually due off the screen. The completed section folds the
+same way for the same reason. Both keep their count in the header while
+closed, so a section still says how much is behind it. A minute tick keeps those groups
 true across a due moment or midnight, and the tab refreshes on appearance
 because editor autosaves don't trigger a rescan.
 
@@ -699,6 +709,42 @@ it names the open vault, which nothing else on screen says; a level down the
 bar is already naming the folder, so it says "Overview" like the lists screen
 does; on a capture card it names the card.
 
+**A collapsible section's header is the control, because SwiftUI's own is
+not.** `Section(isExpanded:)` exists and looks like the right answer, but
+outside `.sidebar` list style on iOS it draws no disclosure control and takes
+no taps — an inset-grouped section built with it starts collapsed and can
+never be opened, which a build cannot catch and a screenshot of the collapsed
+state looks entirely correct in. `CoveSectionHeader` takes an optional
+`isExpanded` binding instead: the whole header — label, the space after it,
+and a rotating chevron at the trailing edge — becomes one button, which grows
+its target into the section gap and gives the growth back to the layout (the
+same trick the task checkbox uses), so a collapsible header is exactly as
+tall as an ordinary one. It works identically on macOS.
+
+**A collapsible section carries no action in its header, which is what lets
+that be one button.** Clear All lived there first, a caption-sized red text
+button a few points from the chevron — two controls of very different
+consequence sharing one corner, and the header had to be built as a *pair* of
+buttons to keep them apart, since one button cannot span two regions with a
+third between them. `ClearCompletedTasksRow` moved the sweep to the section's
+last row: it takes the same grid as the rows above it, gets a full row's
+target instead of a caption's, and is only reachable with the section open,
+so what it would remove is on screen when it is pressed. Its tile takes the
+role's own red rather than the palette's rust — destructive controls keeping
+the system red is a decision this app already made, but a rust tile beside
+role-red text puts that near-miss inside a single row, where it reads as a
+mistake rather than as two components a screen apart.
+
+Two sections fold, both closed on arrival: Upcoming (see
+`TaskGroup.isCollapsible`) and the completed section on either task screen.
+Neither is about right now — one hasn't happened and the other already has.
+`CompletedTasksHeader` takes the binding and `ClearCompletedTasksRow` the
+sweep, so Completed on the Tasks tab and Done in a list cannot fold or clear
+differently; those components exist precisely to stop the two from drifting.
+Expansion is session state in both cases, since the point is that a launch
+opens on what is due rather than on a year of what isn't and a pile of what's
+done.
+
 `CoveSectionHeader` is the one list-section header, `CoveIconTile` the one
 row glyph (decorative, so `accessibilityHidden` — the row carries the label —
 and `@ScaledMetric`-sized), and `CoveCountBadge` the one shape for "how many".
@@ -712,14 +758,33 @@ text, four vertical paddings, and — in Settings — `Label`-based rows whose
 system-derived icon column sat several points left of the `HStack` rows
 directly above them. Two tabs apart that goes unnoticed; three rows apart in
 one `Form` it is the misalignment a reader sees without being able to name.
-The component holds `Space.rowGap` and `Space.rowPadding` so a folder row, a
+The component holds `Space.rowGlyph`, `Space.rowGap`, and `Space.rowPadding`
+so a folder row, a
 list row, and a settings row cannot disagree, and `CoveRowTitle` carries the
 title-plus-caption pairing (tracked capitals when the caption is data, plain
 secondary text when it is a path or a snippet). It also pins
 `.listRowSeparatorLeading` to its text column: left alone SwiftUI infers that
 inset from whichever nested label it selects, so a folder row with a caption
 and a note row without one broke their separators at two different depths in
-the same list — the same failure `TaskRow` already pins to zero.
+the same list.
+
+**`TaskRow` is on that grid rather than beside it.** It was the last row type
+setting its own `listRowInsets` — a tighter leading edge, a trailing edge 6pt
+short of every other row's, vertical padding cut to 5pt, and a separator run
+the full width of the row — which made a two-line task shorter than a
+one-line folder row and put the landing screen's text column five points off
+the tab beside it. It now takes the system's row insets like everything else,
+lays its checkbox out in a `Space.rowGlyph` column so the text starts exactly
+where an icon tile's does, and breaks its separator at that text column. The
+checkbox keeps a genuine 44pt target by being framed at 44 and *then* laid
+out in the 32pt column: the target overflows into the row's own padding
+rather than widening the column and pushing this one row's text past every
+other row's. `Space.rowGlyph` is the `@ScaledMetric` base at both call sites,
+so the two columns grow together under Dynamic Type. For the same reason the
+two task screens no longer ask for `.listSectionSpacing(.compact)` — nothing
+else in the app did, and a section gap that changes between tabs is the kind
+of difference that is felt before it is seen. It costs roughly a row of
+what fits above the fold, which is the price of the grid being one grid.
 
 **Tinted surfaces come from `Tint.fill`/`Tint.stroke`, applied through
 `coveTintedSurface(_:in:)`.** A tile, a badge, a due capsule, an editor
@@ -911,7 +976,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **405 tests** (macOS host), plus clean macOS and
+Current verified suite: **406 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1058,6 +1123,12 @@ Rough edges and surprises, not restatements of the design above.
   Tasks tab then shows it completed rather than rolled forward.
 * The minute tick re-evaluates the whole list body. Cheap at typical counts; a
   very large list would want it narrowed to rows that can actually change.
+* Upcoming and the completed section reopen collapsed on every launch.
+  Expanding one lasts as long as the app is running and is not remembered,
+  which is the point — but it does mean neither can be left open.
+* Clearing completed tasks means opening the section first — the sweep is its
+  last row, not a control in its header. Deliberate, and it also means the
+  rows being removed are on screen when it is pressed.
 
 ### Quick capture
 

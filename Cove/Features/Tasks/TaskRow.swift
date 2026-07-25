@@ -5,6 +5,15 @@ import SwiftUI
 /// Shared so the two screens can't drift apart — the whole point of Lists is
 /// that a list task is an ordinary task kept somewhere else.
 ///
+/// It is laid out on `CoveRow`'s grid rather than its own. This row used to
+/// carry hand-tuned `listRowInsets` — a tighter leading edge, a trailing edge
+/// 6pt short of every other row's, and vertical padding cut to 5pt so a
+/// two-line task sat shorter than a one-line folder row — which made the
+/// landing screen read as cramped the moment it was compared with the tab
+/// beside it. The glyph column, the gap after it, the padding around it, and
+/// the system's own row insets are now the ones a note row and a list row use,
+/// so the text column lines up across all four screens.
+///
 /// Tapping the row opens the task's note; swiping (or the context menu)
 /// deletes the line. An undated list item simply shows no due capsule.
 struct TaskRow: View {
@@ -15,10 +24,13 @@ struct TaskRow: View {
     var isProcessing = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The same column `CoveIconTile` occupies, scaled the same way, so the
+    /// checkbox and a folder tile put their text at the identical inset.
+    @ScaledMetric(relativeTo: .body) private var column: CGFloat = CoveTheme.Space.rowGlyph
 
     var body: some View {
         let overdue = task.isOverdue(at: now)
-        return HStack(alignment: .center, spacing: 8) {
+        return HStack(alignment: .center, spacing: CoveTheme.Space.rowGap) {
             Button(action: onToggle) {
                 Group {
                     if isProcessing {
@@ -38,14 +50,16 @@ struct TaskRow: View {
                             .contentTransition(.symbolEffect(.replace))
                     }
                 }
-                // The glyph alone is a small target; padding brings the
-                // hit area up to the 44pt minimum without moving it.
+                // The glyph alone is a small target, so the hit area is the
+                // 44pt minimum — but it is then laid out in the row's glyph
+                // column, letting the target overflow into the padding on
+                // either side rather than widening the column and pushing
+                // this row's text past every other row's.
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
+                .frame(width: column, height: column)
             }
             .buttonStyle(.plain)
-            .offset(x: -8)
-            .padding(.trailing, -8)
             .disabled(isProcessing)
             .accessibilityLabel(
                 isProcessing
@@ -60,7 +74,9 @@ struct TaskRow: View {
                 // The source note is deliberately not shown: tasks nearly
                 // always live in the capture note, so the row read as a
                 // repeated "Tasks" caption under every task.
-                VStack(alignment: .leading, spacing: task.hasDueDate ? 4 : 0) {
+                // The title-to-caption gap `CoveRowTitle` uses, and zero when
+                // an undated item's row is nothing but its title.
+                VStack(alignment: .leading, spacing: task.hasDueDate ? 3 : 0) {
                     Text(task.text)
                         .font(.body.weight(.medium))
                         .strikethrough(task.isCompleted)
@@ -69,12 +85,13 @@ struct TaskRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // Pinned to the text column for the same reason `CoveRow` pins
+            // it there: left to itself SwiftUI derives the inset from
+            // whichever nested label it selects, and recurring metadata can
+            // push that inferred edge as far right as the repeat label.
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
-        .listRowInsets(CoveTheme.taskRowInsets(hasMetadata: task.hasDueDate))
-        // SwiftUI otherwise derives the separator inset from whichever
-        // nested label it happens to select. Recurring metadata can make
-        // that inferred edge jump as far right as the repeat label.
-        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .padding(.vertical, CoveTheme.Space.rowPadding)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")

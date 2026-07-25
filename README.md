@@ -49,11 +49,14 @@ text inside fenced code, HTML comments, or YAML front matter is left
 alone. Open tasks are
 sorted by due date and grouped into Overdue, Today, Tomorrow, and Upcoming
 sections, with due dates written the way you'd say them ("Today, 3:00 PM",
-"Tomorrow", "Friday", "Jul 24") and overdue ones shown in red. Completed
-tasks are listed below,
-and checking a task off rewrites that line in its original Markdown file.
-The completed section has a Clear All action that, after confirmation,
-removes every completed Cove task line from its original note. A single task
+"Tomorrow", "Friday", "Jul 24") and overdue ones shown in red. Upcoming
+starts collapsed, and so does the completed section below it — each header
+shows how many are waiting behind it and a chevron that opens it — so the
+screen leads with what is actually due.
+Checking a task off rewrites that line in its original Markdown file.
+Opening the completed section reveals a Clear All Completed row at the end of
+it that, after confirmation, removes every completed Cove task line from its
+original note. A single task
 can be deleted by swiping its row (or right-clicking it), which removes that
 line from its note. Task completion and deletion register semantic Undo, so
 later edits to the same note are preserved — including for a recurring task,
@@ -122,8 +125,9 @@ rust for anything overdue. Every screen opens with the same compact panel — a
 short accent rule, a label, an optional count, and the screen's own content
 right under it — so the quick-capture field, the folder you opened, and the
 first task are all near the top rather than below a headline. Every list row
-shares one icon-and-text grid, and setup, loading, empty, and search states
-are all drawn from that one system. On Mac, Tasks,
+shares one icon-and-text grid — a task's checkbox sits in the same column a
+folder's tile does, so the text lines up wherever you are in the app — and
+setup, loading, empty, and search states are all drawn from that one system. On Mac, Tasks,
 Notes, Lists, and Settings live in a native branded sidebar; iPhone and iPad
 keep the familiar tab bar. Tasks leads both and is where Cove opens
 everywhere — including the Today widget's deep link, so both ways in land on

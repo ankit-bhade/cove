@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings → Cove Recovery lists deleted items and unsaved drafts, with
   restore, Save Copy, and discard. Recovery was previously session-memory
   only: after a crash, deleted material was unreachable from inside the app.
+- Upcoming and the completed section fold away, and arrive folded — on the
+  Tasks screen and in a list's Done section alike. Neither is about right
+  now: one hasn't happened yet and the other already has, and Upcoming has no
+  ceiling — a year of dated tasks all land in it — so open by default it
+  pushed what is actually due off the screen. Each header keeps its count and
+  takes a chevron at its trailing edge; tapping anywhere along it opens the
+  section for the rest of the session. Overdue, Today, and Tomorrow are never
+  hidden.
+- Clearing completed tasks is the completed section's last row rather than a
+  button in its header. As a caption-sized red text button it sat a few
+  points from the chevron that folds the section — two controls of very
+  different consequence sharing one corner. As a row it takes the same grid
+  as the tasks above it, gets a full row's tap target, and is reachable only
+  with the section open, so the lines it removes are on screen when it is
+  pressed.
 - Task format diagnostics. A checkbox line whose date, time, or `@repeat` tag
   didn't parse, an unsupported checkbox form, and duplicate task lines are
   reported in Settings with the note and line number, and tapping one opens
@@ -171,6 +186,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of five hand-tuned pairs. The due capsule and repeat label existed
   twice — once in a task row and once in the capture preview it becomes — and
   are now one component each.
+- Task rows are drawn on the same grid as every other row in the app. They
+  were the one row type still setting their own list insets — a tighter
+  leading edge, a trailing edge 6pt short of every other row's, vertical
+  padding cut to 5pt, and a separator running the full width of the row while
+  every other list broke its separators at the text column. A two-line task
+  ended up shorter than a one-line folder row, so the landing screen read as
+  cramped the moment it was compared with the tab beside it. The checkbox now
+  occupies the same 32pt column an icon tile does — keeping its 44pt target,
+  which overflows into the padding rather than widening the column — and the
+  Tasks and list screens drop the compact section spacing that only they used.
+  The text column, the row rhythm, and the section gaps are now identical
+  across Tasks, Notes, Lists, and Settings.
 - A completed task's due capsule goes quiet with the rest of its row. Struck
   through grey text under a full-strength ember capsule left the loudest thing
   in the row attached to the one task that no longer wants attention.

@@ -127,21 +127,52 @@ struct TaskRows: View {
 }
 
 /// The header over a screen's completed tasks: its name, its count, and the
-/// sweep that empties it. Shared so "Completed" and "Done" differ in wording
-/// alone and not in the weight or the state of the button beside them.
+/// chevron that folds it away. Shared so "Completed" and "Done" differ in
+/// wording alone and not in whether they fold or how.
+///
+/// Completed work is the one section on either screen that is finished by
+/// definition, so like Upcoming it arrives closed.
 struct CompletedTasksHeader: View {
     let title: String
     let count: Int
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        CoveSectionHeader(title, count: count, isExpanded: $isExpanded)
+    }
+}
+
+/// The sweep that empties a completed section, as that section's last row.
+///
+/// It was a caption-sized text button in the header, which put a destructive
+/// action a few points from the chevron that folds the section — two controls
+/// of different consequence sharing one corner, the smaller of them red. As a
+/// row it takes the same grid every other row uses, gets a full-height target
+/// instead of a caption's, and is only reachable with the section open, so the
+/// tasks it would remove are on screen when it is pressed.
+struct ClearCompletedTasksRow: View {
     let isClearing: Bool
     let clear: () -> Void
 
     var body: some View {
-        CoveSectionHeader(title: title, count: count) {
-            Button("Clear All", role: .destructive, action: clear)
-                .buttonStyle(.borderless)
-                .font(.caption2.weight(.semibold))
-                .disabled(isClearing)
+        Button(role: .destructive, action: clear) {
+            // The tile takes the role's own red rather than the palette's
+            // rust. Destructive controls keeping the system red is a decision
+            // this app already made — but a rust tile beside role-red text
+            // puts the near-miss inside a single row, where it reads as a
+            // mistake rather than as two components a screen apart.
+            CoveRow(systemName: "trash.fill", tint: .red) {
+                Text("Clear All Completed")
+                    .font(.body.weight(.medium))
+                Spacer(minLength: 0)
+                if isClearing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityHidden(true)
+                }
+            }
         }
+        .disabled(isClearing)
     }
 }
 

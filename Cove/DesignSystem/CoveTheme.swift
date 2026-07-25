@@ -59,11 +59,14 @@ enum CoveTheme {
         static let regular: CGFloat = 16
         static let loose: CGFloat = 22
 
-        /// The gap between a row's leading glyph and what it labels, and the
-        /// breathing room above and below that row. Every list in the app is
-        /// read against the one directly before it in the tab bar, so these
-        /// two numbers are the app's grid — a row that picks its own is a
-        /// row that visibly doesn't line up with its neighbours.
+        /// The width of a row's leading glyph column, the gap between it and
+        /// what it labels, and the breathing room above and below that row.
+        /// Every list in the app is read against the one directly before it in
+        /// the tab bar, so these three numbers are the app's grid — a row that
+        /// picks its own is a row that visibly doesn't line up with its
+        /// neighbours. The column is a `@ScaledMetric` base at both call
+        /// sites, so it grows with Dynamic Type in step.
+        static let rowGlyph: CGFloat = 32
         static let rowGap: CGFloat = 12
         static let rowPadding: CGFloat = 4
     }
@@ -85,24 +88,6 @@ enum CoveTheme {
     /// no side padding, since the card already draws its own edge.
     static func headerRowInsets() -> EdgeInsets {
         EdgeInsets(top: 8, leading: 0, bottom: 14, trailing: 0)
-    }
-
-    static func taskRowInsets(hasMetadata: Bool) -> EdgeInsets {
-        #if os(iOS)
-            EdgeInsets(
-                top: hasMetadata ? 6 : 5,
-                leading: 20,
-                bottom: hasMetadata ? 6 : 5,
-                trailing: 14
-            )
-        #else
-            EdgeInsets(
-                top: hasMetadata ? 4 : 3,
-                leading: 10,
-                bottom: hasMetadata ? 4 : 3,
-                trailing: 8
-            )
-        #endif
     }
 
     // MARK: - Dynamic colors

@@ -166,9 +166,63 @@ struct CoveSectionHeader<Trailing: View>: View {
     let title: String
     var count: Int?
     var tint: Color?
+    /// When present, the header *is* the control that folds its section away,
+    /// and it carries a chevron saying so.
+    ///
+    /// SwiftUI's own `Section(isExpanded:)` is the obvious way to do this and
+    /// is the wrong one here: outside `.sidebar` list style it draws no
+    /// disclosure control and takes no taps, so an inset-grouped section built
+    /// that way starts collapsed and can never be opened. The header owns the
+    /// affordance instead, which also means the behavior is identical on
+    /// macOS rather than iOS-only.
+    var isExpanded: Binding<Bool>?
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
+        HStack(spacing: CoveTheme.Space.tight) {
+            if let isExpanded {
+                // The whole header is the control — label, the space after it,
+                // and the chevron at the trailing edge. A collapsible section
+                // carries no other action, which is what lets this be one
+                // button rather than a pair with something wedged between
+                // them: a caption-sized chevron is a poor thing to aim at on
+                // its own.
+                Button {
+                    toggle(isExpanded)
+                } label: {
+                    HStack(spacing: CoveTheme.Space.tight) {
+                        label
+                        Spacer(minLength: 0)
+                        chevron(isExpanded: isExpanded.wrappedValue)
+                    }
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -10)
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(isExpanded.wrappedValue ? "Expanded" : "Collapsed")
+                .accessibilityHint(
+                    isExpanded.wrappedValue ? "Hides these rows" : "Shows these rows")
+                trailing()
+            } else {
+                label
+                Spacer(minLength: 0)
+                trailing()
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// A header's text is a few points tall and the gap around it belongs to
+    /// the section, so the target above is grown into that gap and the growth
+    /// then given back to the layout — the row keeps the height an ordinary
+    /// header has, which is the whole point of there being one header.
+    private func toggle(_ isExpanded: Binding<Bool>) {
+        withAnimation(.snappy) { isExpanded.wrappedValue.toggle() }
+    }
+
+    private var label: some View {
         HStack(spacing: CoveTheme.Space.tight) {
             Text(title)
                 .coveEyebrow(tint: tint)
@@ -178,15 +232,31 @@ struct CoveSectionHeader<Trailing: View>: View {
                     .foregroundStyle(tint ?? .secondary)
                     .opacity(0.65)
             }
-            Spacer(minLength: 0)
-            trailing()
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// Points right when the section is closed and down when it is open, the
+    /// way a disclosure does everywhere else on the platform.
+    private func chevron(isExpanded: Bool) -> some View {
+        Image(systemName: "chevron.right")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(tint ?? .secondary)
+            .opacity(0.65)
+            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            .accessibilityHidden(true)
     }
 }
 
 extension CoveSectionHeader where Trailing == EmptyView {
-    init(_ title: String, count: Int? = nil, tint: Color? = nil) {
-        self.init(title: title, count: count, tint: tint) { EmptyView() }
+    init(
+        _ title: String,
+        count: Int? = nil,
+        tint: Color? = nil,
+        isExpanded: Binding<Bool>? = nil
+    ) {
+        self.init(title: title, count: count, tint: tint, isExpanded: isExpanded) {
+            EmptyView()
+        }
     }
 }

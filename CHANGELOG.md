@@ -54,6 +54,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Redesigned the app icon as two concentric arcs — an ink C with an ember arc
+  echoing it, read equally as a ripple leaving an inlet. The serif `c` it
+  replaces carried a diagonal stress and tapered terminals, so the mark leaned
+  right while the ember dot pulled further right again: centred in the tile,
+  off balance to the eye. The new mark is drawn from one axis and is centred
+  by construction, with no axis left to look crooked. `CoveMark` draws the
+  same two arcs, so the springboard icon, the launch screen, and the mark
+  inside the app stay one shape.
+- The Mac app icon follows light and dark. An `appiconset` has no dark `mac`
+  slot — `actool` accepts the entries and then assigns them to nothing, and
+  says so as a warning rather than an error — so the dark tile is installed on
+  `NSApp` at runtime and follows the appearance Cove is drawn in, including
+  when that comes from Cove's own appearance setting rather than the desktop's.
+  This covers the Dock and the app switcher while the app is running; Finder
+  and Spotlight still show the light tile.
 - The task parser reads Markdown context rather than lines in isolation.
   Task-looking text inside fenced code, HTML comments, and YAML front matter
   is no longer indexed or edited — deleting a "list" could previously take

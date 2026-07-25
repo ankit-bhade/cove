@@ -67,8 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says so as a warning rather than an error — so the dark tile is installed on
   `NSApp` at runtime and follows the appearance Cove is drawn in, including
   when that comes from Cove's own appearance setting rather than the desktop's.
-  This covers the Dock and the app switcher while the app is running; Finder
-  and Spotlight still show the light tile.
+  The Dock draws a cached tile rather than re-reading the app's icon, so the
+  tile's own content view is set and told to redraw as well. This covers the
+  Dock and the app switcher while the app is running; Finder and Spotlight
+  still show the light tile.
 - The task parser reads Markdown context rather than lines in isolation.
   Task-looking text inside fenced code, HTML comments, and YAML front matter
   is no longer indexed or edited — deleting a "list" could previously take

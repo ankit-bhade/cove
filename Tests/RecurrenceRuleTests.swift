@@ -161,6 +161,48 @@ final class RecurrenceRuleTests: XCTestCase {
                 after: "2026-07-18"), "2027-07-18")
     }
 
+    func testExplicitMonthlyAnchorSurvivesShortMonthClamp() {
+        let rule = RecurrenceRule(frequency: .monthly)
+        XCTAssertEqual(
+            rule.nextDueDateString(
+                after: "2026-01-30",
+                anchoredTo: "2026-01-30",
+                timeZone: calendar.timeZone),
+            "2026-02-28")
+        XCTAssertEqual(
+            rule.nextDueDateString(
+                after: "2026-02-28",
+                anchoredTo: "2026-01-30",
+                timeZone: calendar.timeZone),
+            "2026-03-30")
+    }
+
+    func testExplicitLeapDayAnchorReturnsToLeapDay() {
+        let rule = RecurrenceRule(frequency: .yearly)
+        XCTAssertEqual(
+            rule.nextDueDateString(
+                after: "2029-02-28",
+                anchoredTo: "2028-02-29",
+                timeZone: calendar.timeZone),
+            "2030-02-28")
+        XCTAssertEqual(
+            rule.nextDueDateString(
+                after: "2031-02-28",
+                anchoredTo: "2028-02-29",
+                timeZone: calendar.timeZone),
+            "2032-02-29")
+    }
+
+    func testOverdueIntervalRulePreservesCadence() {
+        let rule = RecurrenceRule(frequency: .daily, interval: 3)
+        XCTAssertEqual(
+            rule.nextDueDateString(
+                afterOccurrence: "2026-06-01",
+                catchingUpPast: "2026-07-18",
+                timeZone: calendar.timeZone),
+            "2026-07-19")
+    }
+
     func testUnparseableDateReturnsNil() {
         XCTAssertNil(next(RecurrenceRule(frequency: .daily), after: "soon"))
     }

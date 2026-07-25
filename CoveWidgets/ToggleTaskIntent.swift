@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import UserNotifications
 import WidgetKit
 
 /// Checking a task off from the Home Screen.
@@ -25,7 +26,7 @@ struct ToggleTaskIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        try await TaskToggleWriter().setCompletion(taskID: taskID)
+        _ = try await TaskToggleWriter().setCompletion(taskID: taskID)
         WidgetCenter.shared.reloadTimelines(ofKind: CoveSharedContainer.todayWidgetKind)
         return .result()
     }
@@ -39,22 +40,35 @@ struct ToggleTaskIntent: AppIntent {
 /// a lie about the file: when the direct write fails the toggle is queued, and
 /// the app applies it on its next refresh.
 struct TaskToggleWriter {
-    private let store = WidgetSnapshotStore()
-    private let repository = VaultRepository()
+    private let store: WidgetSnapshotStore
+    private let repository: VaultRepository
 
-    func setCompletion(taskID: String, now: Date = Date()) async throws {
-        var snapshot = store.readSnapshot()
-        guard let index = snapshot.tasks.firstIndex(where: { $0.id == taskID }) else { return }
-        let task = snapshot.tasks[index]
+    init(
+        store: WidgetSnapshotStore = WidgetSnapshotStore(),
+        repository: VaultRepository = VaultRepository()
+    ) {
+        self.store = store
+        self.repository = repository
+    }
+
+    @discardableResult
+    func setCompletion(
+        taskID: String,
+        now: Date = Date()
+    ) async throws -> TaskCompletionMutationOutcome {
+        let snapshot = try store.readSnapshotResult().get()
+        guard let task = snapshot.tasks.first(where: { $0.id == taskID }) else {
+            throw WidgetStoreError.taskNotFound
+        }
         let desiredCompletion = !task.isCompleted
-        let operation = PendingTaskOperation(
-            task: task,
-            desiredCompletion: desiredCompletion)
+        let proposedOperation = PendingTaskOperation(
+            task: task, desiredCompletion: desiredCompletion)
 
         // Queue first. If the note write succeeds but acknowledgment fails,
         // the retained desired-state operation is safe to apply again.
-        try store.append(operation)
-        if await apply(operation, now: now) {
+        let operation = try store.append(proposedOperation)
+        let outcome = await apply(operation, now: now)
+        if outcome != .deferred {
             // A failure here deliberately leaves the operation queued.
             do {
                 try store.acknowledge(operationID: operation.id)
@@ -64,45 +78,72 @@ struct TaskToggleWriter {
             }
         }
 
-        // Completing a recurring task rolls its line to the next occurrence
-        // rather than checking it off, so the row leaves today's list instead
-        // of sitting there struck through.
-        if task.recurrence != nil, desiredCompletion {
-            snapshot.tasks.remove(at: index)
-        } else {
-            snapshot.tasks[index] = task.settingCompleted(desiredCompletion)
-        }
-        store.writeSnapshot(snapshot)
-    }
-
-    /// Rewrites the task's line in its note, through the same parser and the
-    /// same coordinated write the app uses. Returns false if the vault can't
-    /// be reached or the line no longer matches.
-    private func apply(_ operation: PendingTaskOperation, now: Date) async -> Bool {
-        guard let vaultURL = resolveVaultURL() else { return false }
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
-
-        // A snapshot path that doesn't resolve inside the vault this process
-        // just opened is not a target to retry — it's one to drop.
-        guard let noteURL = operation.taskIdentity.fileURL(within: vaultURL) else {
-            return true
+        // A completed task must not notify after the widget has accepted the
+        // tap, even if the vault write has to wait in the durable queue.
+        if desiredCompletion, outcome != .deferred {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(
+                withIdentifiers: [task.notificationIdentifier])
         }
 
         do {
-            _ = try await repository.updateNote(at: noteURL) { text in
-                TaskParser.settingTaskCompleted(
+            _ = try store.applyOptimisticCompletion(
+                taskID: taskID,
+                desiredCompletion: desiredCompletion,
+                operationID: operation.id,
+                outcome: outcome,
+                at: now)
+        } catch WidgetStoreError.taskNotFound {
+            // Another tap or an app publication already retired the row.
+        }
+        return outcome
+    }
+
+    /// Rewrites the task's line in its note, through the same parser and the
+    /// same coordinated write the app uses. The repository's `changed` result
+    /// is paired with a parse of its resulting text so "already in the desired
+    /// state" is not confused with "identity no longer exists."
+    private func apply(
+        _ operation: PendingTaskOperation,
+        now: Date
+    ) async -> TaskCompletionMutationOutcome {
+        guard let vaultURL = resolveVaultURL() else { return .deferred }
+        let didStart = vaultURL.startAccessingSecurityScopedResource()
+        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+
+        guard let noteURL = operation.taskIdentity.fileURL(within: vaultURL) else {
+            return .stale
+        }
+
+        do {
+            let result = try await repository.updateNote(at: noteURL) { text in
+                try TaskParser.settingTaskCompletedResult(
                     operation.taskIdentity,
                     to: operation.desiredCompletion,
                     todayDateString: QuickTaskParser.ymdString(from: now),
-                    in: text)
+                    in: text
+                ).get()
             }
-            return true
+            if result.changed { return .changed }
+            switch TaskParser.matchResult(
+                operation.taskIdentity,
+                in: result.resultingText)
+            {
+            case .matched(let matching):
+                return matching.isCompleted == operation.desiredCompletion
+                    ? .alreadyDesired : .deferred
+            case .missing:
+                return .stale
+            case .ambiguous:
+                return .deferred
+            }
         } catch VaultFileOperations.OperationError.fileMissing(_) {
-            // The note (and therefore the task) is definitively gone.
-            return true
+            return .stale
+        } catch TaskParser.MutationError.taskMissing {
+            return .stale
         } catch {
-            return false
+            widgetChannelLogger.error(
+                "Direct widget mutation deferred: \(error.localizedDescription, privacy: .private)")
+            return .deferred
         }
     }
 
@@ -112,11 +153,23 @@ struct TaskToggleWriter {
         do {
             return try URL(
                 resolvingBookmarkData: data,
-                options: VaultBookmarkStore.platformResolutionOptions,
+                options: Self.bookmarkResolutionOptions,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale)
         } catch {
             return nil
         }
+    }
+
+    /// The extension reads its bookmark from the App Group container, not
+    /// from `UserDefaults`, so it needs the resolution flags and nothing else
+    /// `VaultBookmarkStore` does. Keeping them local lets the widget target
+    /// omit that source entirely.
+    private static var bookmarkResolutionOptions: URL.BookmarkResolutionOptions {
+        #if os(macOS)
+            [.withSecurityScope]
+        #else
+            []
+        #endif
     }
 }

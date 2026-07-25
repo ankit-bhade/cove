@@ -7,6 +7,8 @@
     /// and a click on a `- [ ]` marker toggles the checkbox.
     struct MarkdownTextView: NSViewRepresentable {
         @Binding var text: String
+        let sectionedTaskDocument: Bool
+        @Binding var checkboxError: String?
 
         func makeNSView(context: Context) -> NSScrollView {
             // Called on the subclass so the returned document view is a
@@ -28,6 +30,12 @@
             textView.textContainer?.lineFragmentPadding = 0
             textView.typingAttributes = MarkdownStyler.bodyAttributes
             textView.string = text
+            if let textView = textView as? CheckboxTogglingTextView {
+                textView.sectionedTaskDocument = sectionedTaskDocument
+                textView.onCheckboxError = {
+                    checkboxError = $0
+                }
+            }
             if let storage = textView.textStorage {
                 MarkdownStyler.applyLiveStyles(to: storage)
             }
@@ -36,6 +44,12 @@
 
         func updateNSView(_ scrollView: NSScrollView, context: Context) {
             guard let textView = scrollView.documentView as? NSTextView else { return }
+            if let textView = textView as? CheckboxTogglingTextView {
+                textView.sectionedTaskDocument = sectionedTaskDocument
+                textView.onCheckboxError = {
+                    checkboxError = $0
+                }
+            }
             if textView.string != text {
                 textView.string = text
                 if let storage = textView.textStorage {
@@ -74,14 +88,15 @@
     /// moving the insertion point. The edit goes through `shouldChangeText`/
     /// `didChangeText` so it lands on the undo stack and reaches the delegate.
     final class CheckboxTogglingTextView: NSTextView {
+        var sectionedTaskDocument = false
+        var onCheckboxError: ((String?) -> Void)?
+
         override func mouseDown(with event: NSEvent) {
             let point = convert(event.locationInWindow, from: nil)
             let index = characterIndexForInsertion(at: point)
             if let checkbox = MarkdownParser.parse(string).checkbox(at: index),
-                shouldChangeText(in: checkbox.statusRange, replacementString: checkbox.toggledStatus)
+                toggle(checkbox)
             {
-                textStorage?.replaceCharacters(in: checkbox.statusRange, with: checkbox.toggledStatus)
-                didChangeText()
                 return
             }
             super.mouseDown(with: event)
@@ -116,11 +131,50 @@
                 let checkbox = MarkdownParser.parse(string).checkboxes.first(where: {
                     NSLocationInRange(cursor, $0.markerRange)
                         || $0.markerRange.location <= cursor && cursor <= NSMaxRange($0.textRange)
-                }),
+                })
+            else { return false }
+            return toggle(checkbox)
+        }
+
+        private func toggle(_ checkbox: MarkdownParser.Checkbox) -> Bool {
+            if let result = MarkdownParser.recurringTaskToggleResult(
+                for: checkbox,
+                in: string,
+                sectioned: sectionedTaskDocument)
+            {
+                switch result {
+                case .success(let updated):
+                    onCheckboxError?(nil)
+                    let whole = NSRange(
+                        location: 0,
+                        length: (string as NSString).length)
+                    guard
+                        shouldChangeText(
+                            in: whole,
+                            replacementString: updated)
+                    else { return false }
+                    let selection = selectedRange()
+                    textStorage?.replaceCharacters(in: whole, with: updated)
+                    setSelectedRange(
+                        NSRange(
+                            location: min(
+                                selection.location,
+                                (updated as NSString).length),
+                            length: 0))
+                    didChangeText()
+                    undoManager?.setActionName("Toggle Recurring Task")
+                    return true
+                case .failure(let error):
+                    onCheckboxError?(error.localizedDescription)
+                    return false
+                }
+            }
+            guard
                 shouldChangeText(
                     in: checkbox.statusRange,
                     replacementString: checkbox.toggledStatus)
             else { return false }
+            onCheckboxError?(nil)
             textStorage?.replaceCharacters(
                 in: checkbox.statusRange,
                 with: checkbox.toggledStatus)

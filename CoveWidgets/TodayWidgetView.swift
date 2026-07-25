@@ -13,11 +13,17 @@ struct TodayWidgetView: View {
 
     private var palette: WidgetPalette { .resolved(for: colorScheme) }
     private var isSmall: Bool { family != .systemMedium }
+    private var isAvailable: Bool { entry.snapshot.availability == .available }
     /// The empty state is about work, not history: once nothing is open the
     /// widget reads "All clear" even if checked-off rows are still around.
     private var openTasks: [SnapshotTask] { entry.snapshot.openTasks }
+    private var actionableTasks: [SnapshotTask] {
+        entry.snapshot.tasks.filter {
+            !$0.isCompleted || $0.pendingCompletion != nil
+        }
+    }
     private var visibleTasks: [SnapshotTask] {
-        Array(entry.snapshot.tasks.prefix(isSmall ? 3 : 4))
+        Array(actionableTasks.prefix(isSmall ? 2 : 3))
     }
 
     var body: some View {
@@ -27,7 +33,9 @@ struct TodayWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.bottom, 9)
-            if openTasks.isEmpty {
+            if !isAvailable {
+                unavailableState
+            } else if actionableTasks.isEmpty {
                 emptyState
             } else {
                 VStack(spacing: isSmall ? 6 : 7) {
@@ -85,17 +93,28 @@ struct TodayWidgetView: View {
     }
 
     private var countPill: some View {
-        Text(isSmall ? "\(openTasks.count)" : "\(openTasks.count) left")
-            .font(.system(size: 11, weight: .bold))
-            .monospacedDigit()
-            .foregroundStyle(palette.accent)
-            .padding(.vertical, isSmall ? 2 : 3)
-            .padding(.horizontal, isSmall ? 7 : 8)
-            .background(
-                palette.accentSoft,
-                in: RoundedRectangle(
-                    cornerRadius: 8,
-                    style: .continuous))
+        Group {
+            if isAvailable {
+                Text(
+                    isSmall
+                        ? "\(entry.snapshot.totalOpenTaskCount)"
+                        : "\(entry.snapshot.totalOpenTaskCount) left"
+                )
+                .monospacedDigit()
+            } else {
+                Image(systemName: "exclamationmark")
+                    .accessibilityLabel("Needs attention")
+            }
+        }
+        .font(.system(size: 11, weight: .bold))
+        .foregroundStyle(palette.accent)
+        .padding(.vertical, isSmall ? 2 : 3)
+        .padding(.horizontal, isSmall ? 7 : 8)
+        .background(
+            palette.accentSoft,
+            in: RoundedRectangle(
+                cornerRadius: 8,
+                style: .continuous))
     }
 
     // MARK: - Rows
@@ -138,6 +157,7 @@ struct TodayWidgetView: View {
         // Without a full-width row the HStack shrinks to its content and
         // centers, which leaves the checkboxes in a ragged column.
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 32)
         .accessibilityElement(children: .combine)
     }
 
@@ -156,19 +176,25 @@ struct TodayWidgetView: View {
             .monospacedDigit()
     }
 
-    /// The checkbox sits in a 44×44pt hit area — the app's `TaskRow` target —
-    /// while the surrounding layout only reserves the glyph, so the generous
-    /// target doesn't push the rows apart.
+    /// The checkbox's full hit area is reserved by the row. Widget rows are
+    /// necessarily denser than the app's 44pt controls, but hit regions must
+    /// never overflow into an adjacent App Intent button.
     private func checkbox(for task: SnapshotTask) -> some View {
         Button(intent: ToggleTaskIntent(taskID: task.id)) {
-            checkboxGlyph(isCompleted: task.isCompleted)
+            checkboxGlyph(for: task)
                 .font(.system(size: 20, weight: .regular))
-                .frame(width: 44, height: 44)
+                .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(width: 20, height: 20)
-        .accessibilityLabel(task.isCompleted ? "Mark incomplete" : "Complete")
+        // The layout reserves exactly the button's hit region; it cannot
+        // overlap the next row and dispatch the wrong App Intent.
+        .frame(width: 32, height: 32)
+        .disabled(task.pendingCompletion != nil)
+        .accessibilityLabel(
+            task.pendingCompletion != nil
+                ? "Change pending"
+                : (task.isCompleted ? "Mark incomplete" : "Complete"))
     }
 
     /// An empty box is drawn in the soft accent, not the full one. Four rings
@@ -178,8 +204,11 @@ struct TodayWidgetView: View {
     /// the mark punched out of it in the widget's own background color, so
     /// finishing something quiets the row rather than lighting it up.
     @ViewBuilder
-    private func checkboxGlyph(isCompleted: Bool) -> some View {
-        if isCompleted {
+    private func checkboxGlyph(for task: SnapshotTask) -> some View {
+        if task.pendingCompletion != nil {
+            Image(systemName: "hourglass.circle")
+                .foregroundStyle(palette.accent)
+        } else if task.isCompleted {
             Image(systemName: "checkmark.circle.fill")
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(palette.checkMark, palette.checkboxRest)
@@ -205,6 +234,38 @@ struct TodayWidgetView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .multilineTextAlignment(.center)
+    }
+
+    private var unavailableState: some View {
+        VStack(spacing: 7) {
+            Image(systemName: "arrow.clockwise.circle")
+                .font(.system(size: 32, weight: .light))
+                .foregroundStyle(palette.accent)
+            Text(unavailableTitle)
+                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .foregroundStyle(palette.primaryText)
+            Text("Open Cove to refresh")
+                .font(.system(size: 11.5))
+                .foregroundStyle(palette.secondaryText)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .multilineTextAlignment(.center)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var unavailableTitle: String {
+        switch entry.snapshot.availability {
+        case .vaultUnavailable:
+            "Reconnect your vault"
+        case .sharedContainerUnavailable, .unreadable:
+            "Widget unavailable"
+        case .notPublished:
+            "Finish widget setup"
+        case .stale:
+            "Refresh Cove"
+        case .available:
+            ""
+        }
     }
 
     // MARK: - Due state

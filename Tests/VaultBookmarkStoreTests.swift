@@ -64,4 +64,26 @@ final class VaultBookmarkStoreTests: XCTestCase {
         XCTAssertFalse(store.hasBookmark)
         XCTAssertEqual(store.resolve(), .noBookmark)
     }
+
+    func testPreparingCandidateBookmarkDoesNotReplaceLastGoodSelection() throws {
+        let store = makeStore()
+        try store.saveBookmark(for: tempDirectory)
+        let originalData = try XCTUnwrap(store.bookmarkData)
+        let candidate = tempDirectory.appendingPathComponent(
+            "Candidate",
+            isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: candidate,
+            withIntermediateDirectories: true)
+
+        _ = try store.makeBookmarkData(for: candidate)
+
+        XCTAssertEqual(store.bookmarkData, originalData)
+        guard case .resolved(let resolved) = store.resolve() else {
+            return XCTFail("Expected last-good bookmark to remain resolved")
+        }
+        XCTAssertEqual(
+            resolved.standardizedFileURL,
+            tempDirectory.standardizedFileURL)
+    }
 }

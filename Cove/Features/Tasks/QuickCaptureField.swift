@@ -121,9 +121,13 @@ struct QuickCaptureField: View {
     /// What the sentence currently means. Recomputed per keystroke — the
     /// parser is pure and the sentence is a few words long.
     private var draft: TaskDraft? {
+        parseResult?.draft
+    }
+
+    private var parseResult: QuickTaskParser.ParseResult? {
         let sentence = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sentence.isEmpty else { return nil }
-        return QuickTaskParser.parse(
+        return QuickTaskParser.parseWithDiagnostics(
             sentence, now: .now,
             defaultingToToday: listName == nil)
     }
@@ -131,8 +135,7 @@ struct QuickCaptureField: View {
     /// A sentence that was nothing but a date leaves an empty title, and an
     /// untitled task is not a task.
     private var canCapture: Bool {
-        guard let draft else { return false }
-        return !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        parseResult?.canCapture == true
     }
 
     private func preview(_ draft: TaskDraft) -> some View {
@@ -152,6 +155,15 @@ struct QuickCaptureField: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(draft.title.isEmpty ? .secondary : .primary)
                     .lineLimit(2)
+                if let warning =
+                    parseResult?.diagnostics.first?.message
+                    ?? draft.validationIssues.first?.message
+                {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 // The edit button takes the trailing edge, so a date and a
                 // repeat rule side by side would squeeze both into wrapped
                 // or truncated text. One per line, always.
@@ -202,7 +214,7 @@ struct QuickCaptureField: View {
     /// the user's input intact so they can retry instead of reconstructing it.
     private func startCapture(_ draft: TaskDraft?) {
         guard let draft,
-            !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            parseResult?.canCapture == true,
             !isCapturing
         else { return }
         let submittedText = trimmedText

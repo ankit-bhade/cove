@@ -34,11 +34,19 @@ struct VaultBrowserView: View {
         .onChange(of: vaultManager.rootNode) { _, _ in
             // External moves or deletes can invalidate the current URL.
             // Return to the closest ancestor that still exists. Notes are on
-            // this path too, so an open editor whose file is gone pops as well.
+            // this path too. A dirty editor is kept open even when its file
+            // moved or disappeared, so its recovery draft and Save As/error
+            // affordances remain reachable instead of being popped unseen.
             while let currentURL = folderPath.last,
                 node(at: currentURL) == nil
             {
+                if vaultManager.isEditorProtected(currentURL) { break }
                 folderPath.removeLast()
+            }
+        }
+        .onChange(of: vaultManager.lastErrorDescription) { _, message in
+            if let message, errorMessage == nil {
+                errorMessage = message
             }
         }
         .alert(

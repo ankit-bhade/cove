@@ -8,10 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		C0DE0000000000000000002C /* CoveWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000020 /* CoveWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C0DE0000000000000000005F /* CoveDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000004F /* CoveDiagnostics.swift */; };
 		C0DE00000000000000000040 /* RecurrenceRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000030 /* RecurrenceRule.swift */; };
 		C0DE00000000000000000041 /* VaultIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000031 /* VaultIndex.swift */; };
 		C0DE00000000000000000042 /* VaultFileOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000032 /* VaultFileOperations.swift */; };
-		C0DE00000000000000000043 /* VaultBookmarkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000033 /* VaultBookmarkStore.swift */; };
 		C0DE00000000000000000044 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000034 /* WidgetSnapshot.swift */; };
 		C0DE00000000000000000045 /* TaskParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000035 /* TaskParser.swift */; };
 		C0DE00000000000000000046 /* TaskPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE00000000000000000036 /* TaskPresentation.swift */; };
@@ -54,10 +54,10 @@
 		C0DE00000000000000000003 /* Cove.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cove.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0DE00000000000000000005 /* CoveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CoveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0DE00000000000000000020 /* CoveWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CoveWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0DE0000000000000000004F /* CoveDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CoveDiagnostics.swift; path = Cove/Core/Services/CoveDiagnostics.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000030 /* RecurrenceRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecurrenceRule.swift; path = Cove/Core/Models/RecurrenceRule.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000031 /* VaultIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VaultIndex.swift; path = Cove/Core/Models/VaultIndex.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000032 /* VaultFileOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VaultFileOperations.swift; path = Cove/Core/Services/VaultFileOperations.swift; sourceTree = "<group>"; };
-		C0DE00000000000000000033 /* VaultBookmarkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VaultBookmarkStore.swift; path = Cove/Core/Services/VaultBookmarkStore.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000034 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetSnapshot.swift; path = Cove/Core/Services/WidgetSnapshot.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000035 /* TaskParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TaskParser.swift; path = Cove/Features/Tasks/TaskParser.swift; sourceTree = "<group>"; };
 		C0DE00000000000000000036 /* TaskPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TaskPresentation.swift; path = Cove/Features/Tasks/TaskPresentation.swift; sourceTree = "<group>"; };
@@ -132,10 +132,10 @@
 		C0DE00000000000000000039 /* Shared with CoveWidgets */ = {
 			isa = PBXGroup;
 			children = (
+				C0DE0000000000000000004F /* CoveDiagnostics.swift */,
 				C0DE00000000000000000030 /* RecurrenceRule.swift */,
 				C0DE00000000000000000031 /* VaultIndex.swift */,
 				C0DE00000000000000000032 /* VaultFileOperations.swift */,
-				C0DE00000000000000000033 /* VaultBookmarkStore.swift */,
 				C0DE00000000000000000034 /* WidgetSnapshot.swift */,
 				C0DE00000000000000000035 /* TaskParser.swift */,
 				C0DE00000000000000000036 /* TaskPresentation.swift */,
@@ -303,10 +303,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0DE0000000000000000005F /* CoveDiagnostics.swift in Sources */,
 				C0DE00000000000000000040 /* RecurrenceRule.swift in Sources */,
 				C0DE00000000000000000041 /* VaultIndex.swift in Sources */,
 				C0DE00000000000000000042 /* VaultFileOperations.swift in Sources */,
-				C0DE00000000000000000043 /* VaultBookmarkStore.swift in Sources */,
 				C0DE00000000000000000044 /* WidgetSnapshot.swift in Sources */,
 				C0DE00000000000000000045 /* TaskParser.swift in Sources */,
 				C0DE00000000000000000046 /* TaskPresentation.swift in Sources */,

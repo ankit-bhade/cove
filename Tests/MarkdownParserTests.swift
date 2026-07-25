@@ -83,6 +83,29 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(result.checkboxes[0].markerRange, NSRange(location: 2, length: 5))
     }
 
+    func testParsesStarAndPlusCheckboxes() {
+        let result = MarkdownParser.parse("* [ ] star\n  + [x] plus")
+        XCTAssertEqual(result.checkboxes.count, 2)
+        XCTAssertEqual(result.checkboxes.map(\.isChecked), [false, true])
+    }
+
+    func testIgnoresCheckboxesAndStylingInsideLiteralContexts() {
+        let text = """
+            ---
+            title: "**not bold**"
+            ---
+            ```md
+            # Not a header
+            - [ ] Not a checkbox
+            ```
+            - [ ] Live
+            """
+        let result = MarkdownParser.parse(text)
+        XCTAssertTrue(result.headers.isEmpty)
+        XCTAssertTrue(result.boldSpans.isEmpty)
+        XCTAssertEqual(result.checkboxes.count, 1)
+    }
+
     func testBareCheckboxHasEmptyTextRange() {
         let result = MarkdownParser.parse("- [ ]")
         XCTAssertEqual(result.checkboxes[0].textRange.length, 0)
@@ -99,6 +122,71 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(result.checkboxes.count, 2)
         XCTAssertEqual(result.checkboxes[1].markerRange, NSRange(location: 21, length: 5))
         XCTAssertTrue(result.checkboxes[1].isChecked)
+    }
+
+    func testRecurringCheckboxUsesSemanticAdvanceAndCanBeUndone() throws {
+        let original =
+            "## Work\r\n- [ ] Billing @due(2026-01-30) @repeat(monthly)\r\n"
+        let checkbox = try XCTUnwrap(
+            MarkdownParser.parse(original).checkboxes.first)
+        let toggle = try XCTUnwrap(
+            MarkdownParser.recurringTaskToggleResult(
+                for: checkbox,
+                in: original,
+                sectioned: true,
+                todayDateString: "2026-01-30"))
+        let advanced = try toggle.get()
+
+        XCTAssertEqual(
+            advanced,
+            "## Work\r\n- [ ] Billing @due(2026-02-28) @repeat(monthly) @anchor(2026-01-30)\r\n")
+
+        let originalTask = try XCTUnwrap(
+            TaskParser.tasks(in: original, sectioned: true).first)
+        let identity = TaskIdentity(
+            filePath: "/CoveEditor.md",
+            lineNumber: originalTask.lineNumber,
+            text: originalTask.text,
+            dueDateString: originalTask.dueDateString,
+            dueTimeString: originalTask.dueTimeString,
+            recurrenceTag: originalTask.recurrence?.tagText,
+            listName: originalTask.listName,
+            recurrenceAnchorDateString:
+                originalTask.recurrenceAnchorDateString,
+            isSectionedDocument: true)
+
+        XCTAssertEqual(
+            try TaskParser.revertingRecurringCompletionResult(
+                identity,
+                completedOn: "2026-01-30",
+                in: advanced
+            ).get(),
+            original)
+    }
+
+    func testRecurringCheckboxDuplicateFailsClosed() throws {
+        let original = """
+            - [ ] Billing @due(2026-01-30) @repeat(monthly)
+            - [ ] Billing @due(2026-01-30) @repeat(monthly)
+            """
+        let checkbox = try XCTUnwrap(
+            MarkdownParser.parse(original).checkboxes.first)
+        let result = try XCTUnwrap(
+            MarkdownParser.recurringTaskToggleResult(
+                for: checkbox,
+                in: original,
+                sectioned: false,
+                todayDateString: "2026-01-30"))
+
+        XCTAssertEqual(
+            result,
+            .failure(.ambiguousTask([0, 1])))
+        XCTAssertEqual(
+            original,
+            """
+            - [ ] Billing @due(2026-01-30) @repeat(monthly)
+            - [ ] Billing @due(2026-01-30) @repeat(monthly)
+            """)
     }
 
     // MARK: Hit testing

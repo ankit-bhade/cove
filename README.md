@@ -25,18 +25,28 @@ forever. For a
 vault in iCloud Drive, changes made outside the app — edits syncing in from
 another device, or files added or removed in Finder or the Files app — are
 detected while the app runs: the folder tree refreshes itself, and an open
-note reloads the new contents as long as you have no unsaved edits (your
-typing is never discarded; a simultaneous local/external edit preserves the
-external version as a named sibling conflict copy and keeps failures visibly
-retryable). Vaults outside iCloud Drive refresh whenever the
+note reloads the new contents as long as you have no unsaved edits. Your
+typing survives whatever happens to the file underneath it: a simultaneous
+local/external edit preserves the external version as a named sibling
+conflict copy, unsaved text is journaled locally as you type so a crash or a
+forced quit doesn't take it, and if the note is renamed or deleted out from
+under the editor the recovered text is offered back with a Save Copy action
+rather than dropped. Recovered edits are held for review before they
+overwrite anything, and Settings → Cove Recovery lists both deleted items and
+unsaved drafts. Vaults outside iCloud Drive refresh whenever the
 app returns to the foreground. The search field in the browser searches every
 note's title and contents as you type (case-insensitively, with no persisted
 index), and selecting a result opens that note in
 the editor. A note Cove can't read — text that isn't UTF-8, or a file iCloud
 hasn't finished downloading — is passed over rather than blocking the vault,
-and is picked up again on the next refresh once it can be read. A Tasks tab
-collects every line of the exact form
-`- [ ] Task text @due(YYYY-MM-DD)` from across the vault: open tasks are
+and is picked up again on the next refresh once it can be read; Settings
+lists any note whose tasks couldn't be read, and any checkbox line whose
+`@due` or `@repeat` tag didn't parse, with a link straight to the line. A
+Tasks tab collects every line of the form
+`- [ ] Task text @due(YYYY-MM-DD)` from across the vault — indented and
+`*`/`+` bullets count, so nested checklists aren't skipped, while task-like
+text inside fenced code, HTML comments, or YAML front matter is left
+alone. Open tasks are
 sorted by due date and grouped into Overdue, Today, Tomorrow, and Upcoming
 sections, with due dates written the way you'd say them ("Today, 3:00 PM",
 "Tomorrow", "Friday", "Jul 24") and overdue ones shown in red. Completed
@@ -46,7 +56,11 @@ The completed section has a Clear All action that, after confirmation,
 removes every completed Cove task line from its original note. A single task
 can be deleted by swiping its row (or right-clicking it), which removes that
 line from its note. Task completion and deletion register semantic Undo, so
-later edits to the same note are preserved. Tapping a task opens its note. New tasks can be typed as one sentence in
+later edits to the same note are preserved — including for a recurring task,
+where undoing a completion rolls its date back rather than failing to find
+the line it just advanced. If two task lines are identical in every respect,
+Cove refuses to act on either rather than guess which one you meant, and
+points at them from Settings. Tapping a task opens its note. New tasks can be typed as one sentence in
 the field at the top of the Tasks tab — "get bread 3p tmr", "gym every mon
 wed 6a", "rent 2/3", "meeting next fri 2pm". The interpreter (a port of
 the grove-app capture parser) understands relative dates ("tdy", "tmr",

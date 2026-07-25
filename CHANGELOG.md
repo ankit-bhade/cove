@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A crash-recovery journal for the editor. Unsaved text is written to Cove's
+  own container as you type — never into the vault, so it can't become an
+  iCloud conflict or show up as another note — and offered back on reopen. A
+  note renamed or deleted out from under an open editor now surfaces the
+  recovered text with a Save Copy action rather than dropping it.
+- Settings → Cove Recovery lists deleted items and unsaved drafts, with
+  restore, Save Copy, and discard. Recovery was previously session-memory
+  only: after a crash, deleted material was unreachable from inside the app.
+- Task format diagnostics. A checkbox line whose date, time, or `@repeat` tag
+  didn't parse, an unsupported checkbox form, and duplicate task lines are
+  reported in Settings with the note and line number, and tapping one opens
+  the editor there. The strict syntax used to fail completely silently.
+- Notification and widget health in Settings: how many reminders are
+  scheduled, how many were dropped at the system's 64-request limit, and
+  whether the App Group is reachable.
+- `Scripts/verify-build.sh` runs every automated check in one pass: plists,
+  formatting, the offline and log-privacy rules, the suite, and Release
+  builds for both platforms. Each content check fails loudly if the tool it
+  needs is missing, so a gate can never pass by not running.
 - Reliability hardening adds semantic Undo for task completion and deletion,
   recoverable note/folder deletion through a hidden `.cove-recovery` area,
   conflict-copy preservation for simultaneous editor/external edits, and a
@@ -20,6 +39,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The task parser reads Markdown context rather than lines in isolation.
+  Task-looking text inside fenced code, HTML comments, and YAML front matter
+  is no longer indexed or edited — deleting a "list" could previously take
+  surrounding code and prose with it — and only an exact `##` heading opens a
+  list, where `###` through `######` used to as well. An opening `---` with
+  no closing delimiter is read as a thematic break rather than unterminated
+  front matter, so a note that starts with one doesn't lose every task in it.
+- Indented checkboxes and `*`/`+` bullets are now read as tasks, which is
+  what nested and Obsidian-style checklists look like. Cove still writes only
+  the canonical `- [ ] … @due(…)` form, and round-trips every generated line
+  through the parser before saving it, so a title containing a newline or a
+  literal `@due(` can no longer inject a second line or a heading.
+- Recurring tasks advance from a persisted anchor instead of from the day the
+  checkbox was tapped. "Every month on the 31st" no longer walks back to the
+  28th after February and stay there, a Feb-29 yearly task returns to leap
+  day, and completing an overdue task lands on its next real occurrence
+  rather than restarting the cadence. The anchor is recorded as `@anchor(…)`
+  after `@repeat`, because one Markdown line is the task's whole history.
+- Undoing a recurring completion rolls the date back. It previously searched
+  for the task by its old due date — the one the completion had just
+  advanced — and silently failed to find it.
+- A task mutation refuses when the identity matches more than one line
+  instead of taking the first. After an external edit shifts lines, "the
+  first task that looks like this" is not the task that was tapped.
+- Selecting a vault is now one transaction. A folder that scanned fine but
+  whose bookmark couldn't be saved used to open anyway and then silently
+  reopen the *previous* vault on next launch; the whole session now rolls
+  back and the error is kept separate from scan status.
+- A failed refresh keeps the last-good vault open instead of tearing the
+  session down and demanding reselection — a transient provider hiccup was
+  ending the session.
+- A successful editor save now feeds the index, notifications, and the widget
+  directly, so editing `Tasks.md` by hand no longer leaves the Tasks screen,
+  reminders, and the widget stale until some other refresh happened.
+- Notification reconciliation is awaited through to the notification centre
+  and reports its outcome, rather than returning as soon as more work was
+  queued behind it.
+- Quick capture refuses only sentences it cannot write down — an impossible
+  date, or a token that isn't a time. A bare past time, two competing dates,
+  and a clamped count warn under the field and still capture on return, which
+  is the documented behavior the live preview exists to make safe.
+- Recovery-draft writes moved off the main actor. Encoding a whole document,
+  synchronizing it, and swapping it into place ran on every debounce while
+  typing, which stuttered on a large note.
+- A superseded index refresh hands its changed notes to the refresh that
+  replaced it. Saving two notes within the coalescing window used to drop the
+  first one's re-read, leaving its index entry stale until a full rescan.
+- Write temporaries stranded by a crash are swept at vault open. They are
+  hidden, so nothing surfaced them, and in an iCloud vault each one synced
+  and was stored indefinitely.
+- Listing recovery drafts decodes identity and age only. The screen shows a
+  filename and a date, so decoding the full record held a complete copy of
+  every unsaved note in view state; the text is now read at the moment a
+  draft is exported.
+- Task diagnostics are capped per note. A note of ordinary Obsidian
+  checklists produced one explanatory sentence per line, all retained in the
+  index for the session, to say something the first few already said.
+- The scheduler's last result has one home. `VaultManager` already published
+  it observably, and a second copy in a private global actor meant Settings
+  read a snapshot taken when the screen appeared rather than the live value.
+- The monthly and yearly occurrence searches are bounded at 120 steps rather
+  than ten million. Both converge in one or two; the old ceiling would have
+  been a hang, not a safety net.
+- Cove is scoped explicitly as a personal, undistributed app. Work that only
+  serves a store submission — privacy manifests, distribution signing, and
+  archive validation — is removed rather than carried, and macOS keeps ad-hoc
+  signing so a build needs no certificate. The durability work is unaffected:
+  a personal vault of real notes in real iCloud has no backend to re-sync
+  from, which is the reason that work exists.
 - Every screen leads with its own content. All of them opened with a tall
   masthead — an accent rule, an eyebrow, a serif title, and a sentence of prose
   — whose titles said nothing the screen didn't: a slogan ("Write it,

@@ -52,10 +52,24 @@ instead — `xcrun simctl io booted recordVideo --force out.mov &`, launch,
 `kill -INT` the recorder — then extract frames with a Swift
 `AVAssetImageGenerator` one-off (swift CLI runs single files directly).
 
-Seeding a note with a timed task (`- [ ] X @due(YYYY-MM-DD HH:MM)`) makes
-the notification-permission prompt appear on first load — expected, and
-evidence the scheduler rebuild ran. `simctl privacy` cannot grant
-notifications; the alert can only be answered by a human.
+Seeding a note with a timed task (`- [ ] X @due(YYYY-MM-DD HH:MM)`) must
+**not** make the notification-permission prompt appear on load. Cove requests
+permission only after the user presses the notification action in Settings.
+`simctl privacy` cannot grant notifications; the alert must be answered by a
+human. Once granted, use Settings' scheduler health plus the task's pending
+request to verify that reconciliation finished.
+
+## Before the runtime pass
+
+Run the repository gate first — it is faster than launching anything, and it
+catches the failures that would waste a manual pass:
+
+```sh
+Scripts/verify-build.sh
+```
+
+It lints, holds the offline and log-privacy rules, runs the suite, and builds
+both platforms. Only what a build cannot prove is left for the steps below.
 
 ## macOS
 

@@ -7,6 +7,8 @@
     /// and a tap on a `- [ ]` marker toggles the checkbox.
     struct MarkdownTextView: UIViewRepresentable {
         @Binding var text: String
+        let sectionedTaskDocument: Bool
+        @Binding var checkboxError: String?
 
         func makeUIView(context: Context) -> UITextView {
             let textView = CheckboxTogglingTextView()
@@ -50,16 +52,27 @@
         }
 
         func makeCoordinator() -> Coordinator {
-            Coordinator(text: $text)
+            Coordinator(
+                text: $text,
+                sectionedTaskDocument: sectionedTaskDocument,
+                checkboxError: $checkboxError)
         }
 
         final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
             private let text: Binding<String>
+            private let sectionedTaskDocument: Bool
+            private let checkboxError: Binding<String?>
             weak var textView: UITextView?
             private var dirtyRange: NSRange?
 
-            init(text: Binding<String>) {
+            init(
+                text: Binding<String>,
+                sectionedTaskDocument: Bool,
+                checkboxError: Binding<String?>
+            ) {
                 self.text = text
+                self.sectionedTaskDocument = sectionedTaskDocument
+                self.checkboxError = checkboxError
             }
 
             func textView(
@@ -99,10 +112,7 @@
                 guard let checkbox = MarkdownParser.parse(textView.text).checkbox(at: index) else {
                     return
                 }
-                setCheckbox(
-                    in: textView,
-                    range: checkbox.statusRange,
-                    status: checkbox.toggledStatus)
+                _ = toggleCheckbox(in: textView, checkbox: checkbox)
             }
 
             @objc func toggleCheckboxAtCursor() -> Bool {
@@ -116,6 +126,31 @@
                                     && textView.selectedRange.location <= NSMaxRange($0.textRange)
                         })
                 else { return false }
+                return toggleCheckbox(in: textView, checkbox: checkbox)
+            }
+
+            @discardableResult
+            private func toggleCheckbox(
+                in textView: UITextView,
+                checkbox: MarkdownParser.Checkbox
+            ) -> Bool {
+                if let result = MarkdownParser.recurringTaskToggleResult(
+                    for: checkbox,
+                    in: textView.text,
+                    sectioned: sectionedTaskDocument)
+                {
+                    switch result {
+                    case .success(let updated):
+                        checkboxError.wrappedValue = nil
+                        setDocumentText(in: textView, to: updated)
+                        return true
+                    case .failure(let error):
+                        checkboxError.wrappedValue =
+                            error.localizedDescription
+                        return false
+                    }
+                }
+                checkboxError.wrappedValue = nil
                 setCheckbox(
                     in: textView,
                     range: checkbox.statusRange,
@@ -138,6 +173,35 @@
                 MarkdownStyler.applyLiveStyles(
                     to: textView.textStorage,
                     dirtyRange: range)
+            }
+
+            private func setDocumentText(
+                in textView: UITextView,
+                to updated: String
+            ) {
+                let previous = textView.text ?? ""
+                guard previous != updated else { return }
+                let selection = textView.selectedRange
+                textView.undoManager?.registerUndo(withTarget: self) {
+                    coordinator in
+                    coordinator.setDocumentText(
+                        in: textView,
+                        to: previous)
+                }
+                textView.undoManager?.setActionName("Toggle Recurring Task")
+                let whole = NSRange(
+                    location: 0,
+                    length: (previous as NSString).length)
+                textView.textStorage.replaceCharacters(
+                    in: whole,
+                    with: updated)
+                textView.selectedRange = NSRange(
+                    location: min(
+                        selection.location,
+                        (updated as NSString).length),
+                    length: 0)
+                text.wrappedValue = updated
+                MarkdownStyler.applyLiveStyles(to: textView.textStorage)
             }
 
             // Run alongside the text view's own gestures so cursor placement

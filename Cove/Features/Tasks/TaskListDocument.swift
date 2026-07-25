@@ -1,220 +1,393 @@
 import Foundation
 
-/// Pure Markdown surgery for the list sections of the capture note.
+/// Context-aware Markdown surgery for `##` list sections in `Tasks.md`.
 ///
-/// A list is a `##` heading in `Tasks.md`; its items are the task lines
-/// beneath it, up to the next heading of any level. Every operation here
-/// takes and returns the whole file text, preserving all other Markdown
-/// verbatim, so hand-edited notes survive round-trips through the Lists
-/// screen.
-///
-/// Names are compared case- and whitespace-insensitively (a list typed as
-/// "groceries" is the one shown as "Groceries"), but the heading's own
-/// spelling is what the screen displays.
+/// Only an exact level-two heading opens a list. A level-one heading closes
+/// the current list, while deeper headings remain ordinary content inside the
+/// current list. Fences, HTML comments, and front matter never affect section
+/// boundaries.
 enum TaskListDocument {
+    enum EditError: LocalizedError, Equatable, Sendable {
+        case invalidName
+        case invalidTaskLine
+        case missingSection(String)
+        case duplicateSection(String)
+        case nameAlreadyExists(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidName:
+                return "List names must be a single non-empty line."
+            case .invalidTaskLine:
+                return "A task must be one line and cannot contain control characters."
+            case .missingSection(let name):
+                return "The “\(name)” list no longer exists."
+            case .duplicateSection(let name):
+                return
+                    "More than one “\(name)” heading exists. Resolve the duplicate headings before editing this list."
+            case .nameAlreadyExists(let name):
+                return "A list named “\(name)” already exists."
+            }
+        }
+    }
+
+    struct Diagnostic: Equatable, Sendable {
+        enum Kind: Equatable, Sendable {
+            case duplicateSection
+        }
+
+        let kind: Kind
+        let lineNumber: Int
+        let message: String
+    }
+
+    private enum Heading: Equatable {
+        case document
+        case list(String)
+        case deeper
+    }
+
+    private struct SectionHeading {
+        let name: String
+        let lineIndex: Int
+        let line: MarkdownContextScanner.Line
+    }
+
+    private struct SectionBounds {
+        let headingStart: Int
+        let headingLineRange: NSRange
+        let end: Int
+        let insertionPoint: Int
+    }
+
     private static let headingRegex = try! NSRegularExpression(
         pattern: #"^(#{1,6})[ \t]+(\S.*?)[ \t]*$"#)
 
-    /// The list name a heading line opens, or nil when the line is not a
-    /// heading. A `#` heading closes the current list and opens none, so it
-    /// returns an empty-named result the parser reads as "no list".
+    /// The list name an exact `##` heading opens. A `#` heading returns an
+    /// empty string to signal that an open list closes. `###` through `######`
+    /// return nil and therefore stay inside the current list.
     static func headingName(in line: String) -> String? {
-        let ns = line as NSString
-        guard
-            let match = headingRegex.firstMatch(
-                in: line, range: NSRange(location: 0, length: ns.length))
-        else { return nil }
-        // `#` is a document title, not a list: it ends the current section.
-        guard ns.substring(with: match.range(at: 1)).count >= 2 else { return "" }
-        return ns.substring(with: match.range(at: 2))
+        switch heading(in: line) {
+        case .document:
+            return ""
+        case .list(let name):
+            return name
+        case .deeper, nil:
+            return nil
+        }
     }
 
-    /// Every `##` list heading in the note, in file order — including lists
-    /// with no items yet, which is why the index can't derive them from the
-    /// tasks alone.
     static func sectionNames(in fileText: String) -> [String] {
         var names: [String] = []
-        for line in lines(of: fileText) {
-            if let name = headingName(in: line.text), !name.isEmpty,
-                !names.contains(where: { matches($0, name) })
-            {
-                names.append(name)
+        var seen: Set<String> = []
+        for section in sectionHeadings(in: fileText) {
+            if seen.insert(canonicalName(section.name)).inserted {
+                names.append(section.name)
             }
         }
         return names
     }
 
-    static func containsSection(named name: String, in fileText: String) -> Bool {
-        sectionNames(in: fileText).contains { matches($0, name) }
-    }
-
-    /// Appends an empty `## name` heading, or returns nil when a list by
-    /// that name already exists.
-    static func addingSection(named name: String, to fileText: String) -> String? {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !containsSection(named: trimmed, in: fileText) else { return nil }
-        var text = fileText
-        if !text.isEmpty {
-            if !text.hasSuffix("\n") { text += "\n" }
-            if !text.hasSuffix("\n\n") { text += "\n" }
+    static func diagnostics(in fileText: String) -> [Diagnostic] {
+        var firstLines: [String: Int] = [:]
+        var diagnostics: [Diagnostic] = []
+        for section in sectionHeadings(in: fileText) {
+            let key = canonicalName(section.name)
+            if firstLines[key] != nil {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .duplicateSection,
+                        lineNumber: section.line.number,
+                        message:
+                            "Duplicate list heading “\(section.name)” makes edits ambiguous."))
+            } else {
+                firstLines[key] = section.line.number
+            }
         }
-        return text + "## \(trimmed)\n"
+        return diagnostics
     }
 
-    /// Inserts a task line at the end of the named list's items, creating
-    /// the list at the end of the note when it doesn't exist yet.
+    static func containsSection(named name: String, in fileText: String) -> Bool {
+        sectionHeadings(in: fileText).contains { matches($0.name, name) }
+    }
+
+    static func addingSectionResult(
+        named name: String,
+        to fileText: String
+    ) -> Result<String, EditError> {
+        guard let name = validatedName(name) else { return .failure(.invalidName) }
+        let matches = matchingHeadings(named: name, in: fileText)
+        guard matches.isEmpty else {
+            return .failure(
+                matches.count > 1 ? .duplicateSection(name) : .nameAlreadyExists(name))
+        }
+
+        let document = MarkdownContextScanner.scan(fileText)
+        let newline = document.preferredLineEnding
+        var result = fileText
+        if result == "\u{FEFF}" {
+            return .success(result + "## \(name)" + newline)
+        }
+        if !result.isEmpty {
+            if !endsInLineEnding(result) { result += newline }
+            if !result.hasSuffix(newline + newline) { result += newline }
+        }
+        return .success(result + "## \(name)" + newline)
+    }
+
+    /// Compatibility wrapper. Call `addingSectionResult` when an error must
+    /// be surfaced rather than represented as nil.
+    static func addingSection(named name: String, to fileText: String) -> String? {
+        try? addingSectionResult(named: name, to: fileText).get()
+    }
+
+    static func insertingLineResult(
+        _ line: String,
+        inSection name: String,
+        in fileText: String
+    ) -> Result<String, EditError> {
+        guard isValidSingleLine(line) else { return .failure(.invalidTaskLine) }
+        guard let name = validatedName(name) else { return .failure(.invalidName) }
+
+        let matches = matchingHeadings(named: name, in: fileText)
+        guard matches.count <= 1 else { return .failure(.duplicateSection(name)) }
+        if matches.isEmpty {
+            switch addingSectionResult(named: name, to: fileText) {
+            case .failure(let error):
+                return .failure(error)
+            case .success(let withSection):
+                let newline = MarkdownContextScanner.scan(withSection).preferredLineEnding
+                return .success(withSection + line + newline)
+            }
+        }
+
+        guard let bounds = sectionBounds(for: matches[0], in: fileText) else {
+            return .failure(.missingSection(name))
+        }
+        let document = MarkdownContextScanner.scan(fileText)
+        let newline = document.preferredLineEnding
+        let ns = fileText as NSString
+        var head = ns.substring(to: bounds.insertionPoint)
+        if !head.isEmpty, !endsInLineEnding(head) { head += newline }
+        return .success(
+            head + line + newline + ns.substring(from: bounds.insertionPoint))
+    }
+
+    /// Compatibility wrapper that is deliberately fail-closed on ambiguity.
     static func insertingLine(
         _ line: String,
         inSection name: String,
         in fileText: String
     ) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let bounds = sectionBounds(named: trimmed, in: fileText) else {
-            let withSection = addingSection(named: trimmed, to: fileText) ?? fileText
-            return withSection + line + "\n"
-        }
-        let ns = fileText as NSString
-        var text = ns.substring(to: bounds.insertionPoint)
-        if !text.hasSuffix("\n") { text += "\n" }
-        return text + line + "\n" + ns.substring(from: bounds.insertionPoint)
+        (try? insertingLineResult(line, inSection: name, in: fileText).get()) ?? fileText
     }
 
-    /// Inserts a task line into the note's *unlisted* region — the part of
-    /// the capture note that belongs to no `##` list — so a quick capture
-    /// with no list can't be swallowed by whichever list happens to sit at
-    /// the end of the file.
-    ///
-    /// The anchor is the end of the last unlisted stretch: with lists at the
-    /// bottom (the usual shape) that's just before the first `##` heading;
-    /// with a `#` heading reopening free space after the lists, it's the end
-    /// of the note, which is where a plain append would have gone anyway.
-    static func insertingUnlistedLine(_ line: String, in fileText: String) -> String {
-        let all = lines(of: fileText)
+    static func insertingUnlistedLineResult(
+        _ line: String,
+        in fileText: String
+    ) -> Result<String, EditError> {
+        guard isValidSingleLine(line) else { return .failure(.invalidTaskLine) }
+        let document = MarkdownContextScanner.scan(fileText)
         var inList = false
-        var insertionPoint = 0
+        var insertionPoint = document.contentStart
         var sawUnlistedContent = false
-        for entry in all {
-            if let heading = headingName(in: entry.text) {
-                inList = !heading.isEmpty
-                // A `#` heading closes any list, so free space resumes below it.
-                if !inList {
-                    insertionPoint = entry.enclosingRange.location + entry.enclosingRange.length
+        var sawList = false
+
+        for entry in document.lines {
+            if !entry.isLiteral, let heading = heading(in: entry.text) {
+                switch heading {
+                case .document:
+                    inList = false
+                    insertionPoint = NSMaxRange(entry.enclosingRange)
                     sawUnlistedContent = true
+                case .list:
+                    inList = true
+                    sawList = true
+                case .deeper:
+                    break
                 }
                 continue
             }
-            guard !inList, !entry.text.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            insertionPoint = entry.enclosingRange.location + entry.enclosingRange.length
+            guard !inList,
+                !entry.text.trimmingCharacters(in: .whitespaces).isEmpty
+            else { continue }
+            insertionPoint = NSMaxRange(entry.enclosingRange)
             sawUnlistedContent = true
         }
-        // A note that is nothing but lists gets the line above the first one.
-        if !sawUnlistedContent, all.contains(where: { headingName(in: $0.text)?.isEmpty == false }) {
-            insertionPoint = 0
+
+        if !sawUnlistedContent, sawList {
+            insertionPoint = document.contentStart
         }
 
         let ns = fileText as NSString
+        let newline = document.preferredLineEnding
         var head = ns.substring(to: insertionPoint)
-        if !head.isEmpty, !head.hasSuffix("\n") { head += "\n" }
-        let tail = ns.substring(from: insertionPoint)
-        return head + line + "\n" + tail
+        if !head.isEmpty, head != "\u{FEFF}", !endsInLineEnding(head) {
+            head += newline
+        }
+        return .success(head + line + newline + ns.substring(from: insertionPoint))
     }
 
-    /// Removes a list's heading and every line under it. Returns the text
-    /// unchanged when no such list exists.
-    static func removingSection(named name: String, from fileText: String) -> String {
-        guard let bounds = sectionBounds(named: name, in: fileText) else { return fileText }
+    static func insertingUnlistedLine(_ line: String, in fileText: String) -> String {
+        (try? insertingUnlistedLineResult(line, in: fileText).get()) ?? fileText
+    }
+
+    static func removingSectionResult(
+        named name: String,
+        from fileText: String
+    ) -> Result<String, EditError> {
+        let matches = matchingHeadings(named: name, in: fileText)
+        guard !matches.isEmpty else { return .failure(.missingSection(name)) }
+        guard matches.count == 1 else { return .failure(.duplicateSection(name)) }
+        guard let bounds = sectionBounds(for: matches[0], in: fileText) else {
+            return .failure(.missingSection(name))
+        }
         let ns = fileText as NSString
-        return ns.substring(to: bounds.headingStart) + ns.substring(from: bounds.end)
+        return .success(ns.substring(to: bounds.headingStart) + ns.substring(from: bounds.end))
     }
 
-    /// Rewrites a list's heading, keeping its items. Returns nil when the
-    /// list is missing or the new name is already taken by another list.
+    /// Fail-closed compatibility wrapper: duplicate headings are never
+    /// destructively collapsed into whichever section happened to come first.
+    static func removingSection(named name: String, from fileText: String) -> String {
+        (try? removingSectionResult(named: name, from: fileText).get()) ?? fileText
+    }
+
+    static func renamingSectionResult(
+        named name: String,
+        to newName: String,
+        in fileText: String
+    ) -> Result<String, EditError> {
+        guard let newName = validatedName(newName) else { return .failure(.invalidName) }
+        let sourceMatches = matchingHeadings(named: name, in: fileText)
+        guard !sourceMatches.isEmpty else { return .failure(.missingSection(name)) }
+        guard sourceMatches.count == 1 else { return .failure(.duplicateSection(name)) }
+
+        if !matches(name, newName) {
+            let destinationMatches = matchingHeadings(named: newName, in: fileText)
+            guard destinationMatches.isEmpty else {
+                return .failure(
+                    destinationMatches.count > 1
+                        ? .duplicateSection(newName) : .nameAlreadyExists(newName))
+            }
+        }
+
+        let heading = sourceMatches[0]
+        return .success(
+            (fileText as NSString)
+                .replacingCharacters(in: heading.line.range, with: "## \(newName)"))
+    }
+
     static func renamingSection(
         named name: String,
         to newName: String,
         in fileText: String
     ) -> String? {
-        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let bounds = sectionBounds(named: name, in: fileText) else {
-            return nil
+        try? renamingSectionResult(named: name, to: newName, in: fileText).get()
+    }
+
+    // MARK: - Section lookup
+
+    private static func sectionHeadings(in fileText: String) -> [SectionHeading] {
+        let document = MarkdownContextScanner.scan(fileText)
+        return document.lines.enumerated().compactMap { index, line in
+            guard !line.isLiteral, case .list(let name)? = heading(in: line.text) else {
+                return nil
+            }
+            return SectionHeading(name: name, lineIndex: index, line: line)
         }
-        if !matches(name, trimmed), containsSection(named: trimmed, in: fileText) { return nil }
-        return (fileText as NSString)
-            .replacingCharacters(in: bounds.headingLineRange, with: "## \(trimmed)")
     }
 
-    // MARK: - Section bounds
-
-    private struct SectionBounds {
-        /// UTF-16 offset where the heading line begins.
-        let headingStart: Int
-        /// UTF-16 range of the heading's text, excluding its line ending.
-        let headingLineRange: NSRange
-        /// UTF-16 offset just past the section's last line, where the next
-        /// heading (or the end of the note) begins.
-        let end: Int
-        /// Where a new item goes: past the last item, before any trailing
-        /// blank lines that separate this section from the next.
-        let insertionPoint: Int
+    private static func matchingHeadings(
+        named name: String,
+        in fileText: String
+    ) -> [SectionHeading] {
+        sectionHeadings(in: fileText).filter { matches($0.name, name) }
     }
 
-    private static func sectionBounds(named name: String, in fileText: String) -> SectionBounds? {
-        let all = lines(of: fileText)
-        guard
-            let headingIndex = all.firstIndex(where: {
-                guard let heading = headingName(in: $0.text) else { return false }
-                return !heading.isEmpty && matches(heading, name)
-            })
-        else { return nil }
-
-        let heading = all[headingIndex]
-        var end = heading.enclosingRange.location + heading.enclosingRange.length
+    private static func sectionBounds(
+        for section: SectionHeading,
+        in fileText: String
+    ) -> SectionBounds? {
+        let document = MarkdownContextScanner.scan(fileText)
+        guard section.lineIndex < document.lines.count else { return nil }
+        let headingLine = document.lines[section.lineIndex]
+        var end = NSMaxRange(headingLine.enclosingRange)
         var insertionPoint = end
-        for line in all[(headingIndex + 1)...] {
-            if headingName(in: line.text) != nil { break }
-            end = line.enclosingRange.location + line.enclosingRange.length
-            // Blank lines between the last item and the next heading belong
-            // to the section on disk but shouldn't push new items past them.
-            if !line.text.trimmingCharacters(in: .whitespaces).isEmpty {
-                insertionPoint = end
+
+        if section.lineIndex + 1 < document.lines.count {
+            for line in document.lines[(section.lineIndex + 1)...] {
+                if !line.isLiteral, let boundary = heading(in: line.text) {
+                    switch boundary {
+                    case .document, .list:
+                        return SectionBounds(
+                            headingStart: headingLine.range.location,
+                            headingLineRange: headingLine.range,
+                            end: end,
+                            insertionPoint: insertionPoint)
+                    case .deeper:
+                        break
+                    }
+                }
+                end = NSMaxRange(line.enclosingRange)
+                if !line.text.trimmingCharacters(in: .whitespaces).isEmpty {
+                    insertionPoint = end
+                }
             }
         }
         return SectionBounds(
-            headingStart: heading.enclosingRange.location,
-            headingLineRange: heading.range,
+            headingStart: headingLine.range.location,
+            headingLineRange: headingLine.range,
             end: end,
             insertionPoint: insertionPoint)
     }
 
-    // MARK: - Line helpers
+    // MARK: - Validation
 
-    private struct Line {
-        let text: String
-        /// The line without its terminator.
-        let range: NSRange
-        /// The line including its terminator.
-        let enclosingRange: NSRange
+    private static func heading(in line: String) -> Heading? {
+        let ns = line as NSString
+        guard
+            let match = headingRegex.firstMatch(
+                in: line, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        let level = match.range(at: 1).length
+        switch level {
+        case 1:
+            return .document
+        case 2:
+            return .list(ns.substring(with: match.range(at: 2)))
+        default:
+            return .deeper
+        }
     }
 
-    private static func lines(of text: String) -> [Line] {
-        let ns = text as NSString
-        var result: [Line] = []
-        ns.enumerateSubstrings(
-            in: NSRange(location: 0, length: ns.length),
-            options: [.byLines, .substringNotRequired]
-        ) {
-            _, range, enclosingRange, _ in
-            result.append(
-                Line(
-                    text: ns.substring(with: range),
-                    range: range,
-                    enclosingRange: enclosingRange))
-        }
-        return result
+    private static func validatedName(_ raw: String) -> String? {
+        guard raw.rangeOfCharacter(from: .newlines) == nil,
+            raw.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+        else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func isValidSingleLine(_ line: String) -> Bool {
+        !line.isEmpty
+            && line.rangeOfCharacter(from: .newlines) == nil
+            && line.unicodeScalars.allSatisfy {
+                $0 == "\t" || !CharacterSet.controlCharacters.contains($0)
+            }
+    }
+
+    static func canonicalName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespaces)
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: Locale(identifier: "en_US_POSIX"))
     }
 
     private static func matches(_ lhs: String, _ rhs: String) -> Bool {
-        lhs.trimmingCharacters(in: .whitespaces)
-            .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespaces)) == .orderedSame
+        canonicalName(lhs) == canonicalName(rhs)
+    }
+
+    private static func endsInLineEnding(_ text: String) -> Bool {
+        text.hasSuffix("\r\n") || text.hasSuffix("\n") || text.hasSuffix("\r")
     }
 }

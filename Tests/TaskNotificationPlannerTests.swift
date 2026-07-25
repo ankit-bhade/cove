@@ -54,7 +54,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
             notificationBody(2026, 7, 18, hour: 20, minute: 0))
         XCTAssertEqual(
             plans.first?.fireDateComponents,
-            DateComponents(year: 2026, month: 7, day: 18, hour: 20, minute: 0))
+            triggerComponents(2026, 7, 18, hour: 20, minute: 0))
     }
 
     func testDateOnlyTasksGetNoNotification() {
@@ -110,7 +110,7 @@ final class TaskNotificationPlannerTests: XCTestCase {
             notificationBody(2026, 7, 19, hour: 18, minute: 0))
         XCTAssertEqual(
             plans.first?.fireDateComponents,
-            DateComponents(year: 2026, month: 7, day: 19, hour: 18, minute: 0))
+            triggerComponents(2026, 7, 19, hour: 18, minute: 0))
     }
 
     func testOverdueRecurringTaskIsNotScheduled() {
@@ -154,6 +154,52 @@ final class TaskNotificationPlannerTests: XCTestCase {
             dates.prefix(TaskNotificationPlanner.maximumPlans).map { "T\($0)" })
     }
 
+    func testInventoryReportsTasksOmittedBySystemLimit() {
+        let tasks = (0..<(TaskNotificationPlanner.maximumPlans + 3)).map { line in
+            task(
+                text: "Task \(line)",
+                due: String(format: "2026-%02d-%02d", line / 28 + 1, line % 28 + 1),
+                time: "09:00",
+                line: line)
+        }
+        let inventory = TaskNotificationPlanner.inventory(
+            for: tasks,
+            now: earlyNow,
+            timeZone: calendar.timeZone)
+
+        XCTAssertEqual(inventory.plans.count, TaskNotificationPlanner.maximumPlans)
+        XCTAssertEqual(inventory.eligibleCount, tasks.count)
+        XCTAssertEqual(inventory.omittedBySystemLimit, 3)
+    }
+
+    func testNonexistentDSTWallTimeIsSkippedAndReported() {
+        let newYork = TimeZone(identifier: "America/New_York")!
+        let zoneCalendar = TaskCalendar.gregorian(timeZone: newYork)
+        let now = zoneCalendar.date(
+            from: DateComponents(
+                year: 2026, month: 3, day: 1, hour: 12))!
+        let inventory = TaskNotificationPlanner.inventory(
+            for: [task(due: "2026-03-08", time: "02:30")],
+            now: now,
+            timeZone: newYork)
+
+        XCTAssertTrue(inventory.plans.isEmpty)
+        XCTAssertEqual(inventory.invalidDateCount, 1)
+    }
+
+    func testTriggerCarriesExplicitGregorianCalendarAndTimeZone() throws {
+        let timeZone = TimeZone(identifier: "Pacific/Auckland")!
+        let plan = try XCTUnwrap(
+            TaskNotificationPlanner.plans(
+                for: [task(due: "2026-07-20", time: "15:00")],
+                now: earlyNow,
+                timeZone: timeZone
+            ).first)
+
+        XCTAssertEqual(plan.fireDateComponents.calendar?.identifier, .gregorian)
+        XCTAssertEqual(plan.fireDateComponents.timeZone, timeZone)
+    }
+
     // MARK: - Identifiers
 
     func testIdentifiersCarryThePrefixAndAreUnique() {
@@ -171,6 +217,25 @@ final class TaskNotificationPlannerTests: XCTestCase {
                 $0.identifier.hasPrefix(TaskNotificationPlanner.identifierPrefix)
             })
         XCTAssertEqual(Set(plans.map(\.identifier)).count, plans.count)
+        XCTAssertFalse(plans.contains { $0.identifier.contains("/vault/") })
+    }
+
+    private func triggerComponents(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        hour: Int,
+        minute: Int
+    ) -> DateComponents {
+        var components = DateComponents(
+            year: year,
+            month: month,
+            day: day,
+            hour: hour,
+            minute: minute)
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        return components
     }
 
     private func notificationBody(

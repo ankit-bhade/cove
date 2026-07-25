@@ -21,6 +21,9 @@ struct RootView: View {
                 VaultRecoveryView()
             case .open:
                 appNavigation
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        storageAttentionBanner
+                    }
             }
         }
         .preferredColorScheme(appearance.colorScheme)
@@ -43,6 +46,55 @@ struct RootView: View {
                 selectedSection = .tasks
             }
         }
+    }
+
+    @ViewBuilder
+    private var storageAttentionBanner: some View {
+        if let summary = storageAttentionSummary {
+            Button {
+                selectedSection = .settings
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text(summary)
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    Text("Review")
+                        .fontWeight(.semibold)
+                }
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .coveTintedSurface(
+                    CoveTheme.alert,
+                    in: Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens Storage Health in Settings")
+        }
+    }
+
+    private var storageAttentionSummary: String? {
+        let health = vaultManager.storageHealth
+        if let issue = health.lastIssue { return issue }
+        if health.unavailableNoteCount > 0 {
+            return
+                "\(health.unavailableNoteCount) note\(health.unavailableNoteCount == 1 ? "" : "s") could not be read."
+        }
+        if health.taskDiagnosticCount > 0 {
+            return
+                "\(health.taskDiagnosticCount) task line\(health.taskDiagnosticCount == 1 ? " needs" : "s need") review."
+        }
+        let conflictCount =
+            health.unresolvedConflictURLs.count
+            + health.conflictReviewURLs.count
+        if conflictCount > 0 {
+            return
+                "\(conflictCount) iCloud conflict item\(conflictCount == 1 ? " needs" : "s need") review."
+        }
+        return nil
     }
 
     @ViewBuilder

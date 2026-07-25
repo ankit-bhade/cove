@@ -30,6 +30,27 @@ rather than on a sentence about itself. See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
 
+**Cove is a personal app and is not distributed.** No App Store, no
+TestFlight, no notarized build, no external testers — it is built from this
+repo and run on its author's own devices. That is a scoping decision, not a
+stage: work that exists only to satisfy a submission pipeline (privacy
+manifests, distribution signing, archive validation) does not belong here and
+was deliberately removed. macOS therefore keeps ad-hoc signing, which needs
+no certificate and no team.
+
+What it does *not* excuse is durability. The vault is the user's real notes,
+in real iCloud, with no backend to re-sync from and no support channel — a
+lost buffer or a corrupted `Tasks.md` is simply lost. So the current focus is
+the reliability half of a full technical audit: the crash-recovery draft
+journal, the transactional vault switch, the awaited save → index →
+notification → widget pipeline, the Markdown-context-aware parser, the
+anchored recurrence arithmetic, the in-app recovery review, and
+`Scripts/verify-build.sh`. Those earn their keep on one device.
+
+The gates that remain genuinely open are the ones a simulator cannot close:
+two-device iCloud conflict behavior, real notification delivery, forced
+termination, and App Group behavior on a signed device build.
+
 The phases were: folder picker and bookmarks (1), editor and file operations
 (2), live Markdown styling (3), iCloud change detection (4), search (5), tasks
 (6), notifications (7), quick capture (8), appearance and icon (9), task lists
@@ -47,9 +68,25 @@ These are non-negotiable. A change that breaks one is wrong even if it works.
 * Never hardcode a vault folder name or location.
 * All vault filesystem access goes through `NSFileCoordinator`.
 * Hidden files and symlinks are always ignored.
-* Task syntax `- [ ] Task text @due(YYYY-MM-DD[ HH:MM])[ @repeat(rule)]` is
-  fixed; no alternates. The one relaxation is `@due`-less lines inside a `##`
-  list section of the capture note, and it applies nowhere else.
+* The task line Cove **writes** is fixed:
+  `- [ ] Task text @due(YYYY-MM-DD[ HH:MM])[ @repeat(rule)][ @anchor(YYYY-MM-DD)]`
+  — one space between parts, `-` bullet, no indentation, no alternates. Every
+  generated line is round-tripped through the parser before it is saved.
+  What Cove **reads** is deliberately wider, and only in ways that cannot
+  change a line's meaning: leading indentation, `*` and `+` bullets, and runs
+  of spaces or tabs where the canonical form has one. That is the difference
+  between a nested Obsidian checkbox silently vanishing from the Tasks screen
+  and being understood. A date that is not a date and a time that is not a
+  time are still rejected, and rejection is now reported (see diagnostics)
+  rather than silent.
+* `@anchor(YYYY-MM-DD)` is written by Cove, never typed. It records the
+  occurrence a recurring task was last advanced from, and only ever follows
+  `@repeat`. Without it "every month on the 31st" walks backwards off
+  February and a Feb-29 yearly task never returns to leap day.
+* The one relaxation of `@due` itself is `@due`-less lines inside a `##` list
+  section of the capture note, and it applies nowhere else.
+* Task-looking text inside YAML front matter, a fenced code block, or an HTML
+  comment is never indexed and never edited.
 * No persisted search index; search is on demand.
 * No push notifications; no custom background sync.
 * iCloud conflict copies are shown as separate files, never auto-resolved.
@@ -192,11 +229,38 @@ iphonesimulator macosx`); platform differences live in `Cove/Platform/` behind
 `#if os(...)`. Swift language mode 6 with complete strict concurrency, and
 `@Observable` for app state.
 
-**Entitlements are macOS-only** (`Cove/Cove.entitlements`, applied via
-`CODE_SIGN_ENTITLEMENTS[sdk=macosx*]`): App Sandbox, user-selected read-write,
-app-scope bookmarks. iOS needs none for document-picker folder access. macOS
-signing stays ad-hoc (`CODE_SIGN_IDENTITY[sdk=macosx*] = -`); a
-`DEVELOPMENT_TEAM` is set for device builds.
+**Every platform carries entitlements, for different reasons.** macOS
+(`Cove/Cove.entitlements`) needs App Sandbox, user-selected read-write, and
+app-scope bookmarks. iOS still needs none of those for document-picker folder
+access — but `Cove/Cove-iOS.entitlements` and
+`CoveWidgets/CoveWidgets.entitlements` exist for the App Group the widget
+channel runs through, so the older "entitlements are macOS-only" note is no
+longer true. macOS signing stays ad-hoc
+(`CODE_SIGN_IDENTITY[sdk=macosx*] = -`), which is right for an app that is
+only ever built and run here: it needs no certificate, no team, and no
+renewal. A `DEVELOPMENT_TEAM` is set for iOS device builds.
+
+**There are no privacy manifests, deliberately.** `PrivacyInfo.xcprivacy`
+exists to satisfy App Store Connect's required-reason API declarations at
+upload time; it has no runtime effect whatsoever. Cove is not uploaded
+anywhere, so the manifests, their test, and the archive-validation script
+were removed rather than carried as ceremony. If this ever *were* submitted,
+they would need to come back — the app uses `UserDefaults` (CA92.1, the
+bookmark store) and file timestamps (3B52.1, the index cache key).
+
+The widget still omits `VaultBookmarkStore`, reading its bookmark from the
+App Group container and inlining the two resolution flags in
+`ToggleTaskIntent`. That began as a way to keep the extension free of
+required-reason APIs; it survives the manifests because it is simply less
+code in the extension.
+
+**A file shared with the widget can only use what the widget compiles.**
+`Cove/` belongs to the app target alone, so the shared sources are explicit
+pbxproj entries under "Shared with CoveWidgets" — and a new dependency added
+to one of them has to join that list. `CoveDiagnostics.swift` (`CoveLog`) is
+there for exactly this reason: `VaultFileOperations` started logging, and
+without it the widget target stops compiling while the macOS app keeps
+building fine, so only an iOS build catches it.
 
 Bundle identifiers: `com.ankitbhade.Cove` / `com.ankitbhade.CoveTests` /
 `com.ankitbhade.Cove.CoveWidgets`.
@@ -391,8 +455,26 @@ a note's `@repeat` tag — overflows and traps the process, in the parser's case
 while the sentence is still being typed, since the preview re-parses on every
 keystroke.
 
+**Recurrence advances from an anchor, not from the tap.** The old arithmetic
+added one interval to `max(dueDate, today)`, which meant an overdue task
+re-anchored its whole cadence to the day the checkbox happened to be pressed,
+"every month on the 31st" walked back to the 28th the first time it passed
+February and stayed there, and a Feb-29 yearly task clamped to the 28th and
+never found leap day again. The rule now computes the first occurrence in the
+*anchor's* cadence after both the completed occurrence and today, so catching
+up on a task three weeks late lands on the next real occurrence rather than
+three weeks off the schedule. The anchor is persisted as `@anchor(...)` on
+first advance because a single Markdown line is the task's whole history —
+there is nowhere else to keep it — and it is the reason
+`revertingRecurringCompletionResult` can find the advanced line at all: Undo
+that merely set the old occurrence back to incomplete had nothing to match.
+
 **Every task mutation re-finds its line semantically**, matching text plus
-full schedule and preferring the remembered line number among duplicates. A
+full schedule, and **refuses when that is not unique**. It used to fall back
+to the first candidate, which is the one case where being helpful is wrong:
+after an external edit shifts lines, "the first task that looks like this" is
+not the task the user tapped. `MutationError.ambiguousTask` names the lines,
+the index carries a `duplicateTask` diagnostic, and Settings links to it. A
 line that changed meanwhile raises `TaskChangedOnDiskError` and still
 refreshes, so the list corrects itself rather than rewriting the wrong task.
 Completing a recurring task advances its due date in place and leaves the
@@ -824,10 +906,24 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'generic/platform=i
 
 # Tests (macOS host)
 xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' test
+
+# Lint, offline/log-privacy rules, the suite, and both platforms, in one pass
+Scripts/verify-build.sh
 ```
 
-Current verified suite: **319 tests** (macOS host), plus clean macOS and
+Current verified suite: **405 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
+
+**Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
+pipeline exits with the *last* command's status, so a failing build reports
+success and the errors scroll past the window you kept. Redirect to a file
+and check `$?`, then grep the file. Two "clean builds" in this project's
+history were pipelines hiding a broken iOS target.
+
+**A macOS build is not evidence the iOS build works.** The widget target only
+compiles on iOS, and it compiles a *different* subset of `Cove/`, so a shared
+file that gains a dependency the widget doesn't have breaks only there. Run
+both before calling anything green.
 
 ### Documentation rule
 
@@ -880,26 +976,31 @@ Rough edges and surprises, not restatements of the design above.
 
 ### Vault and files
 
-* An open editor whose note is renamed, moved, or deleted keeps pointing at
-  the old URL; pending edits are dropped and a save-error banner appears. The
-  Notes tab's next rescan pops that editor off the path, but the Tasks tab's
-  stack has no such pruning, so one opened from there stays on the dead URL.
-* The recovery sweep is silent and has no UI: a deleted note is gone for good
-  a week later, and nothing in the app lists or restores what's still in
-  `.cove-recovery`. Recovering by hand means decoding the base64 path
-  component of the entry's name.
+* An open editor whose note is renamed, moved, or deleted still points at the
+  old URL. The live text is no longer lost — it is journaled locally and the
+  banner offers Save Copy — but the editor does not follow the file to its
+  new name, and the copy lands at the vault root rather than where the note
+  went.
+* A dirty editor blocks switching vaults. Settings refuses with "Finish
+  saving or export the open note's recovery copy" until the editor is clean
+  or closed, which is surprising if the editor is on another tab and out of
+  sight.
+* Recovery drafts are per-device and never expire on their own. One is
+  removed when its note is next opened clean, accepted, or discarded — a
+  draft for a note that is deleted before it is reopened sits in Application
+  Support indefinitely. Settings → Cove Recovery is the only place it is
+  visible.
 * The sweep runs once per vault open, so a session left running for weeks
   keeps accumulating; reopening clears the backlog. Entries predating the
   sweep carry no timestamp and go on the first launch that includes it,
   regardless of age.
+* Stranded `.cove-write-*` temporaries are only swept at vault open and only
+  once they are an hour old, so a crash mid-write leaves one visible to other
+  Markdown tools until the next launch.
 * Bookmarks are per-device, so each device runs folder selection once
   (expected — there is no custom sync).
 * A tree scan holds one coordinated read for its whole duration. Fine for
   reads; all mutations use per-item coordination.
-* A note the app can't read is silently indexed with no tasks: it still
-  appears in the browser and still opens (the editor reports its own error),
-  but any tasks in it are missing from the Tasks screen with nothing on screen
-  saying why. The failure is in the log only.
 
 ### Editor and styling
 
@@ -909,6 +1010,13 @@ Rough edges and surprises, not restatements of the design above.
   Dynamic Type change updates header sizes on the next edit, not instantly.
 * The save indicator comes and goes while typing — it appears on the first
   keystroke and leaves about a second after typing stops.
+* While a recovered draft is showing, nothing is written to the note at all:
+  typing keeps updating the local journal, the indicator reads "Held for
+  Review", and only Save Recovered Edits or Discard Draft releases it. A user
+  who ignores the banner and keeps working is editing a file that is not
+  being saved.
+* Discard Draft replaces the recovered text with what is on disk immediately
+  and without confirmation. The journal entry is gone at that point.
 
 ### Change detection
 
@@ -932,21 +1040,22 @@ Rough edges and surprises, not restatements of the design above.
 
 ### Tasks
 
-* The Tasks tab lags reality between rebuilds: a task typed in the editor
-  appears only after another refresh or rescan.
-* The strict syntax fails silently. An indented line, a double space after the
-  marker, an invalid date or time, or an unknown `@repeat` rule keeps a line
-  out of the Tasks screen even though the editor still styles its checkbox.
 * Tasks kept outside `Tasks.md` are indistinguishable in the list until
   opened, since a row doesn't name its note. Fine for the intended
   single-capture-note workflow.
+* Two task lines identical in text, schedule, recurrence, and list cannot be
+  checked off, deleted, or undone from the Tasks screen at all — the mutation
+  refuses rather than guess which line was meant, because after an external
+  edit shifts the lines a remembered line number is not evidence. Both rows
+  stay stuck until one is made distinct. Settings lists every duplicate under
+  "task format warnings" with the note and line number, and tapping it opens
+  the editor there; that is the only way out.
+* An invalid line is no longer silent, but it is only reported in Settings.
+  Nothing on the Tasks screen itself says a note contains a checkbox that
+  didn't parse.
 * Recurrence-aware completion lives only in the Tasks tab. Tapping the same
   line's checkbox in the editor flips it to `[x]` like any checkbox, and the
   Tasks tab then shows it completed rather than rolled forward.
-* Advancing an overdue recurring task anchors on the later of its due date and
-  today — a deliberate divergence from grove, which anchors on the completed
-  occurrence's date. Cove's single-line model has no occurrence history to
-  catch up through.
 * The minute tick re-evaluates the whole list body. Cheap at typical counts; a
   very large list would want it narrowed to rows that can actually change.
 
@@ -961,15 +1070,24 @@ Rough edges and surprises, not restatements of the design above.
   is just a line in `Tasks.md`: swipe the row away and retype. The live
   preview is the only thing between a typo and the note, which is why it isn't
   optional chrome.
+* Only a sentence Cove cannot write down is refused: an impossible date ("feb
+  30") or a token that is not a time ("25:00") disables the add button. Every
+  other diagnostic warns under the field and leaves return working — a bare
+  past time, two competing dates, and a clamped count all resolve to a real
+  task, and the preview shows which one.
 * A bare time stays on today even when that moment has passed: "standup 9a"
-  typed at 10:00 lands today, already overdue, and gets no notification.
+  typed at 10:00 lands today, already overdue, and gets no notification. It
+  now says so under the field, but it still lands.
 * Time ranges keep only the start; Cove has no calendar events.
 * An empty title can't be captured, so a sentence that is nothing but a date
   leaves the add button disabled.
-* Absurd counts are clamped silently: "in 99999 weeks" is read as the maximum
-  relative count, and a repeat interval above `RecurrenceRule.maximumInterval`
-  becomes that maximum. The preview shows the clamped date, which is the only
-  signal.
+* Absurd counts are clamped: "in 99999 weeks" is read as the maximum relative
+  count, and a repeat interval above `RecurrenceRule.maximumInterval` becomes
+  that maximum. The preview shows the clamped date and a warning names it.
+* A title whose spacing the writer has to normalize — a tab, a double space —
+  is reported as unsafe and must be adjusted before it can be added from the
+  details sheet. Quick capture rarely hits this, since the parser already
+  collapses whitespace when it strips the tokens out of the sentence.
 * The preview re-parses the whole sentence on every keystroke — cheap, but a
   regex sweep rather than an incremental parse.
 * Captures always land in `Tasks.md` at the vault root; the capture note isn't

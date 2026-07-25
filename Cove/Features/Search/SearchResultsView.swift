@@ -11,6 +11,8 @@ struct SearchResultsView: View {
     @State private var hasSearched = false
     @State private var isSearching = false
     @State private var searchError: String?
+    @State private var skippedFileCount = 0
+    @State private var isResultLimitReached = false
 
     private let searcher = NoteSearcher()
 
@@ -38,6 +40,14 @@ struct SearchResultsView: View {
                         count: results.count)
                 }
             }
+            if hasSearched, skippedFileCount > 0 || isResultLimitReached {
+                Section {
+                    Label(searchDiagnostic, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(searchDiagnostic)
+                }
+            }
         }
         .coveListStyle()
         .coveReadableWidth()
@@ -59,7 +69,7 @@ struct SearchResultsView: View {
                 CoveEmptyState(
                     "No Notes Found",
                     systemName: "magnifyingglass",
-                    description: "Try a different title or phrase — search reads every note's text as well as its name."
+                    description: emptySearchDescription
                 )
             } else if let searchError {
                 CoveEmptyState(
@@ -84,6 +94,8 @@ struct SearchResultsView: View {
             hasSearched = false
             isSearching = false
             searchError = nil
+            skippedFileCount = 0
+            isResultLimitReached = false
             return
         }
         isSearching = true
@@ -91,7 +103,10 @@ struct SearchResultsView: View {
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
         do {
-            results = try await searcher.search(for: query, in: root)
+            let report = try await searcher.searchReport(for: query, in: root)
+            results = report.results
+            skippedFileCount = report.skippedFileCount
+            isResultLimitReached = report.isResultLimitReached
             hasSearched = true
             isSearching = false
         } catch {
@@ -101,5 +116,30 @@ struct SearchResultsView: View {
             isSearching = false
             searchError = error.localizedDescription
         }
+    }
+
+    private var searchDiagnostic: String {
+        var parts: [String] = []
+        if isResultLimitReached {
+            parts.append("Showing the first \(results.count) matches")
+        }
+        if skippedFileCount > 0 {
+            let files =
+                skippedFileCount == 1
+                ? "1 unavailable or very large note" : "\(skippedFileCount) unavailable or very large notes"
+            parts.append("\(files) skipped")
+        }
+        return parts.joined(separator: ". ") + "."
+    }
+
+    private var emptySearchDescription: String {
+        guard skippedFileCount > 0 else {
+            return "Try a different title or phrase — search reads every note’s text as well as its name."
+        }
+        let files =
+            skippedFileCount == 1
+            ? "One unavailable or very large note was not searched."
+            : "\(skippedFileCount) unavailable or very large notes were not searched."
+        return "No match was found in the notes Cove could read. \(files)"
     }
 }

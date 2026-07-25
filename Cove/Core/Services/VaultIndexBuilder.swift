@@ -31,11 +31,24 @@ struct VaultIndexBuilder: Sendable {
         for node in root.allFiles {
             try Task.checkCancellation()
             let sectioned = VaultManager.isCaptureNote(node.url, vaultRoot: root.url)
-            let values = try? node.url.resourceValues(forKeys: [
-                .contentModificationDateKey,
-                .fileSizeKey,
-            ])
-            if let cached = previousByURL[node.url.standardizedFileURL],
+            let values: URLResourceValues?
+            do {
+                values = try node.url.resourceValues(forKeys: [
+                    .contentModificationDateKey,
+                    .fileSizeKey,
+                ])
+            } catch {
+                values = nil
+                CoveLog.index.error(
+                    "Note metadata could not be read: \(error.localizedDescription, privacy: .private)")
+            }
+            // A nil changed set means a catch-all/foreground reconciliation,
+            // not "nothing changed." Re-read in that case so a same-size edit
+            // whose timestamp was preserved by another tool cannot leave a
+            // stale index. Precise observer/app mutation sets may safely reuse
+            // every URL they did not name.
+            if changedURLs != nil,
+                let cached = previousByURL[node.url.standardizedFileURL],
                 forcedChanges?.contains(node.url.standardizedFileURL) != true,
                 let modificationDate = values?.contentModificationDate,
                 let fileSize = values?.fileSize,
@@ -55,24 +68,50 @@ struct VaultIndexBuilder: Sendable {
                 // down with it. The entry is kept with no tasks and no cache
                 // key, so the next rebuild tries the file again.
                 CoveLog.index.error(
-                    "Skipped unreadable note \(node.displayName, privacy: .public): \(error.localizedDescription, privacy: .private)"
+                    "Could not refresh one note: \(error.localizedDescription, privacy: .private)"
                 )
-                entries.append(
-                    NoteIndexEntry(
-                        url: node.url,
-                        title: node.displayName,
-                        tasks: [],
-                        listNames: [],
-                        modificationDate: nil,
-                        fileSize: nil))
+                // A temporary provider/download failure must not silently
+                // erase tasks and consequently cancel their reminders. Keep
+                // the last-known-good derived state but remove its cache key,
+                // which forces another read on the next rebuild.
+                if let cached = previousByURL[node.url.standardizedFileURL] {
+                    entries.append(
+                        NoteIndexEntry(
+                            url: cached.url,
+                            title: cached.title,
+                            tasks: cached.tasks,
+                            listNames: cached.listNames,
+                            taskDiagnostics: cached.taskDiagnostics,
+                            indexingErrorDescription: error.localizedDescription,
+                            modificationDate: nil,
+                            fileSize: nil))
+                    if sectioned { listNames = cached.listNames }
+                } else {
+                    entries.append(
+                        NoteIndexEntry(
+                            url: node.url,
+                            title: node.displayName,
+                            tasks: [],
+                            listNames: [],
+                            indexingErrorDescription: error.localizedDescription,
+                            modificationDate: nil,
+                            fileSize: nil))
+                }
                 continue
             }
             var noteListNames: [String] = []
-            if sectioned {
+            let isOperationallyExcluded =
+                VaultFileOperations.isOperationallyExcludedDocument(node.url)
+            if sectioned && !isOperationallyExcluded {
                 noteListNames = TaskListDocument.sectionNames(in: text)
                 listNames = noteListNames
             }
-            let tasks = TaskParser.tasks(in: text, sectioned: sectioned)
+            let taskScan =
+                isOperationallyExcluded
+                ? nil : TaskParser.scan(in: text, sectioned: sectioned)
+            let parsedTasks = taskScan?.tasks ?? []
+            let tasks =
+                parsedTasks
                 .map { parsed in
                     TaskItem(
                         fileURL: node.url,
@@ -83,7 +122,11 @@ struct VaultIndexBuilder: Sendable {
                         dueTimeString: parsed.dueTimeString,
                         recurrence: parsed.recurrence,
                         isCompleted: parsed.isCompleted,
-                        listName: parsed.listName)
+                        listName: parsed.listName,
+                        recurrenceAnchorDateString:
+                            parsed.recurrenceAnchorDateString,
+                        isSectionedDocument: sectioned,
+                        sourceLine: parsed.sourceLine)
                 }
             entries.append(
                 NoteIndexEntry(
@@ -91,6 +134,7 @@ struct VaultIndexBuilder: Sendable {
                     title: node.displayName,
                     tasks: tasks,
                     listNames: noteListNames,
+                    taskDiagnostics: taskScan?.diagnostics ?? [],
                     modificationDate: values?.contentModificationDate,
                     fileSize: values?.fileSize))
         }

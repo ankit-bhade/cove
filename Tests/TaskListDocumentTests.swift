@@ -19,7 +19,7 @@ final class TaskListDocumentTests: XCTestCase {
 
     func testHeadingNameReadsListHeadings() {
         XCTAssertEqual(TaskListDocument.headingName(in: "## Groceries"), "Groceries")
-        XCTAssertEqual(TaskListDocument.headingName(in: "###  Deep  "), "Deep")
+        XCTAssertNil(TaskListDocument.headingName(in: "###  Deep  "))
     }
 
     func testTopLevelHeadingClosesTheCurrentListWithoutOpeningOne() {
@@ -60,6 +60,48 @@ final class TaskListDocumentTests: XCTestCase {
 
     func testAddingAnExistingSectionReturnsNil() {
         XCTAssertNil(TaskListDocument.addingSection(named: "groceries", to: note))
+    }
+
+    func testDuplicateSectionEditsFailClosedWithTypedError() {
+        let duplicate = "## Groceries\n- [ ] Milk\n## groceries\n- [ ] Bread\n"
+        XCTAssertEqual(
+            TaskListDocument.removingSection(named: "Groceries", from: duplicate),
+            duplicate)
+        XCTAssertEqual(
+            TaskListDocument.removingSectionResult(named: "Groceries", from: duplicate),
+            .failure(.duplicateSection("Groceries")))
+        XCTAssertEqual(
+            TaskListDocument.diagnostics(in: duplicate).map(\.kind),
+            [.duplicateSection])
+    }
+
+    func testPreservesCRLFAndBOMWhenAddingAndInserting() throws {
+        let text = "\u{FEFF}# Tasks\r\n\r\n## Groceries\r\n- [ ] Milk\r\n"
+        let inserted = try TaskListDocument.insertingLineResult(
+            "- [ ] Bread",
+            inSection: "Groceries",
+            in: text
+        ).get()
+        XCTAssertEqual(
+            inserted,
+            "\u{FEFF}# Tasks\r\n\r\n## Groceries\r\n- [ ] Milk\r\n- [ ] Bread\r\n")
+        XCTAssertFalse(inserted.replacingOccurrences(of: "\r\n", with: "").contains("\n"))
+    }
+
+    func testDeeperHeadingStaysInsideListAndLiteralHeadingsAreIgnored() {
+        let text = """
+            ## Projects
+            ### Cove
+            - [ ] Ship
+            ```
+            ## Not a list
+            ```
+            ## Later
+            - [ ] Read
+            """
+        XCTAssertEqual(TaskListDocument.sectionNames(in: text), ["Projects", "Later"])
+        let removed = TaskListDocument.removingSection(named: "Projects", from: text)
+        XCTAssertEqual(removed, "## Later\n- [ ] Read")
     }
 
     // MARK: - Inserting

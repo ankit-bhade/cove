@@ -48,23 +48,88 @@ final class TaskParserTests: XCTestCase {
         XCTAssertEqual(tasks.count, 1)
     }
 
+    func testIgnoresTasksAndHeadingsInLiteralMarkdownContexts() {
+        let text = """
+            ---
+            sample: "- [ ] Front @due(2026-07-19)"
+            ---
+            ```md <!-- this must remain a fence, not open an HTML comment
+            - [ ] Fenced @due(2026-07-20)
+            ```
+            <!--
+            - [ ] Commented @due(2026-07-21)
+            -->
+            - [ ] Live @due(2026-07-22)
+            """
+        XCTAssertEqual(TaskParser.tasks(in: text).map(\.text), ["Live"])
+    }
+
+    /// An opening `---` that is never closed is a thematic break, not front
+    /// matter. Reading it as an unterminated block made every task in the
+    /// note disappear from the Tasks screen with nothing on screen saying so.
+    func testLeadingThematicBreakIsNotUnterminatedFrontMatter() {
+        let text = """
+            ---
+            # Notes
+
+            - [ ] Live @due(2026-07-22)
+            """
+        XCTAssertEqual(TaskParser.tasks(in: text).map(\.text), ["Live"])
+    }
+
+    func testFrontMatterClosedByThreeDotsIsStillLiteral() {
+        let text = """
+            ---
+            sample: "- [ ] Front @due(2026-07-19)"
+            ...
+            - [ ] Live @due(2026-07-22)
+            """
+        XCTAssertEqual(TaskParser.tasks(in: text).map(\.text), ["Live"])
+    }
+
+    func testFrontMatterDelimiterAloneDoesNotHideTheRestOfTheNote() {
+        XCTAssertEqual(
+            TaskParser.tasks(in: "---\n- [ ] Live @due(2026-07-22)\n").map(\.text),
+            ["Live"])
+    }
+
+    func testUnsupportedObsidianStatusesAndOrderedFormsAreDiagnosed() {
+        let text = """
+            - [/] In progress @due(2026-07-19)
+            1. [ ] Ordered @due(2026-07-20)
+            > - [ ] Quoted @due(2026-07-21)
+            """
+        XCTAssertEqual(
+            TaskParser.scan(in: text).diagnostics.map(\.kind),
+            [
+                .unsupportedCheckboxStatus,
+                .malformedTask,
+                .malformedTask,
+            ])
+    }
+
     // MARK: - Non-matching lines
 
     func testRejectsAlternateSyntax() {
         let text = """
             - [ ] Missing due tag
             - [ ]Tight marker @due(2026-07-19)
-            - [ ]  Two spaces after marker @due(2026-07-19)
             - [ ] @due(2026-07-19)
             - [ ] Trailing text @due(2026-07-19) extra
-            * [ ] Star bullet @due(2026-07-19)
             -[ ] No space @due(2026-07-19)
             """
         XCTAssertTrue(TaskParser.tasks(in: text).isEmpty)
     }
 
-    func testRejectsIndentedTaskLine() {
-        XCTAssertTrue(TaskParser.tasks(in: "  - [ ] Indented @due(2026-07-19)\n").isEmpty)
+    func testAcceptsNestedAndCommonUnorderedBulletForms() {
+        let text = """
+              - [ ] Indented @due(2026-07-19)
+            * [x] Star @due(2026-07-20)
+            + [ ] Plus @due(2026-07-21)
+            """
+        XCTAssertEqual(
+            TaskParser.tasks(in: text).map(\.text),
+            ["Indented", "Star", "Plus"])
     }
 
     func testRejectsInvalidOrMalformedDates() {
@@ -101,9 +166,19 @@ final class TaskParserTests: XCTestCase {
             - [ ] Bad hour @due(2026-07-19 24:00)
             - [ ] Bad minute @due(2026-07-19 12:60)
             - [ ] Not padded @due(2026-07-19 9:00)
-            - [ ] Two spaces @due(2026-07-19  09:00)
             """
         XCTAssertTrue(TaskParser.tasks(in: text).isEmpty)
+    }
+
+    /// Reading is lenient about run-length whitespace; a time is still a time
+    /// or it is nothing. Cove itself only ever writes the canonical spacing.
+    func testAcceptsRunsOfWhitespaceAroundTags() {
+        let tasks = TaskParser.tasks(
+            in: "-  [ ]  Two spaces  @due(2026-07-19  09:00)\n")
+        XCTAssertEqual(tasks.count, 1)
+        XCTAssertEqual(tasks.first?.text, "Two spaces")
+        XCTAssertEqual(tasks.first?.dueDateString, "2026-07-19")
+        XCTAssertEqual(tasks.first?.dueTimeString, "09:00")
     }
 
     // MARK: - Recurrence
@@ -195,17 +270,15 @@ final class TaskParserTests: XCTestCase {
             "- [ ] Buy milk @due(2026-07-20)\n")
     }
 
-    func testTogglingPrefersRememberedLineAmongDuplicates() {
+    func testTogglingRefusesAmbiguousDuplicates() {
         let text = """
             - [ ] Call mom @due(2026-07-20)
             - [ ] Call mom @due(2026-07-20)
             """
+        XCTAssertNil(toggling(text, taskText: "Call mom", line: 1))
         XCTAssertEqual(
-            toggling(text, taskText: "Call mom", line: 1),
-            """
-            - [ ] Call mom @due(2026-07-20)
-            - [x] Call mom @due(2026-07-20)
-            """)
+            TaskParser.scan(in: text).diagnostics.map(\.kind),
+            [.duplicateTask])
     }
 
     func testTogglingFallsBackWhenLinesShifted() {
@@ -213,6 +286,34 @@ final class TaskParserTests: XCTestCase {
         XCTAssertEqual(
             toggling(text, line: 0),
             "New first line\n- [x] Buy milk @due(2026-07-20)\n")
+    }
+
+    func testUnlistedCaptureTaskNeverMatchesIdenticalTaskInsideAList() {
+        let text = """
+            - [ ] Buy milk @due(2026-07-20)
+            ## Groceries
+            - [ ] Buy milk @due(2026-07-20)
+            """
+        let identity = TaskIdentity(
+            filePath: "/vault/Tasks.md",
+            lineNumber: 0,
+            text: "Buy milk",
+            dueDateString: "2026-07-20",
+            dueTimeString: nil,
+            recurrenceTag: nil,
+            listName: nil,
+            isSectionedDocument: true)
+        XCTAssertEqual(
+            TaskParser.settingTaskCompleted(
+                identity,
+                to: true,
+                todayDateString: "2026-07-19",
+                in: text),
+            """
+            - [x] Buy milk @due(2026-07-20)
+            ## Groceries
+            - [ ] Buy milk @due(2026-07-20)
+            """)
     }
 
     func testTogglingReturnsNilWhenTaskIsGone() {
@@ -232,7 +333,7 @@ final class TaskParserTests: XCTestCase {
                 text, taskText: "Laundry", due: "2026-07-19", time: "18:00",
                 recurrence: RecurrenceRule(frequency: .weekly, byWeekday: [1]),
                 today: "2026-07-18"),
-            "- [ ] Laundry @due(2026-07-26 18:00) @repeat(every sunday)\n")
+            "- [ ] Laundry @due(2026-07-26 18:00) @repeat(every sunday) @anchor(2026-07-19)\n")
     }
 
     func testOverdueRecurringTaskAdvancesPastToday() {
@@ -244,7 +345,7 @@ final class TaskParserTests: XCTestCase {
                 text, taskText: "Stretch", due: "2026-06-01",
                 recurrence: RecurrenceRule(frequency: .daily),
                 today: "2026-07-18"),
-            "- [ ] Stretch @due(2026-07-19) @repeat(daily)\n")
+            "- [ ] Stretch @due(2026-07-19) @repeat(daily) @anchor(2026-06-01)\n")
     }
 
     func testSetCompletedIsIdempotentWhenAlreadyInDesiredState() throws {
@@ -275,7 +376,9 @@ final class TaskParserTests: XCTestCase {
             TaskParser.settingTaskCompleted(
                 identity, to: true, todayDateString: "2026-07-19", in: text))
 
-        XCTAssertEqual(once, "- [ ] Stretch @due(2026-07-20) @repeat(daily)\n")
+        XCTAssertEqual(
+            once,
+            "- [ ] Stretch @due(2026-07-20) @repeat(daily) @anchor(2026-07-19)\n")
         XCTAssertNil(
             TaskParser.settingTaskCompleted(
                 identity, to: true, todayDateString: "2026-07-19", in: once))
@@ -307,7 +410,94 @@ final class TaskParserTests: XCTestCase {
             dueDateString: task.dueDateString,
             dueTimeString: task.dueTimeString,
             recurrenceTag: task.recurrence?.tagText,
-            listName: task.listName)
+            listName: task.listName,
+            recurrenceAnchorDateString: task.recurrenceAnchorDateString)
+    }
+
+    func testPersistedAnchorKeepsMonthlyCadenceAcrossRefreshes() throws {
+        let original = "- [ ] Billing @due(2026-01-30) @repeat(monthly)\n"
+        let firstTask = try XCTUnwrap(TaskParser.tasks(in: original).first)
+        let february = try TaskParser.settingTaskCompletedResult(
+            taskIdentity(firstTask),
+            to: true,
+            todayDateString: "2026-01-30",
+            in: original,
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        ).get()
+        XCTAssertEqual(
+            february,
+            "- [ ] Billing @due(2026-02-28) @repeat(monthly) @anchor(2026-01-30)\n")
+
+        let refreshed = try XCTUnwrap(TaskParser.tasks(in: february).first)
+        let march = try TaskParser.settingTaskCompletedResult(
+            taskIdentity(refreshed),
+            to: true,
+            todayDateString: "2026-02-28",
+            in: february,
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        ).get()
+        XCTAssertEqual(
+            march,
+            "- [ ] Billing @due(2026-03-30) @repeat(monthly) @anchor(2026-01-30)\n")
+    }
+
+    func testRecurringCompletionUndoRestoresDateAndIntroducedAnchor() throws {
+        let original = "- [ ] Billing @due(2026-01-30) @repeat(monthly)\r\n"
+        let task = try XCTUnwrap(TaskParser.tasks(in: original).first)
+        let identity = taskIdentity(task)
+        let advanced = try TaskParser.settingTaskCompletedResult(
+            identity,
+            to: true,
+            todayDateString: "2026-01-30",
+            in: original,
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        ).get()
+        let restored = try TaskParser.revertingRecurringCompletionResult(
+            identity,
+            completedOn: "2026-01-30",
+            in: advanced,
+            timeZone: TimeZone(secondsFromGMT: 0)!
+        ).get()
+        XCTAssertEqual(restored, original)
+    }
+
+    func testRestoringCheckboxStateDoesNotApplyRecurrenceSemantics() throws {
+        let checked =
+            "- [x] Billing @due(2026-02-28) @repeat(monthly) @anchor(2026-01-30)\r\n"
+        let task = try XCTUnwrap(TaskParser.tasks(in: checked).first)
+        let identity = taskIdentity(task)
+
+        let restored = try TaskParser.restoringCheckboxStateResult(
+            identity,
+            to: false,
+            in: checked
+        ).get()
+
+        XCTAssertEqual(
+            restored,
+            "- [ ] Billing @due(2026-02-28) @repeat(monthly) @anchor(2026-01-30)\r\n")
+        XCTAssertEqual(
+            try TaskParser.restoringCheckboxStateResult(
+                identity,
+                to: true,
+                in: checked
+            ).get(),
+            checked)
+    }
+
+    func testRestoringCheckboxStateRefusesAmbiguousDuplicates() throws {
+        let text = """
+            - [x] Billing @due(2026-02-28) @repeat(monthly) @anchor(2026-01-30)
+            - [ ] Billing @due(2026-02-28) @repeat(monthly) @anchor(2026-01-30)
+            """
+        let task = try XCTUnwrap(TaskParser.tasks(in: text).first)
+
+        XCTAssertEqual(
+            TaskParser.restoringCheckboxStateResult(
+                taskIdentity(task),
+                to: false,
+                in: text),
+            .failure(.ambiguousTask([0, 1])))
     }
 
     func testRemovingTaskDropsItsWholeLine() {
@@ -336,20 +526,13 @@ final class TaskParserTests: XCTestCase {
         XCTAssertEqual(removing(text, line: 1), "Intro\n")
     }
 
-    func testRemovingPrefersRememberedLineAmongDuplicates() {
+    func testRemovingRefusesAmbiguousDuplicates() {
         let text = """
             - [ ] Call mom @due(2026-07-20)
             - [ ] Call mom @due(2026-07-20)
             Tail
             """
-        // Both lines are identical, so either removal leaves the same text —
-        // what matters is that exactly one goes.
-        XCTAssertEqual(
-            removing(text, taskText: "Call mom", line: 1),
-            """
-            - [ ] Call mom @due(2026-07-20)
-            Tail
-            """)
+        XCTAssertNil(removing(text, taskText: "Call mom", line: 1))
     }
 
     func testRemovingCompletedTask() {

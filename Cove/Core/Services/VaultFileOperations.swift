@@ -1,4 +1,155 @@
+import CryptoKit
 import Foundation
+#if canImport(Darwin)
+    import Darwin
+#endif
+
+/// Writes a complete replacement beside its destination, synchronizes it,
+/// and then atomically swaps it into place. `replaceItemAt` keeps the
+/// destination's metadata by default (permissions, Finder tags, and other
+/// extended attributes) instead of giving the note the temporary file's
+/// metadata. New files use an exclusive create so a non-cooperating writer
+/// cannot slip between an existence check and creation.
+enum DurableFileWriter {
+    static func replace(
+        _ data: Data,
+        at destination: URL,
+        validating: (() throws -> Void)? = nil
+    ) throws {
+        let fileManager = FileManager.default
+        let directory = destination.deletingLastPathComponent()
+        let temporary = directory.appendingPathComponent(
+            VaultFileOperations.writeTemporaryPrefix
+                + UUID().uuidString.lowercased(),
+            isDirectory: false)
+        var temporaryExists = false
+        defer {
+            if temporaryExists {
+                do {
+                    try fileManager.removeItem(at: temporary)
+                } catch {
+                    CoveLog.vault.error(
+                        "Temporary write cleanup failed: \(error.localizedDescription, privacy: .private)")
+                }
+            }
+        }
+
+        try data.write(to: temporary, options: .withoutOverwriting)
+        temporaryExists = true
+        try synchronizeFile(at: temporary)
+
+        guard fileManager.fileExists(atPath: destination.path) else {
+            throw VaultFileOperations.OperationError.fileMissing(
+                destination.lastPathComponent)
+        }
+        // The temporary file is fully written and synchronized before this
+        // final compare. That leaves only the rename syscall-sized window for
+        // a writer that ignores NSFileCoordinator.
+        try validating?()
+        _ = try fileManager.replaceItemAt(
+            destination,
+            withItemAt: temporary,
+            backupItemName: nil,
+            options: [])
+        temporaryExists = false
+        synchronizeDirectoryBestEffort(at: directory)
+    }
+
+    static func create(_ data: Data, at destination: URL) throws {
+        let fileManager = FileManager.default
+        let directory = destination.deletingLastPathComponent()
+        let temporary = directory.appendingPathComponent(
+            VaultFileOperations.createTemporaryPrefix
+                + UUID().uuidString.lowercased())
+        var temporaryExists = false
+        defer {
+            if temporaryExists {
+                do {
+                    try fileManager.removeItem(at: temporary)
+                } catch {
+                    CoveLog.vault.error(
+                        "Temporary create cleanup failed: \(error.localizedDescription, privacy: .private)")
+                }
+            }
+        }
+
+        do {
+            try data.write(to: temporary, options: .withoutOverwriting)
+            temporaryExists = true
+            try synchronizeFile(at: temporary)
+
+            #if canImport(Darwin)
+                let renameResult: Int32 = temporary.withUnsafeFileSystemRepresentation {
+                    sourcePath in
+                    destination.withUnsafeFileSystemRepresentation {
+                        destinationPath in
+                        guard let sourcePath, let destinationPath else {
+                            errno = EINVAL
+                            return Int32(-1)
+                        }
+                        return renamex_np(
+                            sourcePath,
+                            destinationPath,
+                            UInt32(RENAME_EXCL))
+                    }
+                }
+                guard renameResult == 0 else {
+                    if errno == EEXIST {
+                        throw VaultFileOperations.OperationError.itemAlreadyExists(
+                            destination.lastPathComponent)
+                    }
+                    throw POSIXError(
+                        POSIXErrorCode(rawValue: errno) ?? .EIO)
+                }
+                temporaryExists = false
+            #else
+                try fileManager.moveItem(at: temporary, to: destination)
+                temporaryExists = false
+            #endif
+        } catch {
+            if fileManager.fileExists(atPath: destination.path) {
+                throw VaultFileOperations.OperationError.itemAlreadyExists(
+                    destination.lastPathComponent)
+            }
+            throw error
+        }
+        synchronizeDirectoryBestEffort(at: directory)
+    }
+
+    private static func synchronizeFile(at url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        defer {
+            do {
+                try handle.close()
+            } catch {
+                CoveLog.vault.error(
+                    "Synchronized file close failed: \(error.localizedDescription, privacy: .private)")
+            }
+        }
+        try handle.synchronize()
+    }
+
+    private static func synchronizeDirectoryBestEffort(at url: URL) {
+        #if os(macOS) || os(iOS)
+            let descriptor = open(url.path, O_RDONLY)
+            guard descriptor >= 0 else {
+                // Some security-scoped File Provider directories cannot be
+                // opened as raw descriptors even after the coordinated file
+                // replacement succeeded. There is no safe rollback once the
+                // new name is visible, so record the weaker durability rather
+                // than claiming the content save itself failed.
+                CoveLog.vault.warning(
+                    "Directory durability sync was unavailable after a completed file write.")
+                return
+            }
+            defer { close(descriptor) }
+            if fsync(descriptor) != 0 {
+                CoveLog.vault.warning(
+                    "Directory durability sync was unavailable after a completed file write.")
+            }
+        #endif
+    }
+}
 
 /// The one `NSFileCoordinator` call shape the app and the widget both use.
 ///
@@ -83,8 +234,22 @@ struct NoteSaveResult: Equatable, Sendable {
 }
 
 struct RecoveryRecord: Equatable, Sendable {
+    let identifier: UUID
     let originalURL: URL
     let recoveryURL: URL
+    let deletedAt: Date
+}
+
+private struct RecoveryManifest: Codable, Sendable {
+    var entries: [RecoveryManifestEntry] = []
+}
+
+private struct RecoveryManifestEntry: Codable, Equatable, Sendable {
+    let identifier: UUID
+    let originalRelativePath: String
+    let recoveryName: String
+    let deletedAt: Date
+    let isDirectory: Bool
 }
 
 /// Per-item coordinated filesystem operations for the vault: note reads and
@@ -97,6 +262,7 @@ struct VaultFileOperations: Sendable {
         case itemAlreadyExists(String)
         case cannotMoveIntoItself
         case fileMissing(String)
+        case fileChangedDuringWrite(String)
 
         var errorDescription: String? {
             switch self {
@@ -108,6 +274,8 @@ struct VaultFileOperations: Sendable {
                 return "A folder can’t be moved into itself."
             case .fileMissing(let name):
                 return "“\(name)” no longer exists."
+            case .fileChangedDuringWrite(let name):
+                return "“\(name)” changed again while Cove was saving it. Your edit was not reported as saved."
             }
         }
     }
@@ -128,7 +296,10 @@ struct VaultFileOperations: Sendable {
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw OperationError.fileMissing(url.lastPathComponent)
             }
-            try text.write(to: url, atomically: true, encoding: .utf8)
+            try DurableFileWriter.replace(Data(text.utf8), at: url)
+            guard try String(contentsOf: url, encoding: .utf8) == text else {
+                throw OperationError.fileChangedDuringWrite(url.lastPathComponent)
+            }
         }
     }
 
@@ -143,12 +314,42 @@ struct VaultFileOperations: Sendable {
             guard FileManager.default.fileExists(atPath: coordinatedURL.path) else {
                 throw OperationError.fileMissing(coordinatedURL.lastPathComponent)
             }
-            let current = try String(contentsOf: coordinatedURL, encoding: .utf8)
-            guard let updated = try transform(current), updated != current else {
-                return NoteMutationResult(changed: false, resultingText: current)
+            var current = try String(contentsOf: coordinatedURL, encoding: .utf8)
+            for _ in 0..<3 {
+                guard let updated = try transform(current), updated != current else {
+                    return NoteMutationResult(changed: false, resultingText: current)
+                }
+
+                // NSFileCoordinator serializes cooperating presenters. A CLI
+                // or editor may ignore it, so validate the exact bytes again
+                // immediately before the replacement and retry the pure
+                // transform against the newer version.
+                let latest = try String(contentsOf: coordinatedURL, encoding: .utf8)
+                guard latest == current else {
+                    current = latest
+                    continue
+                }
+                try DurableFileWriter.replace(
+                    Data(updated.utf8),
+                    at: coordinatedURL
+                ) {
+                    guard
+                        try String(
+                            contentsOf: coordinatedURL,
+                            encoding: .utf8) == current
+                    else {
+                        throw OperationError.fileChangedDuringWrite(
+                            coordinatedURL.lastPathComponent)
+                    }
+                }
+                guard try String(contentsOf: coordinatedURL, encoding: .utf8) == updated else {
+                    throw OperationError.fileChangedDuringWrite(
+                        coordinatedURL.lastPathComponent)
+                }
+                return NoteMutationResult(changed: true, resultingText: updated)
             }
-            try updated.write(to: coordinatedURL, atomically: true, encoding: .utf8)
-            return NoteMutationResult(changed: true, resultingText: updated)
+            throw OperationError.fileChangedDuringWrite(
+                coordinatedURL.lastPathComponent)
         }
     }
 
@@ -162,8 +363,11 @@ struct VaultFileOperations: Sendable {
         expectedDiskText: String,
         conflictIdentifier: String
     ) throws -> NoteSaveResult {
-        let stem = url.deletingPathExtension().lastPathComponent
-        let conflictName = "\(stem).cove-conflict-\(conflictIdentifier).md"
+        let preflightDiskText = try readNote(at: url)
+        let diskDigest = Self.contentDigest(Data(preflightDiskText.utf8))
+        let conflictName = Self.conflictFileName(
+            originalURL: url,
+            identifier: "\(conflictIdentifier)-\(diskDigest)")
         let conflictURL = url.deletingLastPathComponent()
             .appendingPathComponent(conflictName, isDirectory: false)
 
@@ -175,6 +379,13 @@ struct VaultFileOperations: Sendable {
                 throw OperationError.fileMissing(coordinatedURL.lastPathComponent)
             }
             let diskText = try String(contentsOf: coordinatedURL, encoding: .utf8)
+            guard diskText == preflightDiskText else {
+                // Re-entering this method calculates a content-addressed name
+                // for the newer disk bytes. A second external edit can never
+                // collide with the first preserved revision and strand retry.
+                throw OperationError.fileChangedDuringWrite(
+                    coordinatedURL.lastPathComponent)
+            }
             var preservedURL: URL?
             if diskText != expectedDiskText, diskText != text {
                 if FileManager.default.fileExists(atPath: coordinatedConflictURL.path) {
@@ -186,17 +397,90 @@ struct VaultFileOperations: Sendable {
                             coordinatedConflictURL.lastPathComponent)
                     }
                 } else {
-                    try Data(diskText.utf8).write(
-                        to: coordinatedConflictURL,
-                        options: .withoutOverwriting)
+                    try DurableFileWriter.create(
+                        Data(diskText.utf8),
+                        at: coordinatedConflictURL)
                 }
                 preservedURL = coordinatedConflictURL
             }
             if diskText != text {
-                try text.write(to: coordinatedURL, atomically: true, encoding: .utf8)
+                // Revalidate the non-coordinating-writer boundary once more
+                // after any conflict-copy work and before replacing the note.
+                let latest = try String(contentsOf: coordinatedURL, encoding: .utf8)
+                guard latest == diskText else {
+                    throw OperationError.fileChangedDuringWrite(
+                        coordinatedURL.lastPathComponent)
+                }
+                try DurableFileWriter.replace(
+                    Data(text.utf8),
+                    at: coordinatedURL
+                ) {
+                    guard
+                        try String(
+                            contentsOf: coordinatedURL,
+                            encoding: .utf8) == diskText
+                    else {
+                        throw OperationError.fileChangedDuringWrite(
+                            coordinatedURL.lastPathComponent)
+                    }
+                }
+                guard try String(contentsOf: coordinatedURL, encoding: .utf8) == text else {
+                    throw OperationError.fileChangedDuringWrite(
+                        coordinatedURL.lastPathComponent)
+                }
             }
             return NoteSaveResult(conflictCopyURL: preservedURL)
         }
+    }
+
+    /// Copies every currently unresolved native file-version conflict into a
+    /// user-visible sibling note. The underlying `NSFileVersion`s remain
+    /// unresolved; Cove never makes the irreversible resolution choice for
+    /// the user. Content-addressed names make repeated observer deliveries
+    /// idempotent, and the index recognizes these copies as non-operational
+    /// so their task lines cannot schedule duplicate reminders.
+    func materializeUnresolvedConflictVersions(
+        at url: URL
+    ) throws -> [URL] {
+        let versions =
+            NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
+        guard !versions.isEmpty else { return [] }
+
+        let currentData = try FileCoordination.read(at: url) {
+            try Data(contentsOf: $0)
+        }
+        var copies: [URL] = []
+        for version in versions {
+            let versionData = try FileCoordination.read(at: version.url) {
+                try Data(contentsOf: $0)
+            }
+            guard versionData != currentData else { continue }
+
+            let digest = SHA256.hash(data: versionData)
+                .prefix(8)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            let name = Self.conflictFileName(
+                originalURL: url,
+                identifier: "icloud-\(digest)")
+            let destination = url.deletingLastPathComponent()
+                .appendingPathComponent(name)
+            try FileCoordination.write(at: destination, options: []) { coordinatedURL in
+                if FileManager.default.fileExists(atPath: coordinatedURL.path) {
+                    let existing = try Data(contentsOf: coordinatedURL)
+                    guard existing == versionData else {
+                        throw OperationError.itemAlreadyExists(
+                            coordinatedURL.lastPathComponent)
+                    }
+                } else {
+                    try DurableFileWriter.create(
+                        versionData,
+                        at: coordinatedURL)
+                }
+            }
+            copies.append(destination)
+        }
+        return copies
     }
 
     /// Rewrites the named note through `transform`, creating it if it
@@ -213,14 +497,65 @@ struct VaultFileOperations: Sendable {
         let fileName = try noteFileName(from: name)
         let destination = folder.appendingPathComponent(fileName, isDirectory: false)
         try FileCoordination.write(at: destination, options: .forMerging) { url in
-            let text: String
-            if FileManager.default.fileExists(atPath: url.path) {
-                text = try String(contentsOf: url, encoding: .utf8)
-            } else {
-                text = ""
+            var exists = FileManager.default.fileExists(atPath: url.path)
+            var current =
+                exists
+                ? try String(contentsOf: url, encoding: .utf8)
+                : ""
+            for _ in 0..<3 {
+                guard
+                    let updated = try transform(current),
+                    updated != current
+                else { return }
+                if exists {
+                    let latest = try String(contentsOf: url, encoding: .utf8)
+                    guard latest == current else {
+                        current = latest
+                        continue
+                    }
+                    do {
+                        try DurableFileWriter.replace(
+                            Data(updated.utf8),
+                            at: url
+                        ) {
+                            guard
+                                try String(
+                                    contentsOf: url,
+                                    encoding: .utf8) == current
+                            else {
+                                throw OperationError.fileChangedDuringWrite(
+                                    url.lastPathComponent)
+                            }
+                        }
+                    } catch OperationError.fileChangedDuringWrite {
+                        current = try String(
+                            contentsOf: url,
+                            encoding: .utf8)
+                        continue
+                    }
+                } else {
+                    do {
+                        try DurableFileWriter.create(
+                            Data(updated.utf8),
+                            at: url)
+                        exists = true
+                    } catch OperationError.itemAlreadyExists {
+                        exists = true
+                        current = try String(
+                            contentsOf: url,
+                            encoding: .utf8)
+                        continue
+                    }
+                }
+                guard
+                    try String(contentsOf: url, encoding: .utf8) == updated
+                else {
+                    throw OperationError.fileChangedDuringWrite(
+                        url.lastPathComponent)
+                }
+                return
             }
-            guard let updated = try transform(text), updated != text else { return }
-            try updated.write(to: url, atomically: true, encoding: .utf8)
+            throw OperationError.fileChangedDuringWrite(url.lastPathComponent)
         }
         return destination
     }
@@ -233,9 +568,44 @@ struct VaultFileOperations: Sendable {
             guard !FileManager.default.fileExists(atPath: url.path) else {
                 throw OperationError.itemAlreadyExists(fileName)
             }
-            try "".write(to: url, atomically: true, encoding: .utf8)
+            try DurableFileWriter.create(Data(), at: url)
         }
         return destination
+    }
+
+    /// Exports editor text that can no longer be saved to its original URL
+    /// (for example after an external rename or deletion). The copy is
+    /// exclusively created at the vault root and never overwrites another
+    /// recovery. Its Cove marker keeps copied task lines non-operational until
+    /// the user reviews and renames the note.
+    @discardableResult
+    func createRecoveryCopy(
+        _ text: String,
+        for originalURL: URL,
+        in folder: URL
+    ) throws -> URL {
+        let originalStem = originalURL.deletingPathExtension().lastPathComponent
+        let timestamp = Self.recoveryTimestamp(Date())
+        for attempt in 0..<100 {
+            let suffix =
+                attempt == 0
+                ? ".cove-recovered-\(timestamp).md"
+                : ".cove-recovered-\(timestamp)-\(attempt + 1).md"
+            let stem = Self.truncatedUTF8(
+                originalStem,
+                maximumBytes: max(1, 240 - suffix.utf8.count))
+            let destination = folder.appendingPathComponent(stem + suffix)
+            do {
+                try FileCoordination.write(at: destination, options: []) { url in
+                    try DurableFileWriter.create(Data(text.utf8), at: url)
+                }
+                return destination
+            } catch OperationError.itemAlreadyExists {
+                continue
+            }
+        }
+        throw OperationError.itemAlreadyExists(
+            "\(originalStem).cove-recovered-\(timestamp).md")
     }
 
     @discardableResult
@@ -294,10 +664,10 @@ struct VaultFileOperations: Sendable {
         }
     }
 
-    /// Moves a note or folder into the vault's hidden recovery area. The
-    /// encoded relative path makes recovery inspectable even after relaunch;
-    /// the UUID prevents collisions without ever replacing an older item; the
-    /// leading timestamp is what `purgeRecovery` sweeps on.
+    /// Moves a note or folder into the vault's hidden recovery area. Original
+    /// relative paths live in an atomic JSON manifest instead of the filename,
+    /// so arbitrarily deep/Unicode paths remain recoverable after relaunch
+    /// without exceeding a filesystem component limit.
     func moveToRecovery(
         itemAt url: URL, vaultRoot: URL,
         now: Date = Date()
@@ -315,20 +685,78 @@ struct VaultFileOperations: Sendable {
 
         let rootPath = vaultRoot.standardizedFileURL.path
         let itemPath = url.standardizedFileURL.path
-        let relative =
-            itemPath.hasPrefix(rootPath + "/")
-            ? String(itemPath.dropFirst(rootPath.count + 1))
-            : url.lastPathComponent
-        let encodedPath = Data(relative.utf8).base64EncodedString()
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "=", with: "")
-        let recoveredName =
-            "\(Self.recoveryTimestamp(now))--\(UUID().uuidString.lowercased())--\(encodedPath)--\(url.lastPathComponent)"
+        guard itemPath.hasPrefix(rootPath + "/") else {
+            throw OperationError.fileMissing(url.lastPathComponent)
+        }
+        let relativePath = String(itemPath.dropFirst(rootPath.count + 1))
+        let identifier = UUID()
+        let directory = try isDirectory(url)
+        let recoveredName = Self.recoveryFileName(
+            originalName: url.lastPathComponent,
+            deletedAt: now,
+            identifier: identifier)
         let destination = recoveryFolder.appendingPathComponent(
-            recoveredName, isDirectory: try isDirectory(url))
-        try coordinatedMove(from: url, to: destination)
-        return RecoveryRecord(originalURL: url, recoveryURL: destination)
+            recoveredName, isDirectory: directory)
+        let manifestEntry = RecoveryManifestEntry(
+            identifier: identifier,
+            originalRelativePath: relativePath,
+            recoveryName: recoveredName,
+            deletedAt: now,
+            isDirectory: directory)
+
+        // Commit metadata first. If the process dies after the move, the
+        // record is already durable; if it dies before, listing ignores the
+        // harmless entry whose recovery item does not exist.
+        try updateRecoveryManifest(vaultRoot: vaultRoot) { manifest in
+            manifest.entries.removeAll { $0.identifier == identifier }
+            manifest.entries.append(manifestEntry)
+        }
+        do {
+            try coordinatedMove(from: url, to: destination)
+        } catch {
+            do {
+                try updateRecoveryManifest(vaultRoot: vaultRoot) { manifest in
+                    manifest.entries.removeAll { $0.identifier == identifier }
+                }
+            } catch {
+                CoveLog.vault.error(
+                    "A failed recovery move left a stale manifest record.")
+            }
+            throw error
+        }
+        return RecoveryRecord(
+            identifier: identifier,
+            originalURL: url,
+            recoveryURL: destination,
+            deletedAt: now)
+    }
+
+    /// Durable records available to a future recovery UI after relaunch.
+    /// Stale manifest rows are ignored; they are reconciled by the purge.
+    func recoveryRecords(vaultRoot: URL) throws -> [RecoveryRecord] {
+        let manifest = try loadRecoveryManifest(vaultRoot: vaultRoot)
+        let recoveryFolder = vaultRoot.appendingPathComponent(
+            Self.recoveryFolderName,
+            isDirectory: true)
+        return manifest.entries.compactMap { entry in
+            guard
+                let originalURL = safeRecoveryOriginalURL(
+                    relativePath: entry.originalRelativePath,
+                    vaultRoot: vaultRoot)
+            else { return nil }
+            let recoveryURL = recoveryFolder.appendingPathComponent(
+                entry.recoveryName,
+                isDirectory: entry.isDirectory)
+            guard FileManager.default.fileExists(atPath: recoveryURL.path) else {
+                return nil
+            }
+            return RecoveryRecord(
+                identifier: entry.identifier,
+                originalURL: originalURL,
+                recoveryURL: recoveryURL,
+                deletedAt: entry.deletedAt)
+        }
+        .sorted { $0.deletedAt > $1.deletedAt }
     }
 
     /// Removes recovery entries older than `retention`, so deleting a note
@@ -348,34 +776,164 @@ struct VaultFileOperations: Sendable {
             isDirectory: true)
         guard FileManager.default.fileExists(atPath: folder.path) else { return }
 
+        // Never delete the only recoverable bytes if their path metadata is
+        // corrupt. Recovery health is surfaced and the items stay untouched
+        // until the manifest can be repaired.
+        _ = try loadRecoveryManifest(vaultRoot: vaultRoot)
+
         // Names, not URLs: the coordinator may hand back a different location
         // for the folder, and each entry is coordinated again on its own.
         let names = try FileCoordination.read(at: folder) { url in
             try FileManager.default.contentsOfDirectory(atPath: url.path)
         }
         let cutoff = now.addingTimeInterval(-retention)
+        var firstError: Error?
         for name in names {
+            guard name != Self.recoveryManifestName else { continue }
             let deletedAt = Self.recoveryDeletionDate(fromName: name)
             guard deletedAt.map({ $0 < cutoff }) ?? true else { continue }
-            try? delete(itemAt: folder.appendingPathComponent(name))
+            do {
+                try delete(itemAt: folder.appendingPathComponent(name))
+            } catch {
+                if firstError == nil { firstError = error }
+            }
         }
+
+        // Drop records whose item was purged, rolled back, or manually
+        // removed. Keep recent records even if one older orphan failed.
+        do {
+            try updateRecoveryManifest(vaultRoot: vaultRoot) { manifest in
+                manifest.entries.removeAll { entry in
+                    let item = folder.appendingPathComponent(entry.recoveryName)
+                    return !FileManager.default.fileExists(atPath: item.path)
+                }
+            }
+        } catch {
+            if firstError == nil { firstError = error }
+        }
+        if let firstError { throw firstError }
+    }
+
+    /// Removes write temporaries that a crash or a kill stranded in the vault.
+    ///
+    /// `DurableFileWriter` stages every replacement beside its destination and
+    /// unlinks it on the way out, but a process that dies between the staging
+    /// write and the rename leaves the file behind. They are hidden, so the
+    /// scanner ignores them and nothing in Cove ever notices — meanwhile an
+    /// iCloud vault syncs and stores each one forever. Anything still present
+    /// from a previous launch is by definition abandoned, since a live write
+    /// cleans up its own temporary; the age floor keeps this sweep clear of a
+    /// write in flight on another device.
+    ///
+    /// Failures are collected rather than thrown: a stranded temporary is
+    /// housekeeping, and it must never keep a vault from opening.
+    func purgeWriteTemporaries(
+        vaultRoot: URL,
+        minimumAge: TimeInterval = writeTemporaryMinimumAge,
+        now: Date = Date()
+    ) {
+        let names: [String]
+        do {
+            names = try FileCoordination.read(at: vaultRoot) { url in
+                try FileManager.default.subpathsOfDirectory(atPath: url.path)
+            }
+        } catch {
+            CoveLog.vault.error(
+                "Write-temporary sweep could not enumerate the vault: \(error.localizedDescription, privacy: .private)"
+            )
+            return
+        }
+
+        let cutoff = now.addingTimeInterval(-minimumAge)
+        for name in names {
+            let component = (name as NSString).lastPathComponent
+            guard Self.isWriteTemporaryName(component) else { continue }
+            let item = vaultRoot.appendingPathComponent(name)
+            let modifiedAt = try? item.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ).contentModificationDate
+            guard modifiedAt.map({ $0 < cutoff }) ?? true else { continue }
+            do {
+                try FileManager.default.removeItem(at: item)
+            } catch {
+                CoveLog.vault.error(
+                    "Stranded write temporary could not be removed: \(error.localizedDescription, privacy: .private)"
+                )
+            }
+        }
+    }
+
+    static func isWriteTemporaryName(_ name: String) -> Bool {
+        name.hasPrefix(writeTemporaryPrefix) || name.hasPrefix(createTemporaryPrefix)
     }
 
     // MARK: - Recovery naming
 
     static let recoveryFolderName = ".cove-recovery"
+    static let recoveryManifestName = "manifest.json"
+    static let writeTemporaryPrefix = ".cove-write-"
+    static let createTemporaryPrefix = ".cove-create-"
+
+    /// A temporary younger than this may belong to a write that is still
+    /// running, here or on another device sharing the folder.
+    static let writeTemporaryMinimumAge: TimeInterval = 60 * 60
 
     /// How long a deleted item stays recoverable. Undo itself is a transient
     /// affordance; this window is for the delete noticed a day later, and it
     /// is what keeps the recovery area from growing without bound.
     static let recoveryRetention: TimeInterval = 7 * 24 * 60 * 60
 
-    /// Recovery entries are named
-    /// `<timestamp>--<uuid>--<encoded path>--<name>`. The timestamp records
-    /// when the item was deleted, which is what the sweep needs: an item's own
-    /// dates travel with it through the move and say nothing about when it
-    /// left the vault. Formatted by hand in UTC rather than with a
-    /// `DateFormatter`, which is neither `Sendable` nor locale-neutral.
+    /// Cove-created conflict notes stay visible in the Notes browser, but
+    /// their copied task lines must never become a second source of reminders
+    /// or widget tasks while the conflict is being resolved.
+    static func isConflictDocument(_ url: URL) -> Bool {
+        let name = url.lastPathComponent.lowercased()
+        return name.hasSuffix(".md") && name.contains(".cove-conflict-")
+    }
+
+    static func isOperationallyExcludedDocument(_ url: URL) -> Bool {
+        let name = url.lastPathComponent.lowercased()
+        return isConflictDocument(url)
+            || (name.hasSuffix(".md") && name.contains(".cove-recovered-"))
+    }
+
+    /// Keeps generated names below the 255-byte component ceiling even when
+    /// the original note name contains multi-byte Unicode scalars.
+    static func conflictFileName(originalURL: URL, identifier: String) -> String {
+        let suffix = ".cove-conflict-\(identifier).md"
+        let maximumStemBytes = max(1, 240 - suffix.utf8.count)
+        let stem = truncatedUTF8(
+            originalURL.deletingPathExtension().lastPathComponent,
+            maximumBytes: maximumStemBytes)
+        return stem + suffix
+    }
+
+    private static func contentDigest(_ data: Data) -> String {
+        SHA256.hash(data: data)
+            .prefix(8)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private static func recoveryFileName(
+        originalName: String,
+        deletedAt: Date,
+        identifier: UUID
+    ) -> String {
+        let prefix =
+            "\(recoveryTimestamp(deletedAt))--\(identifier.uuidString.lowercased())--"
+        let suffix = truncatedUTF8(
+            originalName,
+            maximumBytes: max(1, 240 - prefix.utf8.count))
+        return prefix + suffix
+    }
+
+    /// Recovery entries are named `<timestamp>--<uuid>--<short name>`; the
+    /// manifest carries the complete original relative path. The timestamp is
+    /// still present in the filename so orphaned/legacy entries remain safely
+    /// purgeable even when metadata is unavailable. Formatted by hand in UTC
+    /// rather than with a `DateFormatter`, which is neither `Sendable` nor
+    /// locale-neutral.
     static func recoveryTimestamp(
         _ date: Date,
         calendar: Calendar = utcCalendar()
@@ -417,6 +975,84 @@ struct VaultFileOperations: Sendable {
         return calendar
     }
 
+    private func loadRecoveryManifest(
+        vaultRoot: URL
+    ) throws -> RecoveryManifest {
+        let url = recoveryManifestURL(vaultRoot: vaultRoot)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return RecoveryManifest()
+        }
+        return try FileCoordination.read(at: url) {
+            try JSONDecoder().decode(
+                RecoveryManifest.self,
+                from: Data(contentsOf: $0))
+        }
+    }
+
+    private func updateRecoveryManifest(
+        vaultRoot: URL,
+        transform: (inout RecoveryManifest) throws -> Void
+    ) throws {
+        let recoveryFolder = vaultRoot.appendingPathComponent(
+            Self.recoveryFolderName,
+            isDirectory: true)
+        if !FileManager.default.fileExists(atPath: recoveryFolder.path) {
+            try FileCoordination.write(at: recoveryFolder, options: []) { folder in
+                if !FileManager.default.fileExists(atPath: folder.path) {
+                    try FileManager.default.createDirectory(
+                        at: folder,
+                        withIntermediateDirectories: false)
+                }
+            }
+        }
+        let manifestURL = recoveryManifestURL(vaultRoot: vaultRoot)
+        try FileCoordination.write(
+            at: manifestURL,
+            options: .forMerging
+        ) { coordinatedURL in
+            var manifest: RecoveryManifest
+            if FileManager.default.fileExists(atPath: coordinatedURL.path) {
+                manifest = try JSONDecoder().decode(
+                    RecoveryManifest.self,
+                    from: Data(contentsOf: coordinatedURL))
+            } else {
+                manifest = RecoveryManifest()
+            }
+            try transform(&manifest)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(manifest)
+            if FileManager.default.fileExists(atPath: coordinatedURL.path) {
+                try DurableFileWriter.replace(data, at: coordinatedURL)
+            } else {
+                try DurableFileWriter.create(data, at: coordinatedURL)
+            }
+        }
+    }
+
+    private func recoveryManifestURL(vaultRoot: URL) -> URL {
+        vaultRoot
+            .appendingPathComponent(Self.recoveryFolderName, isDirectory: true)
+            .appendingPathComponent(Self.recoveryManifestName)
+    }
+
+    private func safeRecoveryOriginalURL(
+        relativePath: String,
+        vaultRoot: URL
+    ) -> URL? {
+        guard !relativePath.isEmpty, !relativePath.hasPrefix("/") else {
+            return nil
+        }
+        let root = vaultRoot.standardizedFileURL.resolvingSymlinksInPath()
+        let candidate =
+            root
+            .appendingPathComponent(relativePath)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard candidate.path.hasPrefix(root.path + "/") else { return nil }
+        return candidate
+    }
+
     @discardableResult
     func restore(_ record: RecoveryRecord) throws -> URL {
         try restore(record, to: record.originalURL)
@@ -440,6 +1076,22 @@ struct VaultFileOperations: Sendable {
             throw OperationError.itemAlreadyExists(destination.lastPathComponent)
         }
         try coordinatedMove(from: record.recoveryURL, to: destination)
+        let vaultRoot = record.recoveryURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        do {
+            try updateRecoveryManifest(vaultRoot: vaultRoot) { manifest in
+                manifest.entries.removeAll {
+                    $0.identifier == record.identifier
+                }
+            }
+        } catch {
+            // Restore already succeeded. A stale row cannot overwrite or
+            // resurrect anything and `recoveryRecords` filters its now-missing
+            // recovery URL; keep the successful user operation truthful.
+            CoveLog.vault.error(
+                "A restored item left a stale recovery manifest record.")
+        }
         return destination
     }
 
@@ -450,7 +1102,11 @@ struct VaultFileOperations: Sendable {
         guard !trimmed.isEmpty,
             !trimmed.hasPrefix("."),
             !trimmed.contains("/"),
-            !trimmed.contains(":")
+            !trimmed.contains(":"),
+            !trimmed.unicodeScalars.contains(where: {
+                CharacterSet.controlCharacters.contains($0)
+            }),
+            trimmed.utf8.count <= 240
         else {
             throw OperationError.invalidName(name)
         }
@@ -459,7 +1115,11 @@ struct VaultFileOperations: Sendable {
 
     private func noteFileName(from name: String) throws -> String {
         let base = try validated(name)
-        return base.lowercased().hasSuffix(".md") ? base : base + ".md"
+        let result = base.lowercased().hasSuffix(".md") ? base : base + ".md"
+        guard result.utf8.count <= 240 else {
+            throw OperationError.invalidName(name)
+        }
+        return result
     }
 
     private func isDirectory(_ url: URL) throws -> Bool {
@@ -484,6 +1144,21 @@ struct VaultFileOperations: Sendable {
             try FileManager.default.moveItem(at: source, to: destination)
             coordinator.item(at: source, didMoveTo: destination)
         }
+    }
+
+    private static func truncatedUTF8(
+        _ value: String,
+        maximumBytes: Int
+    ) -> String {
+        guard value.utf8.count > maximumBytes else { return value }
+        var result = ""
+        result.reserveCapacity(min(value.count, maximumBytes))
+        for character in value {
+            let candidate = result + String(character)
+            guard candidate.utf8.count <= maximumBytes else { break }
+            result = candidate
+        }
+        return result.isEmpty ? "item" : result
     }
 }
 

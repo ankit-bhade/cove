@@ -23,6 +23,16 @@ struct RecurrenceRule: Hashable, Sendable {
     /// a repeating task means anything.
     static let maximumInterval = 1_000
 
+    /// Ceiling on the monthly/yearly occurrence search.
+    ///
+    /// Both searches start at the step nearest the reference date and advance
+    /// monotonically, so they land in one or two iterations — a few more for
+    /// a Feb-29 rule waiting out a leap year. The bound only exists so a
+    /// candidate that somehow stops advancing returns nil instead of spinning
+    /// on the main actor. It was `maximumInterval * 10_000`: ten million
+    /// rounds of `Calendar` arithmetic is a hang, not a safety net.
+    private static let maximumSearchSteps = 120
+
     init(frequency: Frequency, interval: Int = 1, byWeekday: [Int] = []) {
         self.frequency = frequency
         self.interval = min(max(1, interval), Self.maximumInterval)
@@ -147,20 +157,34 @@ struct RecurrenceRule: Hashable, Sendable {
 
     // MARK: - Next occurrence
 
-    /// The next occurrence strictly after the given `YYYY-MM-DD` date, in
-    /// the same format — a port of grove's `nextOccurrence`. Nil only for an
-    /// unparseable input date.
+    /// Convenience for advancing one occurrence. For catch-up and stable
+    /// month/year anchors use the overloads below.
     func nextDueDateString(
         after dateString: String,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String? {
+        nextDueDateString(
+            after: dateString,
+            anchoredTo: dateString,
+            timeZone: timeZone)
+    }
+
+    /// Returns the first occurrence in the anchor's cadence strictly after
+    /// `referenceDateString`.
+    ///
+    /// The explicit anchor is what keeps "every month on the 31st" on the
+    /// 31st after February, keeps Feb 29 yearly tasks on leap day when one
+    /// exists, and keeps interval rules aligned when an overdue task catches
+    /// up. Callers that persist recurrence state should retain the original
+    /// occurrence as the anchor.
+    func nextDueDateString(
+        after referenceDateString: String,
+        anchoredTo anchorDateString: String,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
         let calendar = TaskCalendar.gregorian(timeZone: timeZone)
-        let parts = dateString.split(separator: "-").compactMap { Int($0) }
-        // Anchor at noon so day arithmetic is immune to DST transitions.
-        guard parts.count == 3,
-            let from = calendar.date(
-                from: DateComponents(
-                    year: parts[0], month: parts[1], day: parts[2], hour: 12))
+        guard let reference = Self.day(referenceDateString, calendar: calendar),
+            let anchor = Self.day(anchorDateString, calendar: calendar)
         else { return nil }
 
         func format(_ date: Date) -> String {
@@ -175,54 +199,180 @@ struct RecurrenceRule: Hashable, Sendable {
 
         switch frequency {
         case .daily:
-            return format(addDays(interval, to: from))
+            if reference < anchor { return format(anchor) }
+            let elapsed = calendar.dateComponents([.day], from: anchor, to: reference).day!
+            let steps = elapsed / interval + 1
+            return calendar.date(
+                byAdding: .day, value: steps * interval, to: anchor
+            ).map(format)
 
         case .weekly:
-            let fromWeekday = calendar.component(.weekday, from: from)
-            let days = byWeekday.isEmpty ? [fromWeekday] : byWeekday
-            if interval == 1 {
-                // Walk forward to the next listed weekday.
-                for offset in 1...7 {
-                    let candidate = addDays(offset, to: from)
-                    if days.contains(calendar.component(.weekday, from: candidate)) {
+            if byWeekday.isEmpty {
+                if reference < anchor { return format(anchor) }
+                let elapsed =
+                    calendar.dateComponents([.day], from: anchor, to: reference).day!
+                let cadence = interval * 7
+                let steps = elapsed / cadence + 1
+                return calendar.date(
+                    byAdding: .day, value: steps * cadence, to: anchor
+                ).map(format)
+            }
+
+            // Weekday sets use Sunday-based weeks anchored to the week that
+            // contains the original occurrence. Search at most one complete
+            // interval cycle; the interval is bounded, so this is predictable.
+            let anchorWeekday = calendar.component(.weekday, from: anchor)
+            let anchorWeekStart = addDays(-(anchorWeekday - 1), to: anchor)
+            var candidate = addDays(1, to: reference)
+            if candidate < anchor { candidate = anchor }
+            for _ in 0...(interval * 7 + 6) {
+                let candidateWeekday = calendar.component(.weekday, from: candidate)
+                if byWeekday.contains(candidateWeekday) {
+                    let candidateWeekStart =
+                        addDays(-(candidateWeekday - 1), to: candidate)
+                    let weekDays =
+                        calendar.dateComponents(
+                            [.day], from: anchorWeekStart, to: candidateWeekStart
+                        ).day!
+                    let weekOffset = weekDays / 7
+                    if weekOffset >= 0, weekOffset.isMultiple(of: interval) {
                         return format(candidate)
                     }
                 }
-                return nil
+                candidate = addDays(1, to: candidate)
             }
-            // interval > 1: within the same week move to the next listed
-            // weekday; otherwise jump ahead `interval` weeks to the first.
-            if let sameWeekNext = days.first(where: { $0 > fromWeekday }) {
-                return format(addDays(sameWeekNext - fromWeekday, to: from))
-            }
-            let startOfWeek = addDays(-(fromWeekday - 1), to: from)
-            return format(addDays(interval * 7 + (days.min()! - 1), to: startOfWeek))
+            return nil
 
         case .monthly:
-            // Same day-of-month, clamped so Jan 31 recurs on Feb 28.
-            guard
-                let jumped = calendar.date(
-                    byAdding: .month, value: interval,
-                    to: from)
+            let anchorParts = calendar.dateComponents([.year, .month, .day], from: anchor)
+            let referenceParts = calendar.dateComponents([.year, .month], from: reference)
+            guard let anchorYear = anchorParts.year, let anchorMonth = anchorParts.month,
+                let anchorDay = anchorParts.day, let referenceYear = referenceParts.year,
+                let referenceMonth = referenceParts.month,
+                let anchorMonthRange = calendar.range(of: .day, in: .month, for: anchor)
             else { return nil }
-            // Calendar clamps overflow itself (Jan 31 + 1 month = Feb 28),
-            // matching grove's explicit clamp.
-            return format(jumped)
+            let isEndOfMonth = anchorDay == anchorMonthRange.count
+            let monthDifference =
+                (referenceYear - anchorYear) * 12 + referenceMonth - anchorMonth
+            var step = reference < anchor ? 0 : max(0, monthDifference / interval)
+
+            while step <= Self.maximumSearchSteps {
+                guard
+                    let candidate = Self.monthlyDate(
+                        anchorYear: anchorYear,
+                        anchorMonth: anchorMonth,
+                        anchorDay: anchorDay,
+                        isEndOfMonth: isEndOfMonth,
+                        monthOffset: step * interval,
+                        calendar: calendar)
+                else { return nil }
+                if candidate > reference { return format(candidate) }
+                step += 1
+            }
+            return nil
 
         case .yearly:
-            guard
-                var next = calendar.date(
-                    byAdding: .year, value: interval,
-                    to: from)
+            let anchorParts = calendar.dateComponents([.year, .month, .day], from: anchor)
+            let referenceYear = calendar.component(.year, from: reference)
+            guard let anchorYear = anchorParts.year, let month = anchorParts.month,
+                let day = anchorParts.day
             else { return nil }
-            // Feb 29 → Feb 28 on non-leap years (Calendar already clamps,
-            // but keep parity explicit if it ever rolled forward).
-            if calendar.component(.month, from: next)
-                != calendar.component(.month, from: from)
-            {
-                next = addDays(-1, to: next)
+            let yearDifference = referenceYear - anchorYear
+            var step = reference < anchor ? 0 : max(0, yearDifference / interval)
+
+            while step <= Self.maximumSearchSteps {
+                let year = anchorYear + step * interval
+                guard
+                    let candidate = Self.clampedDate(
+                        year: year, month: month, day: day, calendar: calendar)
+                else { return nil }
+                if candidate > reference { return format(candidate) }
+                step += 1
             }
-            return format(next)
+            return nil
         }
+    }
+
+    /// Advances from the current occurrence to the first scheduled occurrence
+    /// after both that occurrence and `cutoffDateString`, without resetting an
+    /// interval rule's cadence to the day the checkbox happened to be tapped.
+    func nextDueDateString(
+        afterOccurrence occurrenceDateString: String,
+        catchingUpPast cutoffDateString: String,
+        anchoredTo anchorDateString: String? = nil,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String? {
+        guard
+            let occurrence = Self.day(
+                occurrenceDateString,
+                calendar: TaskCalendar.gregorian(timeZone: timeZone)),
+            let cutoff = Self.day(
+                cutoffDateString,
+                calendar: TaskCalendar.gregorian(timeZone: timeZone))
+        else { return nil }
+        let reference = max(occurrence, cutoff)
+        let referenceString = Self.format(
+            reference,
+            calendar: TaskCalendar.gregorian(timeZone: timeZone))
+        return nextDueDateString(
+            after: referenceString,
+            anchoredTo: anchorDateString ?? occurrenceDateString,
+            timeZone: timeZone)
+    }
+
+    private static func day(_ string: String, calendar: Calendar) -> Date? {
+        let parts = string.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3, parts[0].count == 4, parts[1].count == 2,
+            parts[2].count == 2, let year = Int(parts[0]), let month = Int(parts[1]),
+            let day = Int(parts[2])
+        else { return nil }
+        let components = DateComponents(
+            year: year, month: month, day: day, hour: 12)
+        guard components.isValidDate(in: calendar) else { return nil }
+        return calendar.date(from: components)
+    }
+
+    private static func format(_ date: Date, calendar: Calendar) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(
+            format: "%04d-%02d-%02d",
+            parts.year!, parts.month!, parts.day!)
+    }
+
+    private static func monthlyDate(
+        anchorYear: Int,
+        anchorMonth: Int,
+        anchorDay: Int,
+        isEndOfMonth: Bool,
+        monthOffset: Int,
+        calendar: Calendar
+    ) -> Date? {
+        let absoluteMonth = anchorYear * 12 + (anchorMonth - 1) + monthOffset
+        let year = absoluteMonth / 12
+        let month = absoluteMonth % 12 + 1
+        guard
+            let first = calendar.date(
+                from: DateComponents(year: year, month: month, day: 1, hour: 12)),
+            let days = calendar.range(of: .day, in: .month, for: first)?.count
+        else { return nil }
+        let day = isEndOfMonth ? days : min(anchorDay, days)
+        return calendar.date(
+            from: DateComponents(year: year, month: month, day: day, hour: 12))
+    }
+
+    private static func clampedDate(
+        year: Int,
+        month: Int,
+        day: Int,
+        calendar: Calendar
+    ) -> Date? {
+        guard
+            let first = calendar.date(
+                from: DateComponents(year: year, month: month, day: 1, hour: 12)),
+            let days = calendar.range(of: .day, in: .month, for: first)?.count
+        else { return nil }
+        return calendar.date(
+            from: DateComponents(
+                year: year, month: month, day: min(day, days), hour: 12))
     }
 }

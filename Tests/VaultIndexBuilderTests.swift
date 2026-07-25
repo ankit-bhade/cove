@@ -164,4 +164,112 @@ final class VaultIndexBuilderTests: XCTestCase {
             second.entries.first { $0.title == "Broken" }?.tasks.first?.text,
             "Fixed now")
     }
+
+    func testTransientUnreadableNoteRetainsLastKnownTasks() throws {
+        let scanner = VaultTreeScanner()
+        let tree = try scanner.scanTree(at: root)
+        let first = try VaultIndexBuilder().buildCancellableIndex(from: tree)
+        let groceriesURL = root.appendingPathComponent("Groceries.md")
+        try Data([0xFF, 0xFE, 0xFF]).write(to: groceriesURL)
+
+        let second = try VaultIndexBuilder().buildCancellableIndex(
+            from: tree,
+            previous: first)
+
+        XCTAssertEqual(
+            second.entries.first { $0.url == groceriesURL }?.tasks.map(\.text),
+            ["Order cake", "Buy milk"])
+        XCTAssertNil(
+            second.entries.first { $0.url == groceriesURL }?.modificationDate)
+    }
+
+    func testCatchAllRefreshDoesNotTrustSameSizeAndTimestamp() throws {
+        let scanner = VaultTreeScanner()
+        let builder = VaultIndexBuilder()
+        let tree = try scanner.scanTree(at: root)
+        let first = try builder.buildCancellableIndex(from: tree)
+        let groceriesURL = root.appendingPathComponent("Groceries.md")
+        let originalDate = try XCTUnwrap(
+            groceriesURL.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ).contentModificationDate)
+        let oldText = try String(
+            contentsOf: groceriesURL,
+            encoding: .utf8)
+        let replacement = oldText.replacingOccurrences(
+            of: "Order cake",
+            with: "Order pies")
+        XCTAssertEqual(oldText.utf8.count, replacement.utf8.count)
+        try replacement.write(
+            to: groceriesURL,
+            atomically: true,
+            encoding: .utf8)
+        try fileManager.setAttributes(
+            [.modificationDate: originalDate],
+            ofItemAtPath: groceriesURL.path)
+
+        let refreshed = try builder.buildCancellableIndex(
+            from: tree,
+            previous: first,
+            changedURLs: nil)
+
+        XCTAssertTrue(
+            refreshed.allTasks.contains { $0.text == "Order pies" })
+        XCTAssertFalse(
+            refreshed.allTasks.contains { $0.text == "Order cake" })
+    }
+
+    func testConflictAndRecoveryCopiesNeverBecomeOperationalTasks() throws {
+        try makeFile(
+            "Plan.cove-conflict-icloud-abc.md",
+            contents: "- [ ] Conflict copy @due(2026-08-03)\n")
+        try makeFile(
+            "Plan.cove-recovered-20260724-203000.md",
+            contents: "- [ ] Recovery copy @due(2026-08-04)\n")
+
+        let index = try builtIndex()
+
+        XCTAssertTrue(
+            index.entries.contains {
+                $0.url.lastPathComponent.contains(".cove-conflict-")
+            })
+        XCTAssertTrue(
+            index.entries.contains {
+                $0.url.lastPathComponent.contains(".cove-recovered-")
+            })
+        XCTAssertFalse(
+            index.allTasks.contains {
+                $0.text == "Conflict copy" || $0.text == "Recovery copy"
+            })
+    }
+
+    func testLargeVaultScanAndIndexRegression() throws {
+        for folderNumber in 0..<20 {
+            let folder = root.appendingPathComponent(
+                "Bulk-\(folderNumber)",
+                isDirectory: true)
+            try fileManager.createDirectory(
+                at: folder,
+                withIntermediateDirectories: true)
+            for noteNumber in 0..<100 {
+                try "- [ ] Task \(folderNumber)-\(noteNumber) @due(2026-08-01)\n"
+                    .write(
+                        to: folder.appendingPathComponent(
+                            "Note-\(noteNumber).md"),
+                        atomically: true,
+                        encoding: .utf8)
+            }
+        }
+
+        let options = XCTMeasureOptions()
+        options.iterationCount = 1
+        measure(metrics: [XCTClockMetric()], options: options) {
+            XCTAssertNoThrow {
+                let tree = try VaultTreeScanner().scanTree(at: self.root)
+                let index = try VaultIndexBuilder().buildIndex(from: tree)
+                XCTAssertEqual(tree.allFiles.count, 2_003)
+                XCTAssertEqual(index.allTasks.count, 2_004)
+            }
+        }
+    }
 }

@@ -72,9 +72,11 @@ final class TaskListParsingTests: XCTestCase {
         XCTAssertTrue(TaskParser.tasks(in: text, sectioned: true).isEmpty)
     }
 
-    func testIndentedListLinesAreStillRejected() {
-        let text = "## Groceries\n  - [ ] Milk\n"
-        XCTAssertTrue(TaskParser.tasks(in: text, sectioned: true).isEmpty)
+    func testIndentedAndAlternateBulletListLinesAreParsed() {
+        let text = "## Groceries\n  - [ ] Milk\n\t* [x] Bread\n+ [ ] Eggs\n"
+        let tasks = TaskParser.tasks(in: text, sectioned: true)
+        XCTAssertEqual(tasks.map(\.text), ["Milk", "Bread", "Eggs"])
+        XCTAssertEqual(tasks.map(\.isCompleted), [false, true, false])
     }
 
     // MARK: - Unsectioned parsing is unchanged

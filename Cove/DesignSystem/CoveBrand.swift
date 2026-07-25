@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// The app's in-product mark: a serif `c` cupping a single ember dot.
+/// The app's in-product mark: two concentric arcs on one axis — an ink C with
+/// an ember arc echoing it. Drawn rather than set in type, so the mark is
+/// centred by construction and carries no serif stress.
 struct CoveMark: View {
     var size: CGFloat = 34
 
@@ -11,9 +13,6 @@ struct CoveMark: View {
     private let nightBottom = Color(red: 0.078, green: 0.067, blue: 0.055)
     private let ink = Color(red: 0.141, green: 0.129, blue: 0.114)
     private let paper = Color(red: 0.976, green: 0.961, blue: 0.933)
-    private let emberTop = Color(red: 0.910, green: 0.659, blue: 0.408)
-    private let emberBottom = Color(red: 0.788, green: 0.478, blue: 0.204)
-    private let markScale: CGFloat = 1.08
 
     private var isDark: Bool { scheme == .dark }
 
@@ -21,21 +20,16 @@ struct CoveMark: View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
                 .fill(ground)
-            Text(verbatim: "c")
-                .font(.system(size: size * 0.74 * markScale, weight: .bold, design: .serif))
-                .foregroundStyle(isDark ? paper : ink)
-                .offset(x: -size * 0.085 * markScale, y: -size * 0.10 * markScale)
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [emberTop, emberBottom],
-                        center: .init(x: 0.38, y: 0.34),
-                        startRadius: 0,
-                        endRadius: size * 0.16 * markScale * 0.62
-                    )
+            CoveArc(radius: 0.20, halfGap: 30)
+                .stroke(
+                    isDark ? paper : ink,
+                    style: StrokeStyle(lineWidth: size * 0.16, lineCap: .butt)
                 )
-                .frame(width: size * 0.16 * markScale, height: size * 0.16 * markScale)
-                .offset(x: size * 0.13 * markScale, y: size * 0.05 * markScale)
+            CoveArc(radius: 0.36, halfGap: 22)
+                .stroke(
+                    CoveTheme.accent,
+                    style: StrokeStyle(lineWidth: max(size * 0.07, 1.5), lineCap: .butt)
+                )
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
@@ -51,6 +45,26 @@ struct CoveMark: View {
                 )
             )
             : AnyShapeStyle(paperGround)
+    }
+}
+
+/// One arc of the mark: a circle of the given radius (a fraction of the frame)
+/// opened by halfGap degrees either side of the trailing axis.
+private struct CoveArc: Shape {
+    let radius: CGFloat
+    let halfGap: Double
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let side = min(rect.width, rect.height)
+        path.addArc(
+            center: CGPoint(x: rect.midX, y: rect.midY),
+            radius: side * radius,
+            startAngle: .degrees(halfGap),
+            endAngle: .degrees(360 - halfGap),
+            clockwise: false
+        )
+        return path
     }
 }
 

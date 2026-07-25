@@ -26,6 +26,12 @@ struct RootView: View {
                     }
             }
         }
+        // Below `preferredColorScheme` in the view tree, so the scheme it
+        // reads is the one that setting resolved to. macOS only: the Mac's
+        // dark icon has no slot in the catalog and is applied at runtime.
+        #if os(macOS)
+            .coveDockIcon()
+        #endif
         .preferredColorScheme(appearance.colorScheme)
         .task {
             await vaultManager.restore()

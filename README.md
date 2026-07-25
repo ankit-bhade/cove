@@ -116,8 +116,8 @@ shows the current vault (and can point Cove at a different folder — the same
 flow that recovers a stale selection), switches between system, light, and
 dark appearance, and shows
 whether notification permission is granted, with a shortcut to enable it. The app has its own icon and launch screen — the
-`CoveMark` stamp, a serif `c` cupping an ember dot, on warm paper in light and
-night-black in dark. Inside, the interface is set in ink on warm paper: a warm
+`CoveMark` stamp, two concentric arcs reading as a C and as a ripple leaving
+an inlet, on warm paper in light and night-black in dark. Inside, the interface is set in ink on warm paper: a warm
 off-white canvas, screen titles and headlines in the system serif, tracked
 capitals for labels, monospaced digits for every count, and a single burnt-ember
 accent that carries interaction — with moss for folders and lists and a warm

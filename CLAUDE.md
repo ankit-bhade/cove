@@ -26,10 +26,14 @@ discarded `Calendar` in every date API. Then the headers were
 weighed against what they cost, and none of them survived: the tall masthead
 with its serif title, its slogan, and the day-part greeting is replaced
 everywhere by a compact `CovePanel`, so every screen opens on its own content
-rather than on a sentence about itself. Most recently the one row that had
+rather than on a sentence about itself. Then the one row that had
 stayed off the shared grid — the task row, with its own insets, its own
 padding, and its own separator inset — was put on it, so the text column and
-the row rhythm are the same on all four screens. See `CHANGELOG.md`
+the row rhythm are the same on all four screens. Most recently the mark
+itself was redrawn: the serif `c` and its ember dot, the last piece of the
+identity still set in type and the one that leaned right because a serif face
+has a diagonal stress, is now two concentric arcs on a single axis, centred by
+construction. See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
 
@@ -807,15 +811,25 @@ full-strength ember capsule put the loudest thing on screen on the one task
 that no longer wants attention — the same reasoning the widget's muted
 checkboxes already followed.
 
-**`CoveMark` is drawn, not loaded.** A serif `c` cupping an ember dot — the
-shape of a sheltered inlet said abstractly, with no water in it. Drawing it
-means it inherits the appearance, scales to any size without a new export, and
-matches the serif titles beside it. The stamp inverts with appearance — ink on
-warm paper in light, paper on night-black in dark, the ember dot and every
-offset held constant — so it reads as the two faces of the same app icon
-rather than two different marks. (It deliberately did *not* invert before the
-icon adopted the same stamp; matching the icon's light face is what changed
-the call.)
+**`CoveMark` is drawn, not loaded, and it is geometry rather than type.** Two
+concentric arcs opened on one axis: an ink C at r = 0.20 under a 16% stroke,
+and an ember arc at r = 0.36 under a 7% one — a C, and equally a ripple
+leaving an inlet. It replaced a serif `c` cupping an ember dot, and the reason
+is that a serif face is drawn with a diagonal stress and tapered terminals, so
+the letter leaned right while the dot beside it pulled further right again:
+geometrically centred in the tile and visibly off balance. Arcs have no
+stress. The mark is centred by construction, there is no axis left to look
+crooked, and the offsets and the `markScale` fudge factor that were tuning the
+old glyph's optical centre are gone with it. Drawing it still means it
+inherits the appearance and scales to any size without a new export. The stamp
+inverts with appearance — ink on warm paper in light, paper on night-black in
+dark, the arcs and the ember held constant — so it reads as the two faces of
+the same app icon rather than two different marks.
+
+**The ember arc holds a 1.5pt floor.** At 7% of the frame it is sub-pixel
+below about 21pt, and the mark is drawn as small as a 32pt sidebar stamp and
+rasterized as small as a 16px Dock tile; without the floor the ember thins to
+nothing and the mark loses the half of itself that carries the colour.
 
 **Tab and sidebar symbols are outline names.** The iOS tab bar substitutes
 the filled variant itself, so the choice only shows through on the macOS
@@ -844,17 +858,50 @@ screens; an unrecognized stored value falls back to `system`.
 
 ### Icon and launch screen
 
-The asset catalog carries generated `CoveMark` artwork — the serif `c` cupping
-an ember dot, the same mark the interface draws. The set is a full-bleed 1024
-iOS icon plus a dark variant, icon-grid rounded rects for every mac size, and a
-`LaunchIcon` imageset used by the iOS launch screen. The mark is identical in
-both appearances; only the ground changes — warm paper in light, a night-black
-gradient in dark — and the serif `c` inverts with it so it reads on both.
+The asset catalog carries generated `CoveMark` artwork — the two concentric
+arcs the interface draws. The set is a full-bleed 1024 iOS icon plus a dark
+variant, icon-grid rounded rects for every mac size, and a `LaunchIcon`
+imageset used by the iOS launch screen. The mark is identical in both
+appearances; only the ground changes — warm paper in light, a night-black
+gradient in dark — and the ink arc inverts with it so it reads on both.
 
 **The icon and the in-app mark are now one shape.** The catalog art is
 `CoveMark` rendered to PNG, the interface draws the live `CoveMark`, and both
 carry the ink-and-ember palette — so the springboard icon, the launch screen,
 and the loading/setup mark all agree. The coastal wordmark is retired.
+
+**The icon's light ember is a shade deeper than `CoveTheme.accent`** (`#A85E2A`
+against the token's `#9E5827`), the same call the widget palette makes and for
+the same reason: a Home Screen tile sits among other apps rather than on Cove's
+own canvas. In dark the two are the same colour. Every other value in the
+artwork *is* a token — the ink, the paper, and the warm ground are `CoveTheme`'s
+own literals — so this is the one deliberate divergence and not a drifted copy.
+
+**The Mac's dark icon is applied at runtime, because the catalog has nowhere
+to put it.** `luminosity` appearances on an `appiconset` are honoured for the
+`universal`/iOS idiom only; `actool` parses `mac` idiom entries that carry one,
+assigns them to nothing, and reports "the app icon set has N unassigned
+children" — a *warning*, so a catalog that looks complete in Xcode's inspector
+ships the light tile to both appearances anyway. This was checked rather than
+assumed: `platform: macos` is not a recognised value at all, `platform: osx` is
+recognised and still unassigned, and the result does not change at a 15.0 or
+26.0 deployment target.
+
+So `DockIcon` (`Cove/Platform/macOS/`) writes `NSApp.applicationIconImage`
+instead, from a plain `DockIconDark` imageset holding the dark tile at 512 and
+1024. Light sets the property to `nil`, which hands the Dock back to the
+bundle's own icon rather than installing a second copy of the light artwork —
+so the catalog stays the single home of the light tile. `applicationIconImage`
+is writable on every version Cove supports, which macOS 26's `.icon` format is
+not: that needs Icon Composer, a GUI tool with no CLI, and a macOS 26 floor
+against Cove's macOS 14.
+
+**The Dock icon follows SwiftUI's `colorScheme`, not the stored setting.**
+`coveDockIcon()` is applied *before* `preferredColorScheme` in `RootView`'s
+modifier chain, so it sits below that setting in the view tree and reads the
+scheme the setting actually resolved to. Passing the `AppearanceSetting` in
+instead would mean re-deriving what `.system` means and observing the desktop's
+appearance by hand, and the two answers could then disagree.
 
 **The `UILaunchScreen` dictionary lives in a root-level partial `Info.plist`**
 merged via `INFOPLIST_FILE` alongside `GENERATE_INFOPLIST_FILE`, kept outside
@@ -978,7 +1025,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **406 tests** (macOS host), plus clean macOS and
+Current verified suite: **409 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1012,28 +1059,40 @@ someone, not what the design says.
 
 ### Regenerating the app icon
 
-The mark is the `CoveMark` stamp — a serif `c` cupping an ember dot — and it
-uses the **system serif** (New York), so unlike the old Cormorant wordmark it
-needs no webfont, no headless Chrome, and no network. Every PNG is rendered
-straight from SwiftUI with `ImageRenderer` on a macOS host. The spec (colors,
-the geometry as fractions of the tile edge, and a drop-in `CoveIconArtwork`
-view plus exporter) is the Claude Design handoff `Cove Icon - Claude Code
-Handoff.md`; the design doc is `Cove App Icon.dc.html`. Both live in the Claude
-Design project, not this repo.
+The mark is the `CoveMark` stamp — two concentric arcs — so it needs no font
+at all, and with it went the webfont, the headless Chrome, and the network the
+Cormorant wordmark once needed. Every PNG is rendered straight from SwiftUI
+with `ImageRenderer` on a macOS host. The spec is the Claude Design doc `Cove
+Icon Directions.dc.html`, which lives in the Claude Design project rather than
+this repo; the geometry it states is reproduced in `CoveMark` itself, which is
+the real reference.
 
 The generator is throwaway — a standalone `swift` script (or a small `@main`
-target) that instantiates `CoveIconArtwork` at each size and writes the PNGs
-into `Cove/Assets.xcassets/`, then is deleted. It never ships. Three shapes:
-full-bleed square for iOS (no baked corners — iOS masks it), an 824/1024
-rounded-rect body inset into the macOS icon grid, and full-bleed rounded tiles
-(radius `0.2237·S`) for `LaunchIcon`. iOS carries a light and a dark ground;
-macOS exports the light ground at every size (its slot has no dark entry); the
-launch tiles carry both (`.png` light, `-dark.png` dark). `Contents.json` for
-both sets already names these exact filenames, so no manifest edit is needed.
+target) that draws the same two arcs at each size and writes the PNGs into
+`Cove/Assets.xcassets/`, then is deleted. It never ships. **Size the view in
+points equal to the target pixel count and render at `scale = 1`**, so the
+ember's 1.5px floor and the small-size inset are decided in real pixels; a
+1024pt view rendered at a fractional scale silently scales both away.
+
+Three shapes: full-bleed square for iOS (no baked corners — iOS masks it), a
+rounded-rect body inset into the macOS icon grid at 824/1024 — tightening to
+0.875 below 64px, so the mark holds its size in the Dock and the menu bar —
+and full-bleed rounded tiles (radius `0.2237·S`) for `LaunchIcon`. Only the
+macOS tile carries the bevel and drop shadow; the iOS and launch grounds are
+flat. iOS carries a light and a dark ground and the launch tiles carry both
+(`.png` light, `-dark.png` dark). `Contents.json` for both sets already names
+these exact filenames, so no manifest edit is needed.
+
+macOS is the exception: `AppIcon.appiconset` takes the light tile at every
+size, and the dark one is a *separate* `DockIconDark` imageset at 512 (1x) and
+1024 (2x), because the app icon set has no dark Mac slot and `DockIcon` loads
+that image by name at runtime. Regenerating the Mac icon means re-rendering
+both.
 
 Verify with a macOS and an iOS build afterwards — `actool` reports icon
-problems as build *warnings*, not errors — and eyeball the renders, since the
-serif `c`'s ball terminal and the dot placement are the whole mark.
+problems as build *warnings*, not errors, and "unassigned children" is how it
+says a `Contents.json` entry it parsed is being used by nothing. Then eyeball
+the renders at 32 and 16 px, where the two arcs either stay two arcs or merge.
 
 ---
 
@@ -1238,10 +1297,22 @@ Rough edges and surprises, not restatements of the design above.
 ### Icon and platform
 
 * The icon PNGs are generated artwork checked into the catalog, and the spec
-  (the handoff and design doc) lives in the Claude Design project, not the
-  repo — an icon change means re-rendering the full size set from
-  `CoveIconArtwork` (see "Regenerating the app icon"). The generator itself
-  is throwaway and not kept in the repo.
+  (the design doc) lives in the Claude Design project, not the repo — an icon
+  change means re-rendering the full size set (see "Regenerating the app
+  icon"). The generator itself is throwaway and not kept in the repo, so the
+  drawn `CoveMark` is the only geometry in version control; a change made to
+  the PNGs alone has nothing to check it against.
+* The Mac's dark icon reaches the Dock and the app switcher only, and only
+  while Cove is running — it is `NSApp.applicationIconImage`, not the bundle's
+  icon, because `appiconset` has no dark `mac` slot. Finder, Spotlight,
+  Launchpad, and the Dock's own icon for a *quit* app all keep the light tile.
+  Closing the gap means adopting macOS 26's `.icon` format, which would raise
+  the macOS floor from 14 to 26.
+* The Dock swap is verified by test against `NSApp` inside the test host, not
+  by looking at the Dock: macOS GUI capture needs Screen Recording permission
+  the build shell does not have, so `DockIconTests` asserts that the installed
+  icon gets darker in dark and lighter again in light. Nothing automated has
+  ever seen the actual Dock.
 * The dark iOS icon variant is opaque rather than transparent. Apple's iOS 18
   guidance prefers a transparent dark icon over a system backdrop, but the mark
   supplies its own night-black ground. iOS 17 ignores the variant entirely.

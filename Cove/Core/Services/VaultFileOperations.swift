@@ -241,7 +241,81 @@ struct RecoveryRecord: Equatable, Sendable {
 }
 
 private struct RecoveryManifest: Codable, Sendable {
+    static let currentSchemaVersion = 1
+    static let ownerIdentifier = "com.ankitbhade.Cove.recovery"
+
+    var schemaVersion = currentSchemaVersion
+    var ownerIdentifier = Self.ownerIdentifier
     var entries: [RecoveryManifestEntry] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case ownerIdentifier
+        case entries
+    }
+
+    private struct AnyCodingKey: CodingKey {
+        let stringValue: String
+        let intValue: Int? = nil
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue: Int) {
+            return nil
+        }
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let allKeys = try decoder.container(
+            keyedBy: AnyCodingKey.self
+        ).allKeys.map(\.stringValue)
+        let keySet = Set(allKeys)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedSchema = try container.decodeIfPresent(
+            Int.self, forKey: .schemaVersion)
+        let decodedOwner = try container.decodeIfPresent(
+            String.self, forKey: .ownerIdentifier)
+
+        // Manifests created before ownership metadata was introduced are
+        // still Cove manifests: their exact shape was just `entries`.
+        if decodedSchema == nil, decodedOwner == nil {
+            guard keySet == [CodingKeys.entries.rawValue] else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .entries,
+                    in: container,
+                    debugDescription:
+                        "The legacy recovery manifest does not have Cove's expected shape.")
+            }
+            schemaVersion = Self.currentSchemaVersion
+            ownerIdentifier = Self.ownerIdentifier
+        } else {
+            guard
+                keySet
+                    == [
+                        CodingKeys.schemaVersion.rawValue,
+                        CodingKeys.ownerIdentifier.rawValue,
+                        CodingKeys.entries.rawValue,
+                    ],
+                decodedSchema == Self.currentSchemaVersion,
+                decodedOwner == Self.ownerIdentifier
+            else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .schemaVersion,
+                    in: container,
+                    debugDescription:
+                        "The recovery manifest is not owned by this Cove version.")
+            }
+            schemaVersion = decodedSchema ?? Self.currentSchemaVersion
+            ownerIdentifier = decodedOwner ?? Self.ownerIdentifier
+        }
+        entries =
+            try container.decodeIfPresent(
+                [RecoveryManifestEntry].self, forKey: .entries) ?? []
+    }
 }
 
 private struct RecoveryManifestEntry: Codable, Equatable, Sendable {
@@ -735,18 +809,15 @@ struct VaultFileOperations: Sendable {
     /// Stale manifest rows are ignored; they are reconciled by the purge.
     func recoveryRecords(vaultRoot: URL) throws -> [RecoveryRecord] {
         let manifest = try loadRecoveryManifest(vaultRoot: vaultRoot)
-        let recoveryFolder = vaultRoot.appendingPathComponent(
-            Self.recoveryFolderName,
-            isDirectory: true)
         return manifest.entries.compactMap { entry in
             guard
                 let originalURL = safeRecoveryOriginalURL(
                     relativePath: entry.originalRelativePath,
+                    vaultRoot: vaultRoot),
+                let recoveryURL = safeRecoveryItemURL(
+                    for: entry,
                     vaultRoot: vaultRoot)
             else { return nil }
-            let recoveryURL = recoveryFolder.appendingPathComponent(
-                entry.recoveryName,
-                isDirectory: entry.isDirectory)
             guard FileManager.default.fileExists(atPath: recoveryURL.path) else {
                 return nil
             }
@@ -762,9 +833,9 @@ struct VaultFileOperations: Sendable {
     /// Removes recovery entries older than `retention`, so deleting a note
     /// eventually frees its space instead of parking it in the vault forever.
     ///
-    /// Entries whose name carries no deletion timestamp were written before
-    /// this sweep existed, which means a previous run of the app put them
-    /// there and no live Undo can still point at them; they are swept too.
+    /// Only entries named in Cove's owned manifest are eligible. Unknown
+    /// contents of a pre-existing `.cove-recovery` folder belong to the user
+    /// or another tool and must never be inferred to be Cove trash.
     /// One unremovable entry must not abandon the rest of the sweep.
     func purgeRecovery(
         vaultRoot: URL,
@@ -776,24 +847,31 @@ struct VaultFileOperations: Sendable {
             isDirectory: true)
         guard FileManager.default.fileExists(atPath: folder.path) else { return }
 
-        // Never delete the only recoverable bytes if their path metadata is
-        // corrupt. Recovery health is surfaced and the items stay untouched
-        // until the manifest can be repaired.
-        _ = try loadRecoveryManifest(vaultRoot: vaultRoot)
-
-        // Names, not URLs: the coordinator may hand back a different location
-        // for the folder, and each entry is coordinated again on its own.
-        let names = try FileCoordination.read(at: folder) { url in
-            try FileManager.default.contentsOfDirectory(atPath: url.path)
-        }
+        // Never delete the only recoverable bytes if their ownership or path
+        // metadata is corrupt. Recovery health is surfaced and unknown items
+        // stay untouched until the manifest can be repaired.
+        let manifest = try loadRecoveryManifest(vaultRoot: vaultRoot)
         let cutoff = now.addingTimeInterval(-retention)
         var firstError: Error?
-        for name in names {
-            guard name != Self.recoveryManifestName else { continue }
-            let deletedAt = Self.recoveryDeletionDate(fromName: name)
-            guard deletedAt.map({ $0 < cutoff }) ?? true else { continue }
+        var purgedIdentifiers = Set<UUID>()
+        for entry in manifest.entries where entry.deletedAt < cutoff {
+            guard
+                let item = safeRecoveryItemURL(
+                    for: entry,
+                    vaultRoot: vaultRoot)
+            else {
+                if firstError == nil {
+                    firstError = CocoaError(.fileReadCorruptFile)
+                }
+                continue
+            }
+            guard FileManager.default.fileExists(atPath: item.path) else {
+                purgedIdentifiers.insert(entry.identifier)
+                continue
+            }
             do {
-                try delete(itemAt: folder.appendingPathComponent(name))
+                try delete(itemAt: item)
+                purgedIdentifiers.insert(entry.identifier)
             } catch {
                 if firstError == nil { firstError = error }
             }
@@ -804,7 +882,14 @@ struct VaultFileOperations: Sendable {
         do {
             try updateRecoveryManifest(vaultRoot: vaultRoot) { manifest in
                 manifest.entries.removeAll { entry in
-                    let item = folder.appendingPathComponent(entry.recoveryName)
+                    if purgedIdentifiers.contains(entry.identifier) {
+                        return true
+                    }
+                    guard
+                        let item = safeRecoveryItemURL(
+                            for: entry,
+                            vaultRoot: vaultRoot)
+                    else { return false }
                     return !FileManager.default.fileExists(atPath: item.path)
                 }
             }
@@ -864,7 +949,18 @@ struct VaultFileOperations: Sendable {
     }
 
     static func isWriteTemporaryName(_ name: String) -> Bool {
-        name.hasPrefix(writeTemporaryPrefix) || name.hasPrefix(createTemporaryPrefix)
+        let prefix: String
+        if name.hasPrefix(writeTemporaryPrefix) {
+            prefix = writeTemporaryPrefix
+        } else if name.hasPrefix(createTemporaryPrefix) {
+            prefix = createTemporaryPrefix
+        } else {
+            return false
+        }
+        let identifier = String(name.dropFirst(prefix.count))
+        return identifier.count == 36
+            && identifier == identifier.lowercased()
+            && UUID(uuidString: identifier) != nil
     }
 
     // MARK: - Recovery naming
@@ -929,10 +1025,10 @@ struct VaultFileOperations: Sendable {
     }
 
     /// Recovery entries are named `<timestamp>--<uuid>--<short name>`; the
-    /// manifest carries the complete original relative path. The timestamp is
-    /// still present in the filename so orphaned/legacy entries remain safely
-    /// purgeable even when metadata is unavailable. Formatted by hand in UTC
-    /// rather than with a `DateFormatter`, which is neither `Sendable` nor
+    /// manifest carries the complete original relative path. The timestamp
+    /// also binds the filename to the manifest row and makes recovery storage
+    /// inspectable without decoding JSON. Formatted by hand in UTC rather
+    /// than with a `DateFormatter`, which is neither `Sendable` nor
     /// locale-neutral.
     static func recoveryTimestamp(
         _ date: Date,
@@ -1053,6 +1149,39 @@ struct VaultFileOperations: Sendable {
         return candidate
     }
 
+    /// A manifest row is allowed to name only the exact Cove-generated item
+    /// carrying that row's UUID. This prevents a damaged or hand-edited
+    /// manifest from turning cleanup into path traversal or from claiming an
+    /// unrelated file in the recovery folder.
+    private func safeRecoveryItemURL(
+        for entry: RecoveryManifestEntry,
+        vaultRoot: URL
+    ) -> URL? {
+        let name = entry.recoveryName
+        let expectedPrefix =
+            "\(Self.recoveryTimestamp(entry.deletedAt))--"
+            + "\(entry.identifier.uuidString.lowercased())--"
+        guard
+            !name.isEmpty,
+            name == (name as NSString).lastPathComponent,
+            !name.contains("/"),
+            name.hasPrefix(expectedPrefix),
+            name.utf8.count > expectedPrefix.utf8.count
+        else { return nil }
+
+        let folder = vaultRoot.appendingPathComponent(
+            Self.recoveryFolderName,
+            isDirectory: true)
+        let candidate =
+            folder
+            .appendingPathComponent(name, isDirectory: entry.isDirectory)
+            .standardizedFileURL
+        guard
+            candidate.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL
+        else { return nil }
+        return candidate
+    }
+
     @discardableResult
     func restore(_ record: RecoveryRecord) throws -> URL {
         try restore(record, to: record.originalURL)
@@ -1170,6 +1299,10 @@ actor VaultRepository {
 
     init(fileOperations: VaultFileOperations = VaultFileOperations()) {
         self.fileOperations = fileOperations
+    }
+
+    func readNote(at url: URL) throws -> String {
+        try fileOperations.readNote(at: url)
     }
 
     func updateNote(

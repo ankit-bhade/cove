@@ -75,9 +75,10 @@ enum MarkdownStyler {
             includeNeighbors: false)
     }
 
-    /// Restyles only affected paragraphs. All Cove-owned attributes are
-    /// cleared locally before the substring is parsed and its ranges are
-    /// translated back into document coordinates.
+    /// Restyles only affected paragraphs. Parsing still uses the whole
+    /// document because fenced code and YAML front matter can begin well
+    /// before the edited paragraph. Only runs intersecting the local range
+    /// are applied, so ordinary typing does not restyle the entire note.
     static func applyLiveStyles(
         to textStorage: NSTextStorage,
         dirtyRange: NSRange,
@@ -88,8 +89,7 @@ enum MarkdownStyler {
             around: dirtyRange,
             includeNeighbors: includeNeighbors)
         guard range.location != NSNotFound else { return }
-        let substring = (textStorage.string as NSString).substring(with: range)
-        let parsed = MarkdownParser.parse(substring)
+        let parsed = MarkdownParser.parse(textStorage.string)
         textStorage.beginEditing()
         for key in [
             NSAttributedString.Key.font, .foregroundColor,
@@ -100,48 +100,67 @@ enum MarkdownStyler {
         textStorage.addAttributes(bodyAttributes, range: range)
 
         for header in parsed.headers {
+            guard let lineRange = intersection(header.lineRange, range) else {
+                continue
+            }
             textStorage.addAttribute(
                 .font, value: headerFont(level: header.level),
-                range: offset(header.lineRange, by: range.location))
-            textStorage.addAttribute(
-                .foregroundColor, value: syntaxColor,
-                range: offset(header.markerRange, by: range.location))
+                range: lineRange)
+            if let markerRange = intersection(header.markerRange, range) {
+                textStorage.addAttribute(
+                    .foregroundColor, value: syntaxColor,
+                    range: markerRange)
+            }
         }
 
         for bold in parsed.boldSpans {
-            let boldRange = offset(bold.range, by: range.location)
+            guard let boldRange = intersection(bold.range, range) else {
+                continue
+            }
             // Bold the font already in effect (body, or a header's font).
             if let font = textStorage.attribute(
                 .font, at: boldRange.location, effectiveRange: nil) as? PlatformFont
             {
                 textStorage.addAttribute(.font, value: boldVariant(of: font), range: boldRange)
             }
-            textStorage.addAttribute(
-                .foregroundColor, value: syntaxColor,
-                range: offset(bold.leadingDelimiterRange, by: range.location))
-            textStorage.addAttribute(
-                .foregroundColor, value: syntaxColor,
-                range: offset(bold.trailingDelimiterRange, by: range.location))
+            for delimiterRange in [
+                bold.leadingDelimiterRange,
+                bold.trailingDelimiterRange,
+            ] {
+                if let delimiterRange = intersection(delimiterRange, range) {
+                    textStorage.addAttribute(
+                        .foregroundColor, value: syntaxColor,
+                        range: delimiterRange)
+                }
+            }
         }
 
         for checkbox in parsed.checkboxes {
-            textStorage.addAttribute(
-                .foregroundColor, value: syntaxColor,
-                range: offset(checkbox.markerRange, by: range.location))
-            if checkbox.isChecked, checkbox.textRange.length > 0 {
+            if let markerRange = intersection(checkbox.markerRange, range) {
+                textStorage.addAttribute(
+                    .foregroundColor, value: syntaxColor,
+                    range: markerRange)
+            }
+            if checkbox.isChecked,
+                let textRange = intersection(checkbox.textRange, range)
+            {
                 textStorage.addAttributes(
                     [
                         .foregroundColor: syntaxColor,
                         .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                    ], range: offset(checkbox.textRange, by: range.location))
+                    ], range: textRange)
             }
         }
 
         textStorage.endEditing()
     }
 
-    private static func offset(_ range: NSRange, by amount: Int) -> NSRange {
-        NSRange(location: range.location + amount, length: range.length)
+    private static func intersection(
+        _ lhs: NSRange,
+        _ rhs: NSRange
+    ) -> NSRange? {
+        let result = NSIntersectionRange(lhs, rhs)
+        return result.length > 0 ? result : nil
     }
 
     private static func expandedParagraphRange(

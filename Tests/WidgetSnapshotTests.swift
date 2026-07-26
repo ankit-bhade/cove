@@ -274,6 +274,33 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(completed.settingCompleted(true), completed)
     }
 
+    func testWidgetIdentityRejectsAReplacementAtTheSamePathAndLine() {
+        let original = SnapshotTask(
+            task("Original", due: "2026-07-19", line: 4))
+        let replacement = SnapshotTask(
+            task("Replacement", due: "2026-07-19", line: 4))
+        let snapshot = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(),
+            tasks: [replacement])
+
+        XCTAssertNotEqual(original.id, replacement.id)
+        XCTAssertNil(snapshot.task(matchingWidgetID: original.id))
+        XCTAssertEqual(
+            snapshot.task(matchingWidgetID: replacement.id),
+            replacement)
+    }
+
+    func testWidgetIdentityChangesWhenSemanticMetadataChanges() {
+        let original = SnapshotTask(
+            task("Task", due: "2026-07-19", time: "09:00", line: 4))
+        let edited = SnapshotTask(
+            task("Task", due: "2026-07-19", time: "10:00", line: 4))
+
+        XCTAssertNotEqual(original.id, edited.id)
+        XCTAssertEqual(original.id, original.settingCompleted(true).id)
+    }
+
     func testDeferredCompletionRemainsAuthoritativelyOpenAndShowsPending() throws {
         var snapshot = TodaySnapshot(
             dayString: "2026-07-19",
@@ -687,6 +714,88 @@ final class WidgetSnapshotTests: XCTestCase {
                 found: 999,
                 supported: TodaySnapshot.currentSchemaVersion))
         XCTAssertEqual(try Data(contentsOf: snapshotURL), future)
+    }
+
+    func testAuthoritativePublishRepairsMalformedSnapshotAndPreservesQueue() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let snapshotURL = root.appendingPathComponent("today.json")
+        let malformed = Data("not-json".utf8)
+        try malformed.write(to: snapshotURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+        let operation = PendingTaskOperation(
+            task: SnapshotTask(
+                task("Queued", due: "2026-07-19", line: 1)),
+            desiredCompletion: true)
+        try store.enqueue([operation])
+        let replacement = TodaySnapshot(
+            dayString: "2026-07-19",
+            generatedAt: Date(timeIntervalSince1970: 123),
+            tasks: [
+                SnapshotTask(
+                    task("Fresh", due: "2026-07-19", line: 2))
+            ])
+
+        _ = try store.writeSnapshot(replacement).get()
+
+        XCTAssertEqual(
+            try store.readSnapshotResult().get().tasks.map(\.text),
+            ["Fresh"])
+        XCTAssertEqual(
+            try store.loadPendingOperations(),
+            [operation])
+        XCTAssertEqual(
+            try Data(
+                contentsOf: root.appendingPathComponent(
+                    WidgetSnapshotStore.unreadableSnapshotBackupName)),
+            malformed)
+    }
+
+    func testMalformedSnapshotBackupPreservesTheFirstUnreadableBytes() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let snapshotURL = root.appendingPathComponent("today.json")
+        let firstMalformed = Data("first-invalid-snapshot".utf8)
+        try firstMalformed.write(to: snapshotURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        _ = try store.writeSnapshot(.empty).get()
+        try Data("second-invalid-snapshot".utf8).write(to: snapshotURL)
+        _ = try store.writeSnapshot(.empty).get()
+
+        XCTAssertEqual(
+            try Data(
+                contentsOf: root.appendingPathComponent(
+                    WidgetSnapshotStore.unreadableSnapshotBackupName)),
+            firstMalformed)
+    }
+
+    func testAuthoritativePublishDoesNotDowngradeFutureSnapshot() throws {
+        let root = try temporaryContainer()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let snapshotURL = root.appendingPathComponent("today.json")
+        let future = Data(
+            """
+            {"schemaVersion":999,"revision":0,"dayString":"2026-07-19","generatedAt":0,"availability":"available","tasks":[],"totalTaskCount":0,"totalOpenTaskCount":0,"optimisticMutations":[]}
+            """.utf8)
+        try future.write(to: snapshotURL)
+        let store = WidgetSnapshotStore(containerURL: root)
+
+        guard case .failure(let error) = store.writeSnapshot(.empty) else {
+            return XCTFail("Expected future schema publication to fail")
+        }
+        XCTAssertEqual(
+            error,
+            .unsupportedSchema(
+                artifact: .snapshot,
+                found: 999,
+                supported: TodaySnapshot.currentSchemaVersion))
+        XCTAssertEqual(try Data(contentsOf: snapshotURL), future)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root.appendingPathComponent(
+                    WidgetSnapshotStore.unreadableSnapshotBackupName
+                ).path))
     }
 
     func testZeroSnapshotSchemaIsRejected() throws {

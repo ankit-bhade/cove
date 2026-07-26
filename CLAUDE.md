@@ -74,7 +74,7 @@ These are non-negotiable. A change that breaks one is wrong even if it works.
 * No third-party dependencies (app or build tooling).
 * Never hardcode a vault folder name or location.
 * All vault filesystem access goes through `NSFileCoordinator`.
-* Hidden files and symlinks are always ignored.
+* Hidden files, packages, aliases, and symlinks are always ignored.
 * The task line Cove **writes** is fixed:
   `- [ ] Task text @due(YYYY-MM-DD[ HH:MM])[ @repeat(rule)][ @anchor(YYYY-MM-DD)]`
   — one space between parts, `-` bullet, no indentation, no alternates. Every
@@ -118,7 +118,8 @@ folders first, then files, alphabetically.
 The app is intended for folders in iCloud Drive, but any writable folder from
 the system picker may be used. `NSMetadataQueryAccessibleUbiquitousExternal‐
 DocumentsScope` detects iCloud changes; change events are signals to refresh
-the affected files and rebuild the index.
+the affected files and rebuild the index. A macOS root-descriptor event does
+not identify a child, so it deliberately takes the full-scan fallback.
 
 ### Screens
 
@@ -347,11 +348,13 @@ be in the *name*: an item's own dates travel with it through the move and say
 nothing about when it left the vault. The sweep runs detached once per vault
 open (not per refresh — the area only grows through deletion), so it can
 neither race an Undo, which only points at this session's entries, nor block
-the vault from opening.
+the vault from opening. Cleanup trusts only an owner- and schema-marked
+manifest and exact Cove timestamp/UUID names; unknown files in that hidden
+folder are never treated as expired recovery data.
 
 **Tree scans** take one coordinated read of the root, then list recursively
-with `FileManager`, skipping hidden and symlinked items, sorting folders-first
-then `localizedStandardCompare`.
+with `FileManager`, skipping hidden, package, alias, and symlinked items,
+sorting folders-first then `localizedStandardCompare`.
 
 ### Editor
 
@@ -388,8 +391,9 @@ which a `UITextView` has no return key to do.
 
 `MarkdownParser` (pure Foundation) returns UTF-16 `NSRange`s that apply
 directly to text storage. `MarkdownStyler` restyles the edited paragraph plus
-its neighbors; whole-document styling is reserved for load and global style
-changes.
+its neighbors. It parses the whole string to retain fenced-code and YAML
+context, then applies only ranges intersecting those paragraphs; load and
+global style changes still apply across the whole document.
 
 **A `#` line is set in the serif face**, which is the same split the rest of
 the type system draws — a heading is read once where the text under it is
@@ -494,6 +498,12 @@ deliberate; the bulk Clear All is what warrants a dialog. Undo reinserts the
 line near stable neighboring task identities rather than restoring a whole old
 document, so unrelated later edits survive.
 
+**Bulk clear is a grouped semantic operation.** It targets only completed
+identities present in the current index, preflights every affected file before
+the first write, repeats the checks inside each coordinated transform, and
+rolls back already-applied batches if a later write fails. Undo restores the
+removed lines against the newest file contents rather than restoring snapshots.
+
 **Sorting compares `(dueDateString ?? "9999-99-99", dueTimeString ?? "",
 fileTitle, lineNumber)`** — zero-padded strings order chronologically for
 free, and the sentinel puts undated list items last.
@@ -521,7 +531,8 @@ rows against it, and `CompletedTasksHeader` is the one Done/Completed header,
 so the two screens differ in wording alone — "To Do"/"Done" against the due
 groups and "Completed" — and not in what a tap does. `clearCompleted` takes
 the sweep as a closure, because *which* tasks a screen clears is the one thing
-the two genuinely disagree about.
+the two genuinely disagree about, and registers the returned deletion records
+as one Undo group.
 
 **A task row omits its source note** — tasks nearly all live in the capture
 note, so the caption repeated "Tasks" under every row.
@@ -544,6 +555,8 @@ because editor autosaves don't trigger a rescan.
 (`grove-app/src/lib/parser/parse.ts`), matching its grammar and resolution
 rules; its test suite ports grove's `parse.test.ts`. Each extractor claims the
 span it consumed (overlaps lose), and the title is what's left.
+The pinned source revision and its MIT notice are in `ATTRIBUTION.md`; Grove
+is a separate project by the same author, not a Cove runtime dependency.
 
 Grove semantics kept verbatim: plain weekdays include today, `next <weekday>`
 is strictly future, a bare time means today even if passed, `tonight` is
@@ -559,6 +572,12 @@ there), and a time range keeps only its start (no calendar events).
 friction. `QuickCaptureField` is shared by the Tasks screen and every list
 detail so the two entry points can't drift, and both await the write before
 clearing so a failure keeps the sentence.
+
+Competing time or recurrence expressions are blocking rather than guesses:
+the first interpretation stays in the editable fields and later tokens remain
+visible in the title. A date/time pair is resolved in the selected time zone
+both during parsing and at the final storage boundary, so a nonexistent
+spring-forward wall time cannot slip through after opening the details sheet.
 
 **`DueDescription` formats from the raw strings**, so a preview and the task
 row it becomes cannot word the same date differently.
@@ -590,6 +609,11 @@ created but not yet filled still exists.
 the same `sectioned` flag plus an optional list name: the Tasks screen's Clear
 All must not delete completed items out of lists it never showed, and a list's
 own Clear All touches only that heading's items.
+
+Clear All and list deletion both register semantic Undo. A deleted list keeps
+its exact source section plus neighboring list anchors; restoration inserts
+that section into the latest `Tasks.md` and fails closed if the name has been
+reused.
 
 Section surgery lives in `TaskListDocument` (pure, unit-tested) and runs
 inside one coordinated read-modify-write, the same guarantee every capture
@@ -1041,8 +1065,12 @@ remain that. It is written on every index rebuild, and one built for another
 day reads as empty, so a widget that hasn't refreshed since yesterday can't
 present yesterday's list as today's.
 
-**The toggle intent carries only the row's id** — everything else is looked up
-in the snapshot, which is by definition what the widget was drawing.
+**The toggle intent carries the row's semantic id and an explicit desired
+completion state.** The id fingerprints path, line, text, schedule, recurrence,
+and list context but deliberately excludes completion, so an old control
+cannot apply to replacement content while replaying the same desired state
+stays idempotent. Everything else is looked up in the snapshot the widget was
+drawing.
 
 **A recorded path is validated against the vault, never trusted.** A
 `TaskIdentity` is persisted state that crosses the App Group and can outlive
@@ -1050,7 +1078,7 @@ the vault it was written for — a queued toggle survives the user picking a
 different folder. Both the extension and the app's drain resolve the path
 against the vault they just opened (`fileURL(within:)`), holding it to the
 scanner's own rules — inside the vault, a Markdown file, nothing hidden or
-symlinked on the way in — and drop an operation that fails rather than
+packaged, aliased, or symlinked on the way in — and drop an operation that fails rather than
 retrying it, since no retry can make it apply.
 
 **Operations record desired state, not an instruction to toggle**, so
@@ -1060,6 +1088,10 @@ extension can resolve a bookmark its host app created is not guaranteed on
 iOS. The app drains the queue at the start of the next tree load, before the
 scan, so the index is still built once. The snapshot updates optimistically
 either way, which is what makes the tap feel instant.
+
+Malformed current-version snapshots are preserved once as an unreadable
+backup and rebuilt from authoritative app state. A future schema is never
+overwritten by an older build.
 
 **Retries are bounded at five**, counted by the app's drain only — the
 widget's own write failing is the expected case the queue exists for. The
@@ -1277,11 +1309,11 @@ Rough edges and surprises, not restatements of the design above.
   is just a line in `Tasks.md`: swipe the row away and retype. The live
   preview is the only thing between a typo and the note, which is why it isn't
   optional chrome.
-* Only a sentence Cove cannot write down is refused: an impossible date ("feb
-  30") or a token that is not a time ("25:00") disables the add button. Every
-  other diagnostic warns under the field and leaves return working — a bare
-  past time, two competing dates, and a clamped count all resolve to a real
-  task, and the preview shows which one.
+* A sentence Cove cannot write down is refused: an impossible date ("feb
+  30"), a token that is not a time ("25:00"), a nonexistent daylight-saving
+  wall time, or competing time/repeat expressions disables the add button.
+  Bare past times, two competing dates, and clamped counts still resolve to a
+  real task; the preview shows which one.
 * A bare time stays on today even when that moment has passed: "standup 9a"
   typed at 10:00 lands today, already overdue, and gets no notification. It
   now says so under the field, but it still lands.
@@ -1399,9 +1431,12 @@ Rough edges and surprises, not restatements of the design above.
 
 ### Testing
 
-* The unit-test bundle runs inside the sandboxed app host on macOS, so tests
-  that create bookmarks use the app container's temporary directory, which the
-  sandbox can bookmark.
+* The unit-test bundle runs inside the sandboxed app host on macOS. During an
+  XCTest launch, `CoveApp` uses an empty bookmark domain, no-op notification
+  boundaries, and process-temporary widget storage so the host cannot open the
+  developer's saved vault or mutate the signed App Group. Tests that create
+  bookmarks use the app container's temporary directory, which the sandbox can
+  bookmark.
 * External change detection isn't unit-testable (no iCloud in the test host) —
   only the URL filter and the editor reload logic are covered. Verify live
   behavior manually with a vault in iCloud Drive.

@@ -180,7 +180,11 @@ struct TodayWidgetView: View {
     /// necessarily denser than the app's 44pt controls, but hit regions must
     /// never overflow into an adjacent App Intent button.
     private func checkbox(for task: SnapshotTask) -> some View {
-        Button(intent: ToggleTaskIntent(taskID: task.id)) {
+        Button(
+            intent: ToggleTaskIntent(
+                taskID: task.id,
+                desiredCompletion: !task.isCompleted)
+        ) {
             checkboxGlyph(for: task)
                 .font(.system(size: 20, weight: .regular))
                 .frame(width: 32, height: 32)

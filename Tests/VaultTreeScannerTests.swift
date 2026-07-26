@@ -22,6 +22,7 @@ final class VaultTreeScannerTests: XCTestCase {
         //   notes.txt
         //   link-note.md    -> Zebra.md   (symlink)
         //   link-folder     -> Projects   (symlink)
+        //   Example.app/Inside.md  (package)
         try makeDir("Projects")
         try makeDir("Projects/Inner")
         try makeDir("Archive")
@@ -33,6 +34,8 @@ final class VaultTreeScannerTests: XCTestCase {
         try makeFile("Zebra.md")
         try makeFile("apple.md")
         try makeFile("notes.txt")
+        try makeDir("Example.app")
+        try makeFile("Example.app/Inside.md")
         try fileManager.createSymbolicLink(
             at: root.appendingPathComponent("link-note.md"),
             withDestinationURL: root.appendingPathComponent("Zebra.md"))
@@ -77,6 +80,19 @@ final class VaultTreeScannerTests: XCTestCase {
         let names = tree.children?.map(\.name) ?? []
         XCTAssertFalse(names.contains("link-note.md"))
         XCTAssertFalse(names.contains("link-folder"))
+    }
+
+    func testPackagesAreIgnoredRatherThanTraversedAsFolders() throws {
+        let packageURL = root.appendingPathComponent("Example.app")
+        XCTAssertEqual(
+            try packageURL.resourceValues(forKeys: [.isPackageKey]).isPackage,
+            true)
+
+        let tree = try VaultTreeScanner().scanTree(at: root)
+        XCTAssertFalse(
+            tree.children?.contains { $0.name == "Example.app" } == true)
+        XCTAssertFalse(
+            tree.allFiles.contains { $0.name == "Inside.md" })
     }
 
     func testMarkdownExtensionIsCaseInsensitive() throws {

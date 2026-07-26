@@ -242,6 +242,44 @@ final class TaskListDocumentTests: XCTestCase {
         XCTAssertEqual(TaskListDocument.removingSection(named: "Packing", from: note), note)
     }
 
+    func testRestoringRemovedSectionPreservesLaterEdits() throws {
+        let removal = try TaskListDocument.removingSectionWithRecordResult(
+            named: "Groceries",
+            from: note
+        ).get()
+        let edited = removal.text.replacingOccurrences(
+            of: "- [ ] Netflix",
+            with: "- [ ] Netflix\n- [ ] Music")
+
+        let restored = try TaskListDocument.restoringSectionResult(
+            removal.record,
+            in: edited
+        ).get()
+
+        XCTAssertTrue(restored.contains("## Groceries\n- [ ] Milk\n- [ ] Bread"))
+        XCTAssertTrue(restored.contains("- [ ] Netflix\n- [ ] Music"))
+        XCTAssertLessThan(
+            try XCTUnwrap(restored.range(of: "## Groceries")?.lowerBound),
+            try XCTUnwrap(restored.range(of: "## Subscriptions")?.lowerBound))
+    }
+
+    func testRestoringRemovedSectionFailsClosedOnNameCollision() throws {
+        let removal = try TaskListDocument.removingSectionWithRecordResult(
+            named: "Groceries",
+            from: note
+        ).get()
+        let recreated = try TaskListDocument.addingSectionResult(
+            named: "Groceries",
+            to: removal.text
+        ).get()
+
+        XCTAssertEqual(
+            TaskListDocument.restoringSectionResult(
+                removal.record,
+                in: recreated),
+            .failure(.nameAlreadyExists("Groceries")))
+    }
+
     // MARK: - Renaming
 
     func testRenamingSectionKeepsItsItems() {

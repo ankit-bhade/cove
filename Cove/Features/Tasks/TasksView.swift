@@ -7,6 +7,7 @@ import SwiftUI
 /// rolls forward to its next occurrence); tapping the row opens the note.
 struct TasksView: View {
     @Environment(VaultManager.self) private var vaultManager
+    @Environment(\.undoManager) private var undoManager
     @State private var actions = TaskActions()
     @State private var showsClearCompletedConfirmation = false
     /// Upcoming folds but arrives open — what's further out is still work
@@ -39,12 +40,15 @@ struct TasksView: View {
                     titleVisibility: .visible
                 ) {
                     Button("Clear All", role: .destructive) {
-                        actions.clearCompleted {
+                        actions.clearCompleted(
+                            in: vaultManager,
+                            undoManager: undoManager
+                        ) {
                             try await vaultManager.clearCompletedTasks()
                         }
                     }
                 } message: {
-                    Text("This permanently removes every completed task line from its Markdown note.")
+                    Text("This removes every completed task line from its Markdown note. You can undo the clear.")
                 }
                 // Editor autosaves don't rescan the vault, so returning to
                 // this tab rebuilds the index to pick up freshly typed tasks.

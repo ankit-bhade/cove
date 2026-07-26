@@ -116,12 +116,34 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
     /// Markdown. It is deliberately separate from authoritative completion.
     let pendingCompletion: Bool?
 
-    private var rawTaskID: String { "\(filePath)#\(lineNumber)" }
+    private var notificationRawTaskID: String { "\(filePath)#\(lineNumber)" }
+    private var semanticRawTaskID: String {
+        let fields: [String?] = [
+            filePath,
+            String(lineNumber),
+            text,
+            dueDateString,
+            dueTimeString,
+            recurrenceTag,
+            recurrenceAnchorDateString,
+            isSectionedDocument ? "sectioned" : "unsectioned",
+        ]
+        return fields.map { value in
+            guard let value else { return "nil" }
+            return "value:\(value.utf8.count):\(value)"
+        }
+        .joined(separator: "|")
+    }
+
     /// App Intent parameters can be persisted by the system, so never hand
-    /// them an absolute vault path.
-    var id: String { "cove-widget:" + CoveTaskNotificationIdentifier.digest(rawTaskID) }
+    /// them an absolute vault path. The opaque identifier fingerprints the
+    /// semantic task, not just its current line: a stale timeline must not
+    /// resolve a replacement task that later occupies the same path and line.
+    var id: String {
+        "cove-widget:" + CoveTaskNotificationIdentifier.digest(semanticRawTaskID)
+    }
     var notificationIdentifier: String {
-        CoveTaskNotificationIdentifier.identifier(forTaskID: rawTaskID)
+        CoveTaskNotificationIdentifier.identifier(forTaskID: notificationRawTaskID)
     }
     var fileURL: URL { URL(fileURLWithPath: filePath) }
     var recurrence: RecurrenceRule? { recurrenceTag.flatMap(RecurrenceRule.init(tagText:)) }
@@ -386,6 +408,10 @@ struct TodaySnapshot: Codable, Sendable {
 
     var openTasks: [SnapshotTask] { tasks.filter { !$0.isCompleted } }
 
+    func task(matchingWidgetID taskID: String) -> SnapshotTask? {
+        tasks.first { $0.id == taskID }
+    }
+
     static func tasks(dueToday dayString: String, from allTasks: [TaskItem]) -> [SnapshotTask] {
         let today =
             allTasks
@@ -622,8 +648,17 @@ struct PendingTaskOperation: Codable, Hashable, Sendable, Identifiable {
     }
 
     var taskFingerprint: String {
-        CoveTaskNotificationIdentifier.identifier(
-            forTaskID: "\(taskIdentity.filePath)#\(taskIdentity.lineNumber)")
+        let task = SnapshotTask(
+            filePath: taskIdentity.filePath,
+            lineNumber: taskIdentity.lineNumber,
+            text: taskIdentity.text,
+            dueDateString: taskIdentity.dueDateString,
+            dueTimeString: taskIdentity.dueTimeString,
+            recurrenceTag: taskIdentity.recurrenceTag,
+            isCompleted: false,
+            recurrenceAnchorDateString: taskIdentity.recurrenceAnchorDateString,
+            isSectionedDocument: taskIdentity.isSectionedDocument)
+        return task.id
     }
 }
 
@@ -728,6 +763,8 @@ private struct PendingTaskOperationQueue: Codable, Sendable {
 struct WidgetSnapshotStore: Sendable {
     static let maximumPendingOperations = 256
     static let maximumFailureReceipts = 100
+    static let unreadableSnapshotBackupName =
+        "today-unreadable-backup.json"
 
     private let containerURL: URL?
 
@@ -736,6 +773,10 @@ struct WidgetSnapshotStore: Sendable {
     }
 
     private var snapshotURL: URL? { containerURL?.appendingPathComponent("today.json") }
+    private var unreadableSnapshotBackupURL: URL? {
+        containerURL?.appendingPathComponent(
+            Self.unreadableSnapshotBackupName)
+    }
     private var bookmarkURL: URL? { containerURL?.appendingPathComponent("vault.bookmark") }
     private var pendingOperationsURL: URL? {
         containerURL?.appendingPathComponent("pending-task-operations-v2.json")
@@ -1108,7 +1149,25 @@ struct WidgetSnapshotStore: Sendable {
         return try FileCoordination.write(at: url, options: .forMerging) { coordinatedURL in
             let previous: TodaySnapshot?
             if FileManager.default.fileExists(atPath: coordinatedURL.path) {
-                previous = try decodeSnapshot(Data(contentsOf: coordinatedURL))
+                let data = try Data(contentsOf: coordinatedURL)
+                do {
+                    previous = try decodeSnapshot(data)
+                } catch let error as WidgetStoreError {
+                    if case .unsupportedSchema(_, let found, let supported) = error,
+                        found > supported
+                    {
+                        // Never let an older app overwrite state produced by
+                        // a newer schema it cannot interpret.
+                        throw error
+                    }
+                    guard !requireExisting else { throw error }
+                    try preserveUnreadableSnapshot(data)
+                    previous = nil
+                } catch {
+                    guard !requireExisting else { throw error }
+                    try preserveUnreadableSnapshot(data)
+                    previous = nil
+                }
             } else {
                 guard !requireExisting else {
                     throw WidgetStoreError.artifactMissing(.snapshot)
@@ -1126,6 +1185,19 @@ struct WidgetSnapshotStore: Sendable {
 
     private func decodeSnapshot(_ data: Data) throws -> TodaySnapshot {
         try JSONDecoder().decode(TodaySnapshot.self, from: data)
+    }
+
+    /// The snapshot is derived and can be rebuilt, but retaining the damaged
+    /// bytes makes a repair auditable. One stable backup avoids unbounded
+    /// private-container growth if storage keeps failing.
+    private func preserveUnreadableSnapshot(_ data: Data) throws {
+        guard let url = unreadableSnapshotBackupURL else {
+            throw WidgetStoreError.appGroupUnavailable
+        }
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            return
+        }
+        try writeProtected(data, to: url)
     }
 
     private func loadQueueMigratingIfNeeded() throws -> PendingTaskOperationQueue {

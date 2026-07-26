@@ -8,6 +8,7 @@ struct TaskListDetailView: View {
 
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.undoManager) private var undoManager
     @State private var actions = TaskActions()
     @State private var showsRenamePrompt = false
     @State private var renameText = ""
@@ -104,12 +105,17 @@ struct TaskListDetailView: View {
             titleVisibility: .visible
         ) {
             Button("Clear All", role: .destructive) {
-                actions.clearCompleted {
+                actions.clearCompleted(
+                    in: vaultManager,
+                    undoManager: undoManager
+                ) {
                     try await vaultManager.clearCompletedTasks(inList: listName)
                 }
             }
         } message: {
-            Text("This permanently removes every completed item from “\(listName)”. Its open items stay.")
+            Text(
+                "This removes every completed item from “\(listName)”. Its open items stay, and you can undo the clear."
+            )
         }
         .confirmationDialog(
             "Delete “\(listName)”?",
@@ -120,7 +126,7 @@ struct TaskListDetailView: View {
                 delete()
             }
         } message: {
-            Text("This removes the list and every task in it from Tasks.md.")
+            Text("This removes the list and every task in it from Tasks.md. You can undo the deletion.")
         }
         .alert("Rename List", isPresented: $showsRenamePrompt) {
             TextField("List name", text: $renameText)
@@ -179,11 +185,28 @@ struct TaskListDetailView: View {
     private func delete() {
         Task {
             do {
-                try await vaultManager.deleteList(named: listName)
+                let record = try await vaultManager.deleteList(
+                    named: listName)
+                registerListDeletionUndo(record)
                 dismiss()
             } catch {
                 actions.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func registerListDeletionUndo(
+        _ record: TaskListDocument.SectionRemovalRecord
+    ) {
+        undoManager?.registerUndo(withTarget: vaultManager) { manager in
+            Task {
+                do {
+                    try await manager.restoreDeletedList(record)
+                } catch {
+                    actions.errorMessage = error.localizedDescription
+                }
+            }
+        }
+        undoManager?.setActionName("Delete List")
     }
 }

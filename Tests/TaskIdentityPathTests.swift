@@ -54,4 +54,40 @@ final class TaskIdentityPathTests: XCTestCase {
                 .fileURL(within: vault))
         XCTAssertNil(identity(path: "/Users/someone/Vault/.hidden.md").fileURL(within: vault))
     }
+
+    func testExistingPackageAndSymlinkPathsAreRejected() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "cove-identity-path-\(UUID().uuidString)",
+                isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let package = root.appendingPathComponent(
+            "Example.app",
+            isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: package,
+            withIntermediateDirectories: true)
+        let packagedNote = package.appendingPathComponent("Tasks.md")
+        try "# Packaged\n".write(
+            to: packagedNote,
+            atomically: true,
+            encoding: .utf8)
+        XCTAssertEqual(
+            try package.resourceValues(forKeys: [.isPackageKey]).isPackage,
+            true)
+        XCTAssertNil(
+            identity(path: packagedNote.path).fileURL(within: root))
+
+        let realNote = root.appendingPathComponent("Real.md")
+        let linkedNote = root.appendingPathComponent("Linked.md")
+        try "# Real\n".write(
+            to: realNote,
+            atomically: true,
+            encoding: .utf8)
+        try FileManager.default.createSymbolicLink(
+            at: linkedNote,
+            withDestinationURL: realNote)
+        XCTAssertNil(
+            identity(path: linkedNote.path).fileURL(within: root))
+    }
 }

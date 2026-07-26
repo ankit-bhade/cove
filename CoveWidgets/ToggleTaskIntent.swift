@@ -5,9 +5,9 @@ import WidgetKit
 
 /// Checking a task off from the Home Screen.
 ///
-/// The intent carries only the row's identity; everything else is looked up in
-/// the shared snapshot, which is by definition exactly what the widget was
-/// drawing when the tap landed.
+/// The intent originates from a rendered timeline entry. Shared state may
+/// already have advanced, so it carries both the displayed task fingerprint
+/// and the displayed control's explicit desired state.
 struct ToggleTaskIntent: AppIntent {
     static let title: LocalizedStringResource = "Complete Task"
     static let description = IntentDescription("Checks a Cove task off from the Today widget.")
@@ -19,14 +19,22 @@ struct ToggleTaskIntent: AppIntent {
     @Parameter(title: "Task")
     var taskID: String
 
+    /// Optional only so controls persisted by an older Cove build fail safe.
+    /// Every control emitted by this build supplies an explicit desired state.
+    @Parameter(title: "Completed")
+    var desiredCompletion: Bool?
+
     init() {}
 
-    init(taskID: String) {
+    init(taskID: String, desiredCompletion: Bool) {
         self.taskID = taskID
+        self.desiredCompletion = desiredCompletion
     }
 
     func perform() async throws -> some IntentResult {
-        _ = try await TaskToggleWriter().setCompletion(taskID: taskID)
+        _ = try await TaskToggleWriter().setCompletion(
+            taskID: taskID,
+            desiredCompletion: desiredCompletion)
         WidgetCenter.shared.reloadTimelines(ofKind: CoveSharedContainer.todayWidgetKind)
         return .result()
     }
@@ -54,13 +62,19 @@ struct TaskToggleWriter {
     @discardableResult
     func setCompletion(
         taskID: String,
+        desiredCompletion: Bool?,
         now: Date = Date()
     ) async throws -> TaskCompletionMutationOutcome {
+        // A control saved before explicit desired state existed must never
+        // fall back to "toggle whatever is current."
+        guard let desiredCompletion else { return .stale }
         let snapshot = try store.readSnapshotResult().get()
-        guard let task = snapshot.tasks.first(where: { $0.id == taskID }) else {
-            throw WidgetStoreError.taskNotFound
+        // The semantic ID includes the rendered title/date/repeat identity.
+        // If the line was edited or reused since this timeline was rendered,
+        // the stale tap is an idempotent no-op.
+        guard let task = snapshot.task(matchingWidgetID: taskID) else {
+            return .stale
         }
-        let desiredCompletion = !task.isCompleted
         let proposedOperation = PendingTaskOperation(
             task: task, desiredCompletion: desiredCompletion)
 
@@ -78,8 +92,8 @@ struct TaskToggleWriter {
             }
         }
 
-        // A completed task must not notify after the widget has accepted the
-        // tap, even if the vault write has to wait in the durable queue.
+        // Remove the reminder only after direct or terminal application. A
+        // durably deferred operation keeps it until completion is confirmed.
         if desiredCompletion, outcome != .deferred {
             UNUserNotificationCenter.current().removePendingNotificationRequests(
                 withIdentifiers: [task.notificationIdentifier])

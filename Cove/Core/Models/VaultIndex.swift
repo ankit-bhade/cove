@@ -228,7 +228,7 @@ struct TaskIdentity: Codable, Hashable, Sendable {
     /// different folder. So a write validates the path against the vault it
     /// is about to open rather than trusting the string, and holds it to the
     /// same rules the scanner uses: inside the vault, a Markdown file,
-    /// nothing hidden or symlinked on the way in.
+    /// nothing hidden, packaged, aliased, or symlinked on the way in.
     func fileURL(within vaultRoot: URL) -> URL? {
         let url = fileURL.standardizedFileURL
         guard url.pathExtension.lowercased() == "md" else { return nil }
@@ -238,6 +238,40 @@ struct TaskIdentity: Codable, Hashable, Sendable {
             Array(resolved.prefix(root.count)) == root,
             !resolved.dropFirst(root.count).contains(where: { $0.hasPrefix(".") })
         else { return nil }
+        let representedRoot = vaultRoot.standardizedFileURL.pathComponents
+        let represented = url.pathComponents
+        guard represented.count > representedRoot.count,
+            Array(represented.prefix(representedRoot.count))
+                == representedRoot
+        else { return nil }
+
+        var candidate = vaultRoot.standardizedFileURL
+        for (offset, component) in represented.dropFirst(representedRoot.count).enumerated() {
+            candidate.appendPathComponent(component)
+            guard FileManager.default.fileExists(atPath: candidate.path) else {
+                continue
+            }
+            guard
+                let values = try? candidate.resourceValues(
+                    forKeys: [
+                        .isAliasFileKey,
+                        .isDirectoryKey,
+                        .isPackageKey,
+                        .isSymbolicLinkKey,
+                    ]),
+                values.isAliasFile != true,
+                values.isPackage != true,
+                values.isSymbolicLink != true
+            else { return nil }
+            let isFinal =
+                offset
+                == represented.count - representedRoot.count - 1
+            if isFinal {
+                guard values.isDirectory != true else { return nil }
+            } else {
+                guard values.isDirectory == true else { return nil }
+            }
+        }
         return url
     }
 

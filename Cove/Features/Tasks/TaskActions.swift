@@ -77,14 +77,34 @@ final class TaskActions {
         }
     }
 
-    /// Each screen clears exactly what it shows, so the sweep itself is the
-    /// caller's — this owns only the in-flight flag the header's button reads.
-    func clearCompleted(_ operation: @escaping () async throws -> Void) {
+    /// Each screen clears exactly what it shows. The manager returns the
+    /// semantic deletion records as one Undo group; restoring them later
+    /// inserts only those lines into the newest note contents.
+    func clearCompleted(
+        in vaultManager: VaultManager,
+        undoManager: UndoManager?,
+        _ operation: @escaping () async throws -> [DeletedTaskRecord]
+    ) {
         isClearingCompleted = true
         Task {
             defer { isClearingCompleted = false }
             do {
-                try await operation()
+                let records = try await operation()
+                guard !records.isEmpty else { return }
+                undoManager?.registerUndo(withTarget: vaultManager) {
+                    [weak self] manager in
+                    Task {
+                        do {
+                            try await manager.restoreDeletedTasks(records)
+                        } catch {
+                            self?.errorMessage = error.localizedDescription
+                            CoveLog.vault.error(
+                                "Bulk task undo failed: \(error.localizedDescription, privacy: .private)"
+                            )
+                        }
+                    }
+                }
+                undoManager?.setActionName("Clear Completed Tasks")
             } catch {
                 errorMessage = error.localizedDescription
             }

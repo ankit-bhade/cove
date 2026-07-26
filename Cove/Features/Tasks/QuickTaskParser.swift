@@ -5,6 +5,7 @@ enum TaskDraftValidationIssue: Equatable, Sendable {
     case unsafeTitle
     case invalidDate(String)
     case invalidTime(String)
+    case nonexistentLocalTime(date: String, time: String)
     case scheduleWithoutDate
 
     var message: String {
@@ -18,6 +19,9 @@ enum TaskDraftValidationIssue: Equatable, Sendable {
             return "The date \(value) does not exist."
         case .invalidTime(let value):
             return "The time \(value) is not a valid 24-hour time."
+        case .nonexistentLocalTime(let date, let time):
+            return
+                "\(date) at \(time) does not exist in this time zone because the clock moves forward."
         case .scheduleWithoutDate:
             return "A time or repeat rule requires a due date."
         }
@@ -64,6 +68,12 @@ struct TaskDraft: Equatable, Sendable {
     }
 
     var validationIssues: [TaskDraftValidationIssue] {
+        validationIssues()
+    }
+
+    func validationIssues(
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> [TaskDraftValidationIssue] {
         var issues: [TaskDraftValidationIssue] = []
         if sanitizedTitle.isEmpty { issues.append(.emptyTitle) }
         if title.trimmingCharacters(in: .whitespaces) != sanitizedTitle {
@@ -81,14 +91,29 @@ struct TaskDraft: Equatable, Sendable {
         if let dueTimeString, TaskCalendar.timeComponents(from: dueTimeString) == nil {
             issues.append(.invalidTime(dueTimeString))
         }
+        if let dueDateString, let dueTimeString,
+            case .failure(.nonexistentLocalTime) = TaskCalendar.resolve(
+                date: dueDateString,
+                time: dueTimeString,
+                timeZone: timeZone,
+                nonexistentTime: .reject,
+                repeatedTime: .first)
+        {
+            issues.append(
+                .nonexistentLocalTime(
+                    date: dueDateString,
+                    time: dueTimeString))
+        }
         if dueDateString == nil, dueTimeString != nil || recurrence != nil {
             issues.append(.scheduleWithoutDate)
         }
         return issues
     }
 
-    func validatedMarkdownLine() throws -> String {
-        let issues = validationIssues
+    func validatedMarkdownLine(
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) throws -> String {
+        let issues = validationIssues(timeZone: timeZone)
         guard issues.isEmpty else { throw TaskDraftValidationError(issues: issues) }
         guard let dueDateString else { return "- [ ] \(sanitizedTitle)" }
         var line = "- [ ] \(sanitizedTitle) @due(\(dueDateString)"
@@ -122,6 +147,8 @@ enum QuickTaskParser {
         enum Kind: Equatable, Sendable {
             case impossibleDate
             case ambiguousDate
+            case ambiguousTime
+            case ambiguousRecurrence
             case invalidTime
             case valueTooLarge
             case pastTime
@@ -131,17 +158,17 @@ enum QuickTaskParser {
         let message: String
         let sourceRange: NSRange
 
-        /// Only a sentence that cannot be written down correctly is refused.
-        /// A date that does not exist or a time that is not a time would
-        /// produce a line the parser then rejects, so those block. The rest
-        /// describe a task Cove *can* record and the user may well have
-        /// meant: a bare past time is deliberately today (grove parity), a
-        /// clamped count still resolves to a real date, and an ambiguous
-        /// date has already been resolved one way in the live preview. Those
-        /// warn under the field and leave return working.
+        /// A sentence that cannot be written down correctly is refused. An
+        /// invalid date/time cannot pass storage validation, and competing
+        /// time or recurrence expressions have no safe implicit winner.
+        /// The remaining diagnostics describe a task Cove *can* record and
+        /// the user may well have meant: a bare past time is deliberately
+        /// today (grove parity), a clamped count resolves to a real date, and
+        /// an ambiguous numeric date has already been resolved one way in the
+        /// live preview. Those warn and leave return working.
         var blocksCapture: Bool {
             switch kind {
-            case .impossibleDate, .invalidTime:
+            case .impossibleDate, .ambiguousTime, .ambiguousRecurrence, .invalidTime:
                 return true
             case .ambiguousDate, .valueTooLarge, .pastTime:
                 return false
@@ -239,12 +266,15 @@ enum QuickTaskParser {
     private struct Claims {
         private(set) var spans: [NSRange] = []
 
-        mutating func tryClaim(_ range: NSRange) -> Bool {
-            let overlaps = spans.contains {
+        func overlaps(_ range: NSRange) -> Bool {
+            spans.contains {
                 range.location < $0.location + $0.length
                     && range.location + range.length > $0.location
             }
-            guard !overlaps else { return false }
+        }
+
+        mutating func tryClaim(_ range: NSRange) -> Bool {
+            guard !overlaps(range) else { return false }
             spans.append(range)
             return true
         }
@@ -319,12 +349,50 @@ enum QuickTaskParser {
                     message: "That is not a valid clock time.",
                     sourceRange: range))
         }
+        func recordAmbiguousRecurrence(_ range: NSRange) {
+            diagnostics.append(
+                Diagnostic(
+                    kind: .ambiguousRecurrence,
+                    message:
+                        "This sentence contains more than one repeat rule. Keep one rule or edit the task details.",
+                    sourceRange: range))
+        }
+        func setRecurrence(
+            _ rule: RecurrenceRule,
+            range: NSRange
+        ) {
+            guard !claims.overlaps(range) else { return }
+            guard recurrence == nil else {
+                recordAmbiguousRecurrence(range)
+                return
+            }
+            guard claims.tryClaim(range) else { return }
+            recurrence = rule
+        }
+        func setTime(
+            _ resolved: String,
+            range: NSRange
+        ) {
+            guard !claims.overlaps(range) else { return }
+            guard time == nil else {
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .ambiguousTime,
+                        message:
+                            "This sentence contains more than one time. Keep one time or edit the task details.",
+                        sourceRange: range))
+                return
+            }
+            guard claims.tryClaim(range) else { return }
+            time = resolved
+            timeSourceRange = range
+        }
 
         // ---- 1. Recurrence ("every ...") ---------------------------------
         everyUnitRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range), recurrence == nil,
-                let unit = text(m, 2)
-            else { return }
+            guard let m, !claims.overlaps(m.range), let unit = text(m, 2) else {
+                return
+            }
             let singular = unit.hasSuffix("s") ? String(unit.dropLast()) : unit
             guard let frequency = unitFrequencies[singular] else { return }
             let typedInterval =
@@ -337,32 +405,38 @@ enum QuickTaskParser {
                             "Repeat intervals cannot exceed \(RecurrenceRule.maximumInterval). Choose a smaller interval.",
                         sourceRange: m.range))
             }
-            recurrence = RecurrenceRule(
-                frequency: frequency,
-                interval: typedInterval)
+            setRecurrence(
+                RecurrenceRule(
+                    frequency: frequency,
+                    interval: typedInterval),
+                range: m.range)
         }
 
         everyWeekdaySetRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range), recurrence == nil,
-                let list = text(m, 1)
-            else { return }
+            guard let m, !claims.overlaps(m.range), let list = text(m, 1) else {
+                return
+            }
             if list == "weekday" || list == "weekdays" {
-                recurrence = .everyWeekday
+                setRecurrence(.everyWeekday, range: m.range)
             } else {
                 let weekdays =
                     list
                     .components(separatedBy: CharacterSet(charactersIn: " ,&"))
                     .filter { !$0.isEmpty && $0 != "and" }
                     .compactMap { RecurrenceRule.weekdayNumber(for: $0) }
-                recurrence = RecurrenceRule(frequency: .weekly, byWeekday: weekdays)
+                setRecurrence(
+                    RecurrenceRule(frequency: .weekly, byWeekday: weekdays),
+                    range: m.range)
             }
         }
 
         adverbRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range), recurrence == nil,
+            guard let m, !claims.overlaps(m.range),
                 let word = text(m, 1), let frequency = adverbFrequencies[word]
             else { return }
-            recurrence = RecurrenceRule(frequency: frequency)
+            setRecurrence(
+                RecurrenceRule(frequency: frequency),
+                range: m.range)
         }
 
         // ---- 2. Dates (in grove's rule order) -----------------------------
@@ -509,7 +583,7 @@ enum QuickTaskParser {
         // Cove has no calendar events, so the range's start time is used and
         // the end time is dropped; the whole range span still leaves the title.
         timeRangeRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range) else { return }
+            guard let m, !claims.overlaps(m.range) else { return }
             let endMeridiem = normalizeMeridiem(text(m, 6))
             let startMeridiem = normalizeMeridiem(text(m, 3)) ?? endMeridiem
             let start = toHHMM(
@@ -524,29 +598,20 @@ enum QuickTaskParser {
                 recordInvalidTime(m.range)
                 return
             }
-            if time == nil {
-                time = start
-                timeSourceRange = m.range
-            }
+            setTime(start, range: m.range)
         }
 
         // ---- 4. Single times ----------------------------------------------
         noonRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range) else { return }
-            if time == nil {
-                time = "12:00"
-                timeSourceRange = m.range
-            }
+            guard let m else { return }
+            setTime("12:00", range: m.range)
         }
         midnightRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range) else { return }
-            if time == nil {
-                time = "00:00"
-                timeSourceRange = m.range
-            }
+            guard let m else { return }
+            setTime("00:00", range: m.range)
         }
         hourMinuteRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range) else { return }
+            guard let m, !claims.overlaps(m.range) else { return }
             guard
                 let resolved = toHHMM(
                     hour: text(m, 1).flatMap(Int.init) ?? 0,
@@ -556,13 +621,10 @@ enum QuickTaskParser {
                 recordInvalidTime(m.range)
                 return
             }
-            if time == nil {
-                time = resolved
-                timeSourceRange = m.range
-            }
+            setTime(resolved, range: m.range)
         }
         compactTimeRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, let digits = text(m, 1), claims.tryClaim(m.range) else {
+            guard let m, !claims.overlaps(m.range), let digits = text(m, 1) else {
                 return
             }
             let hour = Int(digits.dropLast(2)) ?? 0
@@ -575,13 +637,10 @@ enum QuickTaskParser {
                 recordInvalidTime(m.range)
                 return
             }
-            if time == nil {
-                time = resolved
-                timeSourceRange = m.range
-            }
+            setTime(resolved, range: m.range)
         }
         hourMeridiemRegex.enumerateMatches(in: lower as String, range: whole) { m, _, _ in
-            guard let m, claims.tryClaim(m.range) else { return }
+            guard let m, !claims.overlaps(m.range) else { return }
             guard
                 let resolved = toHHMM(
                     hour: text(m, 1).flatMap(Int.init) ?? 0,
@@ -591,10 +650,7 @@ enum QuickTaskParser {
                 recordInvalidTime(m.range)
                 return
             }
-            if time == nil {
-                time = resolved
-                timeSourceRange = m.range
-            }
+            setTime(resolved, range: m.range)
         }
 
         // ---- 5. Finalize ---------------------------------------------------
@@ -628,6 +684,26 @@ enum QuickTaskParser {
             date
             ?? (defaultingToToday
                 ? ymdString(from: now, calendar: calendar) : nil)
+
+        if let resolvedDate, let time {
+            switch TaskCalendar.resolve(
+                date: resolvedDate,
+                time: time,
+                timeZone: timeZone,
+                nonexistentTime: .reject,
+                repeatedTime: .first)
+            {
+            case .failure(.nonexistentLocalTime):
+                diagnostics.append(
+                    Diagnostic(
+                        kind: .invalidTime,
+                        message:
+                            "\(resolvedDate) at \(time) does not exist in this time zone because the clock moves forward.",
+                        sourceRange: timeSourceRange ?? whole))
+            case .success, .failure:
+                break
+            }
+        }
 
         if resolvedBareTimeToToday, let resolvedDate, let time,
             case .success(let resolution) = TaskCalendar.resolve(

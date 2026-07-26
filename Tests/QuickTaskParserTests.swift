@@ -397,6 +397,77 @@ final class QuickTaskParserTests: XCTestCase {
         XCTAssertTrue(result.canCapture)
     }
 
+    func testMultipleTimesAreBlockingAndTheUnchosenTimeRemainsVisible() {
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "meet 3pm 4pm", now: now, timeZone: calendar.timeZone)
+
+        XCTAssertEqual(result.draft.dueTimeString, "15:00")
+        XCTAssertEqual(result.draft.title, "Meet 4pm")
+        XCTAssertTrue(
+            result.diagnostics.contains { $0.kind == .ambiguousTime })
+        XCTAssertFalse(result.canCapture)
+    }
+
+    func testMultipleRepeatRulesAreBlockingAndTheUnchosenRuleRemainsVisible() {
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "water plants every week monthly",
+            now: now,
+            timeZone: calendar.timeZone)
+
+        XCTAssertEqual(
+            result.draft.recurrence,
+            RecurrenceRule(frequency: .weekly))
+        XCTAssertEqual(result.draft.title, "Water plants monthly")
+        XCTAssertTrue(
+            result.diagnostics.contains {
+                $0.kind == .ambiguousRecurrence
+            })
+        XCTAssertFalse(result.canCapture)
+    }
+
+    func testExplicitDateWithNonexistentDSTTimeIsRejected() throws {
+        let zone = try XCTUnwrap(
+            TimeZone(identifier: "America/New_York"))
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "call Mar 8 2:30am",
+            now: TaskCalendar.gregorian(timeZone: zone).date(
+                from: DateComponents(
+                    year: 2026, month: 1, day: 1, hour: 12))!,
+            timeZone: zone)
+
+        XCTAssertEqual(result.draft.dueDateString, "2026-03-08")
+        XCTAssertEqual(result.draft.dueTimeString, "02:30")
+        XCTAssertTrue(
+            result.diagnostics.contains { $0.kind == .invalidTime })
+        XCTAssertFalse(result.canCapture)
+        XCTAssertEqual(
+            result.draft.validationIssues(timeZone: zone),
+            [
+                .nonexistentLocalTime(
+                    date: "2026-03-08",
+                    time: "02:30")
+            ])
+        XCTAssertThrowsError(
+            try result.draft.validatedMarkdownLine(timeZone: zone))
+    }
+
+    func testExplicitRepeatedDSTTimeUsesTheFirstOccurrenceDeterministically() throws {
+        let zone = try XCTUnwrap(
+            TimeZone(identifier: "America/New_York"))
+        let result = QuickTaskParser.parseWithDiagnostics(
+            "call Nov 1 1:30am",
+            now: TaskCalendar.gregorian(timeZone: zone).date(
+                from: DateComponents(
+                    year: 2026, month: 1, day: 1, hour: 12))!,
+            timeZone: zone)
+
+        XCTAssertEqual(result.draft.dueDateString, "2026-11-01")
+        XCTAssertEqual(result.draft.dueTimeString, "01:30")
+        XCTAssertFalse(
+            result.diagnostics.contains(where: \.blocksCapture))
+        XCTAssertTrue(result.canCapture)
+    }
+
     /// Only a sentence Cove cannot write down correctly is refused. These
     /// three all produce a valid task line, and two of them are documented
     /// grove-parity behavior, so blocking return on them would have made

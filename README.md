@@ -56,7 +56,9 @@ many are waiting behind it.
 Checking a task off rewrites that line in its original Markdown file.
 Opening the completed section reveals a Clear All Completed row at the end of
 it that, after confirmation, removes every completed Cove task line from its
-original note. A single task
+original note. Clear All preflights every affected note before its first
+write and registers one semantic Undo, so a stale target aborts the sweep and
+later unrelated edits survive restoration. A single task
 can be deleted by swiping its row (or right-clicking it), which removes that
 line from its note. Task completion and deletion register semantic Undo, so
 later edits to the same note are preserved — including for a recurring task,
@@ -77,7 +79,10 @@ cleaned-up title, the due date and time, the repeat rule — so pressing
 return adds the task immediately, with no confirmation step. When Cove
 reads a sentence wrong, the sliders button beside the preview opens a
 details sheet where the title, date, time, and repeat can be set by hand
-before adding. Capture controls show progress while the Markdown write is
+before adding. Competing time or repeat expressions remain visible in the
+title and block capture until reviewed; a local clock time that does not
+exist during a daylight-saving transition is also rejected instead of being
+silently shifted. Capture controls show progress while the Markdown write is
 finishing, reject accidental duplicate taps, and keep the typed sentence in
 place if saving fails so it can be retried. Added tasks go into a `Tasks.md`
 note at the vault root
@@ -107,9 +112,10 @@ undated ones follow in the order you added them, and timed ones notify like
 any other task. List items never appear on the Tasks screen, and the Tasks
 screen's Clear All never touches them; each list has its own Clear All, in
 its Done header, that removes that list's completed items and leaves its open
-ones. Lists can be renamed, and deleting a list — from its own Options menu,
+ones; that clear is undoable too. Lists can be renamed, and deleting a list — from its own Options menu,
 or by swiping or right-clicking its row in the overview — removes it and its
-items from `Tasks.md` after confirmation.
+items from `Tasks.md` after confirmation. Undo reinserts only the removed
+section into the latest file and refuses if a new list has reused the name.
 The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same
@@ -148,7 +154,9 @@ frameworks only — no third-party dependencies.
 
 The Today widget is iOS-only; it builds and installs on the simulator as is,
 but running it on a device needs the `group.com.ankitbhade.Cove` App Group
-registered for your team, since the app and the widget share data through it.
+registered for your team. The container holds only the current derived Today
+snapshot, the vault bookmark needed for a direct write, and a bounded pending
+desired-state queue.
 
 ## Building
 
@@ -171,6 +179,9 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 
 # Check Swift formatting
 xcrun swift-format lint --configuration .swift-format --recursive Cove CoveWidgets Tests
+
+# Run the full warnings-as-errors verification (tests and Release builds)
+Scripts/verify-build.sh
 ```
 
 ## Creating and selecting a development vault
@@ -187,17 +198,17 @@ Then launch Cove and use **Select Vault Folder**:
 
 - **macOS** — a standard open panel appears; choose the folder.
 - **iOS Simulator** — the Files document picker appears. The simulator's
-  filesystem is separate from your Mac's, so first put some files where the
-  simulator can see them, e.g. drag a folder onto the simulator window, or:
-
-  ```sh
-  xcrun simctl booted addmedia  # (for media) — for folders, use the Files app share sheet
-  ```
-
-  Easiest path: in the booted simulator open **Files › On My iPhone**, create
-  a folder, then select it from Cove. Any writable folder offered by the
-  picker works.
+  filesystem is separate from your Mac's. In the booted simulator, open
+  **Files › On My iPhone**, create a folder, add a Markdown file if desired,
+  then select that folder from Cove. Any writable folder offered by the
+  picker works; `simctl addmedia` does not import folders into Files.
 
 The selected folder is remembered per device via a security-scoped bookmark.
 If the folder is later moved or deleted, Cove shows a recovery screen where
 you can reselect a vault.
+
+## Source attribution
+
+Quick capture is a Swift port of the author’s MIT-licensed Grove parser.
+The pinned source, adapted files, and license notice are recorded in
+[`ATTRIBUTION.md`](ATTRIBUTION.md).

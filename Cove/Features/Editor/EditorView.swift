@@ -7,6 +7,7 @@ import SwiftUI
 struct EditorView: View {
     @State private var document: NoteDocument
     @State private var checkboxErrorMessage: String?
+    @State private var isConfirmingRecoveredDraftDiscard = false
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
 
@@ -67,7 +68,7 @@ struct EditorView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             HStack {
                                 Button("Discard Draft", role: .destructive) {
-                                    Task { await document.discardRecoveredDraft() }
+                                    isConfirmingRecoveredDraftDiscard = true
                                 }
                                 Spacer()
                                 if document.saveErrorDescription != nil,
@@ -125,6 +126,20 @@ struct EditorView: View {
             }
         }
         .navigationTitle(document.fileURL.deletingPathExtension().lastPathComponent)
+        .confirmationDialog(
+            "Discard Recovered Draft?",
+            isPresented: $isConfirmingRecoveredDraftDiscard,
+            titleVisibility: .visible
+        ) {
+            Button("Discard Recovered Draft", role: .destructive) {
+                Task { await document.discardRecoveredDraft() }
+            }
+            Button("Keep Draft", role: .cancel) {}
+        } message: {
+            Text(
+                "This permanently removes the recovered edits and reloads the last saved version of the note."
+            )
+        }
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif

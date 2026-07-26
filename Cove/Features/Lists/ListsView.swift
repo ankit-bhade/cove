@@ -7,6 +7,7 @@ import SwiftUI
 /// shopping list doesn't crowd out what's actually due.
 struct ListsView: View {
     @Environment(VaultManager.self) private var vaultManager
+    @Environment(\.undoManager) private var undoManager
     @State private var errorMessage: String?
     @State private var newListName = ""
     @State private var showsNewListPrompt = false
@@ -119,7 +120,7 @@ struct ListsView: View {
                 if let name = pendingDeletion { deleteList(named: name) }
             }
         } message: {
-            Text("This removes the list and every task in it from Tasks.md.")
+            Text("This removes the list and every task in it from Tasks.md. You can undo the deletion.")
         }
     }
 
@@ -174,10 +175,26 @@ struct ListsView: View {
     private func deleteList(named name: String) {
         Task {
             do {
-                try await vaultManager.deleteList(named: name)
+                let record = try await vaultManager.deleteList(named: name)
+                registerListDeletionUndo(record)
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func registerListDeletionUndo(
+        _ record: TaskListDocument.SectionRemovalRecord
+    ) {
+        undoManager?.registerUndo(withTarget: vaultManager) { manager in
+            Task {
+                do {
+                    try await manager.restoreDeletedList(record)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+        undoManager?.setActionName("Delete List")
     }
 }

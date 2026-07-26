@@ -2,7 +2,7 @@ import Foundation
 
 /// Builds the vault tree from disk: one coordinated read of the vault root,
 /// then a recursive listing that keeps folders and case-insensitive `.md`
-/// files, ignoring hidden files and symbolic links.
+/// files, ignoring hidden files, packages, aliases, and symbolic links.
 struct VaultTreeScanner: Sendable {
     func scanTree(at rootURL: URL) throws -> VaultNode {
         try Task.checkCancellation()
@@ -38,7 +38,13 @@ struct VaultTreeScanner: Sendable {
     /// change notifications and previously indexed entries.
     private func scanDirectory(at url: URL, representedBy representedURL: URL) throws -> [VaultNode] {
         try Task.checkCancellation()
-        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .isHiddenKey]
+        let keys: Set<URLResourceKey> = [
+            .isAliasFileKey,
+            .isDirectoryKey,
+            .isHiddenKey,
+            .isPackageKey,
+            .isSymbolicLinkKey,
+        ]
         let contents = try FileManager.default.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: Array(keys),
@@ -55,6 +61,7 @@ struct VaultTreeScanner: Sendable {
             let values = try item.resourceValues(forKeys: keys)
 
             if name.hasPrefix(".") || values.isHidden == true { continue }
+            if values.isAliasFile == true || values.isPackage == true { continue }
             if values.isSymbolicLink == true { continue }
 
             if values.isDirectory == true {

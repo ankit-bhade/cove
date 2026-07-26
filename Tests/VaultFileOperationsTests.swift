@@ -532,7 +532,7 @@ final class VaultFileOperationsTests: XCTestCase {
         XCTAssertTrue(exists("Recent.md"))
     }
 
-    func testPurgeSweepsEntriesWrittenBeforeTimestampsExisted() throws {
+    func testPurgePreservesUnknownEntriesNotOwnedByTheManifest() throws {
         let folder = root.appendingPathComponent(
             VaultFileOperations.recoveryFolderName,
             isDirectory: true)
@@ -543,7 +543,25 @@ final class VaultFileOperationsTests: XCTestCase {
 
         try ops.purgeRecovery(vaultRoot: root)
 
-        XCTAssertFalse(fileManager.fileExists(atPath: legacy.path))
+        XCTAssertTrue(fileManager.fileExists(atPath: legacy.path))
+        XCTAssertEqual(
+            try String(contentsOf: legacy, encoding: .utf8),
+            "orphaned\n")
+    }
+
+    func testPurgePreservesArbitraryFilesInAPreexistingRecoveryFolder() throws {
+        let folder = root.appendingPathComponent(
+            VaultFileOperations.recoveryFolderName,
+            isDirectory: true)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        let userFile = folder.appendingPathComponent("personal.md")
+        try "not Cove trash\n".write(to: userFile, atomically: true, encoding: .utf8)
+
+        try ops.purgeRecovery(vaultRoot: root)
+
+        XCTAssertEqual(
+            try String(contentsOf: userFile, encoding: .utf8),
+            "not Cove trash\n")
     }
 
     func testPurgeRemovesRecoveredFoldersWholesale() throws {
@@ -569,8 +587,10 @@ final class VaultFileOperationsTests: XCTestCase {
     /// temporary behind. It is hidden, so nothing in Cove ever surfaces it,
     /// and in an iCloud vault it syncs and is stored forever.
     func testPurgeRemovesStrandedWriteTemporaries() throws {
-        let stranded = url(".cove-write-abc123")
-        let strandedCreate = url("Folder/.cove-create-def456")
+        let strandedName = ".cove-write-\(UUID().uuidString.lowercased())"
+        let strandedCreateName = ".cove-create-\(UUID().uuidString.lowercased())"
+        let stranded = url(strandedName)
+        let strandedCreate = url("Folder/\(strandedCreateName)")
         try fileManager.createDirectory(
             at: url("Folder"), withIntermediateDirectories: true)
         try Data("partial".utf8).write(to: stranded)
@@ -583,18 +603,40 @@ final class VaultFileOperationsTests: XCTestCase {
 
         ops.purgeWriteTemporaries(vaultRoot: root)
 
-        XCTAssertFalse(exists(".cove-write-abc123"))
-        XCTAssertFalse(exists("Folder/.cove-create-def456"))
+        XCTAssertFalse(exists(strandedName))
+        XCTAssertFalse(exists("Folder/\(strandedCreateName)"))
     }
 
     /// A temporary younger than the floor may belong to a write running right
     /// now, here or on another device sharing the folder.
     func testPurgeLeavesRecentWriteTemporariesAlone() throws {
-        try Data("in flight".utf8).write(to: url(".cove-write-live"))
+        let name = ".cove-write-\(UUID().uuidString.lowercased())"
+        try Data("in flight".utf8).write(to: url(name))
 
         ops.purgeWriteTemporaries(vaultRoot: root)
 
-        XCTAssertTrue(exists(".cove-write-live"))
+        XCTAssertTrue(exists(name))
+    }
+
+    func testPurgeLeavesTemporaryLookalikesAlone() throws {
+        let names = [
+            ".cove-write-personal",
+            ".cove-create-\(UUID().uuidString.lowercased()).md",
+            ".cove-write-\(UUID().uuidString.uppercased())",
+        ]
+        let old = Date().addingTimeInterval(-24 * 60 * 60)
+        for name in names {
+            try Data("keep".utf8).write(to: url(name))
+            try fileManager.setAttributes(
+                [.modificationDate: old],
+                ofItemAtPath: url(name).path)
+        }
+
+        ops.purgeWriteTemporaries(vaultRoot: root)
+
+        for name in names {
+            XCTAssertTrue(exists(name), "Expected \(name) to survive")
+        }
     }
 
     func testPurgeLeavesOrdinaryNotesAndTheRecoveryAreaAlone() throws {
@@ -632,6 +674,54 @@ final class VaultFileOperationsTests: XCTestCase {
                 now: deletedAt.addingTimeInterval(30 * 24 * 60 * 60)))
         XCTAssertTrue(
             fileManager.fileExists(atPath: record.recoveryURL.path))
+    }
+
+    func testUnownedManifestShapePreventsPurgeFromDeletingRecoveryBytes() throws {
+        let note = try ops.createNote(named: "Keep", in: root)
+        let deletedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let record = try ops.moveToRecovery(
+            itemAt: note,
+            vaultRoot: root,
+            now: deletedAt)
+        let manifest =
+            root
+            .appendingPathComponent(
+                VaultFileOperations.recoveryFolderName,
+                isDirectory: true
+            )
+            .appendingPathComponent(
+                VaultFileOperations.recoveryManifestName)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: manifest)
+            ) as? [String: Any])
+        object["ownerIdentifier"] = "someone.else"
+        try JSONSerialization.data(withJSONObject: object).write(
+            to: manifest,
+            options: .atomic)
+
+        XCTAssertThrowsError(
+            try ops.purgeRecovery(
+                vaultRoot: root,
+                now: deletedAt.addingTimeInterval(30 * 24 * 60 * 60)))
+        XCTAssertTrue(
+            fileManager.fileExists(atPath: record.recoveryURL.path))
+    }
+
+    func testLegacyManifestWithUnexpectedKeysFailsClosed() throws {
+        let folder = root.appendingPathComponent(
+            VaultFileOperations.recoveryFolderName,
+            isDirectory: true)
+        try fileManager.createDirectory(
+            at: folder,
+            withIntermediateDirectories: true)
+        let manifest = folder.appendingPathComponent(
+            VaultFileOperations.recoveryManifestName)
+        try Data(
+            #"{"entries":[],"foreignOwner":"other-tool"}"#.utf8
+        ).write(to: manifest)
+
+        XCTAssertThrowsError(try ops.recoveryRecords(vaultRoot: root))
     }
 
     private func modificationDate(of url: URL) throws -> Date {

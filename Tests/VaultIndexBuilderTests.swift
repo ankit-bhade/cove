@@ -263,13 +263,18 @@ final class VaultIndexBuilderTests: XCTestCase {
 
         let options = XCTMeasureOptions()
         options.iterationCount = 1
+        var measuredIterations = 0
         measure(metrics: [XCTClockMetric()], options: options) {
-            XCTAssertNoThrow {
+            do {
                 let tree = try VaultTreeScanner().scanTree(at: self.root)
                 let index = try VaultIndexBuilder().buildIndex(from: tree)
                 XCTAssertEqual(tree.allFiles.count, 2_003)
                 XCTAssertEqual(index.allTasks.count, 2_004)
+                measuredIterations += 1
+            } catch {
+                XCTFail("Large-vault scan failed: \(error)")
             }
         }
+        XCTAssertGreaterThanOrEqual(measuredIterations, 1)
     }
 }

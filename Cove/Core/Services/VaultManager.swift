@@ -124,8 +124,10 @@ final class VaultManager {
     private let fileOperations = VaultFileOperations()
     private let repository = VaultRepository()
     private let loadOperation: VaultLoadOperation
-    private let notificationScheduler = TaskNotificationScheduler()
-    private let widgetStore = WidgetSnapshotStore()
+    private let rebuildNotifications: @Sendable ([TaskItem]) async -> TaskNotificationHealth
+    private let cancelNotifications: @Sendable () async -> TaskNotificationHealth
+    private let widgetStore: WidgetSnapshotStore
+    private let reloadWidgetTimelines: @MainActor @Sendable () -> Void
 
     /// Set only when `startAccessingSecurityScopedResource()` returned true,
     /// so every stop is matched to a successful start. `@ObservationIgnored`
@@ -150,9 +152,35 @@ final class VaultManager {
 
     init(
         bookmarkStore: VaultBookmarkStore = VaultBookmarkStore(),
-        loadOperation: VaultLoadOperation? = nil
+        loadOperation: VaultLoadOperation? = nil,
+        notificationRebuild:
+            (@Sendable ([TaskItem]) async -> TaskNotificationHealth)? = nil,
+        notificationCancel:
+            (@Sendable () async -> TaskNotificationHealth)? = nil,
+        widgetStore: WidgetSnapshotStore = WidgetSnapshotStore(),
+        reloadWidgetTimelines:
+            (@MainActor @Sendable () -> Void)? = nil
     ) {
+        let notificationScheduler = TaskNotificationScheduler()
         self.bookmarkStore = bookmarkStore
+        self.rebuildNotifications =
+            notificationRebuild
+            ?? { tasks in
+                await notificationScheduler.rebuildNotifications(
+                    for: tasks)
+            }
+        self.cancelNotifications =
+            notificationCancel
+            ?? {
+                await notificationScheduler.cancelAllNotifications()
+            }
+        self.widgetStore = widgetStore
+        self.reloadWidgetTimelines =
+            reloadWidgetTimelines
+            ?? {
+                WidgetCenter.shared.reloadTimelines(
+                    ofKind: CoveSharedContainer.todayWidgetKind)
+            }
         self.loadOperation =
             loadOperation ?? { url, previousIndex, changedURLs, existingTree in
                 try await Task.detached(priority: .userInitiated) {
@@ -587,16 +615,9 @@ final class VaultManager {
         let siblings = index.allTasks
             .filter { $0.fileURL.standardizedFileURL == task.fileURL.standardizedFileURL }
             .sorted { $0.lineNumber < $1.lineNumber }
-        let siblingIndex = siblings.firstIndex(where: { $0.identity == identity })
-        let previous = siblingIndex.flatMap { $0 > 0 ? siblings[$0 - 1].identity : nil }
-        let next = siblingIndex.flatMap { $0 + 1 < siblings.count ? siblings[$0 + 1].identity : nil }
-        let record = DeletedTaskRecord(
-            identity: identity,
-            originalLine: task.sourceLine ?? Self.markdownLine(for: task) + "\n",
-            previousIdentity: previous,
-            nextIdentity: next,
-            approximateLineNumber: task.lineNumber,
-            sourceNoteURL: task.fileURL)
+        let record = Self.deletedTaskRecord(
+            for: task,
+            among: siblings)
         var deleteError: Error?
         do {
             _ = try await repository.updateNote(at: task.fileURL) { text in
@@ -611,43 +632,150 @@ final class VaultManager {
     }
 
     func restoreDeletedTask(_ record: DeletedTaskRecord) async throws {
-        _ = try await repository.updateNote(at: record.sourceNoteURL) { text in
-            // Undo is idempotent and never restores the entire old document.
-            switch TaskParser.matchResult(record.identity, in: text) {
-            case .matched:
-                return text
-            case .ambiguous(let matches):
-                throw TaskParser.MutationError.ambiguousTask(
-                    matches.map(\.lineNumber))
-            case .missing:
-                break
-            }
+        try await restoreDeletedTasks([record])
+    }
 
-            let insertionLocation: Int
-            if let next = record.nextIdentity,
-                case .matched(let match) = TaskParser.matchResult(next, in: text)
-            {
-                insertionLocation = match.lineRange.location
-            } else if let previous = record.previousIdentity,
-                case .matched(let match) = TaskParser.matchResult(previous, in: text)
-            {
-                insertionLocation = NSMaxRange(match.lineRange)
-            } else {
-                insertionLocation = Self.lineStart(
-                    for: record.approximateLineNumber, in: text)
+    /// Restores task lines semantically against the newest coordinated file
+    /// contents. Used by both single-delete Undo and grouped bulk-clear Undo,
+    /// so later prose or task edits are never replaced with an old snapshot.
+    func restoreDeletedTasks(_ records: [DeletedTaskRecord]) async throws {
+        let batches = Dictionary(grouping: records, by: \.sourceNoteURL)
+        var changedURLs: Set<URL> = []
+        var restoreError: Error?
+        do {
+            for (url, records) in batches.sorted(by: { $0.key.path < $1.key.path }) {
+                _ = try await repository.updateNote(at: url) { text in
+                    try Self.restoringDeletedTasks(records, in: text)
+                }
+                changedURLs.insert(url)
             }
-
-            var line = record.originalLine
-            if insertionLocation == (text as NSString).length,
-                !text.isEmpty, !text.hasSuffix("\n"), !text.hasSuffix("\r")
-            {
-                line = "\n" + line
-            }
-            return (text as NSString).replacingCharacters(
-                in: NSRange(location: insertionLocation, length: 0),
-                with: line)
+        } catch {
+            restoreError = error
         }
-        await refreshIndex(changedURLs: [record.sourceNoteURL])
+        await refreshIndex(changedURLs: changedURLs.union(batches.keys))
+        if let restoreError { throw restoreError }
+    }
+
+    nonisolated private static func restoringDeletedTasks(
+        _ records: [DeletedTaskRecord],
+        in originalText: String
+    ) throws -> String {
+        var text = originalText
+        for record in records.sorted(by: {
+            $0.approximateLineNumber < $1.approximateLineNumber
+        }) {
+            text = try restoringDeletedTask(record, in: text)
+        }
+        return text
+    }
+
+    nonisolated private static func restoringDeletedTask(
+        _ record: DeletedTaskRecord,
+        in text: String
+    ) throws -> String {
+        // Undo is idempotent and never restores the entire old document.
+        switch TaskParser.matchResult(record.identity, in: text) {
+        case .matched:
+            return text
+        case .ambiguous(let matches):
+            throw TaskParser.MutationError.ambiguousTask(
+                matches.map(\.lineNumber))
+        case .missing:
+            break
+        }
+
+        let insertionLocation: Int
+        if let next = record.nextIdentity,
+            case .matched(let match) = TaskParser.matchResult(next, in: text)
+        {
+            insertionLocation = match.lineRange.location
+        } else if let previous = record.previousIdentity,
+            case .matched(let match) = TaskParser.matchResult(previous, in: text)
+        {
+            insertionLocation = NSMaxRange(match.lineRange)
+        } else {
+            insertionLocation = lineStart(
+                for: record.approximateLineNumber, in: text)
+        }
+
+        var line = record.originalLine
+        if insertionLocation == (text as NSString).length,
+            !text.isEmpty, !text.hasSuffix("\n"), !text.hasSuffix("\r")
+        {
+            line = "\n" + line
+        }
+        return (text as NSString).replacingCharacters(
+            in: NSRange(location: insertionLocation, length: 0),
+            with: line)
+    }
+
+    nonisolated private static func deletedTaskRecord(
+        for task: TaskItem,
+        among siblings: [TaskItem]
+    ) -> DeletedTaskRecord {
+        let siblingIndex = siblings.firstIndex {
+            $0.identity == task.identity
+        }
+        let previous = siblingIndex.flatMap {
+            $0 > 0 ? siblings[$0 - 1].identity : nil
+        }
+        let next = siblingIndex.flatMap {
+            $0 + 1 < siblings.count ? siblings[$0 + 1].identity : nil
+        }
+        return DeletedTaskRecord(
+            identity: task.identity,
+            originalLine: task.sourceLine ?? markdownLine(for: task) + "\n",
+            previousIdentity: previous,
+            nextIdentity: next,
+            approximateLineNumber: task.lineNumber,
+            sourceNoteURL: task.fileURL)
+    }
+
+    nonisolated private static func removingDeletedTasks(
+        _ records: [DeletedTaskRecord],
+        from originalText: String
+    ) throws -> String {
+        // Preflight every identity before producing a mutation. If a task was
+        // completed in the index but has since been reopened, a bulk clear
+        // must not delete that now-incomplete line.
+        for record in records {
+            switch TaskParser.matchResult(record.identity, in: originalText) {
+            case .matched(let task) where task.isCompleted:
+                continue
+            case .matched, .missing:
+                throw TaskParser.MutationError.taskMissing
+            case .ambiguous(let tasks):
+                throw TaskParser.MutationError.ambiguousTask(
+                    tasks.map(\.lineNumber))
+            }
+        }
+
+        var text = originalText
+        for record in records.sorted(by: {
+            $0.approximateLineNumber > $1.approximateLineNumber
+        }) {
+            text = try TaskParser.removingTaskResult(
+                record.identity,
+                in: text
+            ).get()
+        }
+        return text
+    }
+
+    private func rollbackClearedTaskBatches(
+        _ batches: [(URL, [DeletedTaskRecord])]
+    ) async -> Error? {
+        var firstError: Error?
+        for (url, records) in batches.reversed() {
+            do {
+                _ = try await repository.updateNote(at: url) { text in
+                    try Self.restoringDeletedTasks(records, in: text)
+                }
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+        }
+        return firstError
     }
 
     nonisolated private static func markdownLine(for task: TaskItem) -> String {
@@ -684,38 +812,13 @@ final class VaultManager {
         return result
     }
 
-    /// Removes all completed Cove task lines from their original Markdown
-    /// notes, then rebuilds the index even if one of the file writes fails.
-    func clearCompletedTasks() async throws {
-        let fileURLs = Set(index.completedTasks.map(\.fileURL))
-        guard !fileURLs.isEmpty else { return }
-
-        let repository = repository
-        let root = vaultURL
-        var clearError: Error?
-        do {
-            for fileURL in fileURLs {
-                _ = try await repository.updateNote(at: fileURL) { text in
-                    // In the capture note this must parse sectioned, or the
-                    // Tasks screen's Clear All would also delete completed
-                    // items out of the lists it never showed.
-                    let sectioned = root.map { Self.isCaptureNote(fileURL, vaultRoot: $0) } ?? false
-                    let duplicates = TaskParser.scan(
-                        in: text,
-                        sectioned: sectioned
-                    ).diagnostics.filter { $0.kind == .duplicateTask }
-                    if !duplicates.isEmpty {
-                        throw TaskParser.MutationError.ambiguousTask(
-                            duplicates.map(\.lineNumber))
-                    }
-                    return TaskParser.clearingCompletedTasks(in: text, sectioned: sectioned)
-                }
-            }
-        } catch {
-            clearError = error
-        }
-        await refreshIndex(changedURLs: fileURLs)
-        if let clearError { throw clearError }
+    /// Removes the completed tasks represented by the current index. Every
+    /// file is preflighted before the first write, and a later failure rolls
+    /// back earlier batches semantically. The returned records power grouped
+    /// Undo without replacing unrelated edits made after the clear.
+    @discardableResult
+    func clearCompletedTasks() async throws -> [DeletedTaskRecord] {
+        try await clearCompletedTaskRecords(index.completedTasks)
     }
 
     /// Writes a quick-added task's Markdown line into the capture note at the
@@ -799,37 +902,120 @@ final class VaultManager {
     /// heading in place. The capture note is the only file lists live in, so
     /// this is one coordinated read-modify-write rather than the per-file
     /// sweep the Tasks screen's Clear All needs.
-    func clearCompletedTasks(inList name: String) async throws {
-        let vaultURL = try requireOpenVaultURL()
-        try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-            let duplicateSections = TaskListDocument.diagnostics(in: text)
-            if !duplicateSections.isEmpty {
-                throw TaskListDocument.EditError.duplicateSection(name)
-            }
-            let duplicateTasks = TaskParser.scan(
-                in: text,
-                sectioned: true
-            ).diagnostics.filter { $0.kind == .duplicateTask }
-            if !duplicateTasks.isEmpty {
-                throw TaskParser.MutationError.ambiguousTask(
-                    duplicateTasks.map(\.lineNumber))
-            }
-            return TaskParser.clearingCompletedTasks(
-                in: text,
-                sectioned: true,
-                inList: name)
+    @discardableResult
+    func clearCompletedTasks(inList name: String) async throws -> [DeletedTaskRecord] {
+        guard
+            let list = index.lists.first(where: {
+                TaskListDocument.canonicalName($0.name)
+                    == TaskListDocument.canonicalName(name)
+            })
+        else {
+            throw TaskListDocument.EditError.missingSection(name)
         }
+        return try await clearCompletedTaskRecords(list.completedTasks)
     }
 
-    /// Removes a list's heading and every task under it.
-    func deleteList(named name: String) async throws {
+    private func clearCompletedTaskRecords(
+        _ tasks: [TaskItem]
+    ) async throws -> [DeletedTaskRecord] {
+        guard !tasks.isEmpty else { return [] }
+        let tasksByURL = Dictionary(grouping: tasks, by: \.fileURL)
+        let batches: [(URL, [DeletedTaskRecord])] =
+            tasksByURL
+            .map { url, tasks in
+                let siblings = index.allTasks
+                    .filter {
+                        $0.fileURL.standardizedFileURL
+                            == url.standardizedFileURL
+                    }
+                    .sorted { $0.lineNumber < $1.lineNumber }
+                return (
+                    url,
+                    tasks.map {
+                        Self.deletedTaskRecord(
+                            for: $0,
+                            among: siblings)
+                    }
+                )
+            }
+            .sorted { $0.0.path < $1.0.path }
+
+        // Refuse the whole operation before writing when any target is
+        // already stale. The write transforms repeat the same checks against
+        // coordinated current bytes.
+        for (url, records) in batches {
+            let text = try await repository.readNote(at: url)
+            _ = try Self.removingDeletedTasks(records, from: text)
+        }
+
+        var applied: [(URL, [DeletedTaskRecord])] = []
+        do {
+            for (url, records) in batches {
+                _ = try await repository.updateNote(at: url) { text in
+                    try Self.removingDeletedTasks(
+                        records,
+                        from: text)
+                }
+                applied.append((url, records))
+            }
+        } catch {
+            let rollbackError = await rollbackClearedTaskBatches(applied)
+            await refreshIndex(changedURLs: Set(batches.map(\.0)))
+            if let rollbackError {
+                reportStorageIssue(
+                    "Cove could not fully roll back a failed bulk clear: \(rollbackError.localizedDescription)"
+                )
+            }
+            throw error
+        }
+
+        await refreshIndex(changedURLs: Set(batches.map(\.0)))
+        return batches.flatMap(\.1)
+    }
+
+    /// Removes a list's heading and content while returning its exact source
+    /// section for semantic Undo.
+    @discardableResult
+    func deleteList(
+        named name: String
+    ) async throws -> TaskListDocument.SectionRemovalRecord {
         let vaultURL = try requireOpenVaultURL()
-        try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
-            try TaskListDocument.removingSectionResult(
+        let url = vaultURL.appendingPathComponent(
+            Self.quickTaskNoteName,
+            isDirectory: false)
+        let preflightText = try await repository.readNote(at: url)
+        let removal = try TaskListDocument.removingSectionWithRecordResult(
+            named: name,
+            from: preflightText
+        ).get()
+        _ = try await repository.updateNote(at: url) { text in
+            guard text == preflightText else {
+                throw VaultFileOperations.OperationError.fileChangedDuringWrite(
+                    url.lastPathComponent)
+            }
+            return try TaskListDocument.removingSectionResult(
                 named: name,
                 from: text
             ).get()
         }
+        await refreshIndex(changedURLs: [url])
+        return removal.record
+    }
+
+    func restoreDeletedList(
+        _ record: TaskListDocument.SectionRemovalRecord
+    ) async throws {
+        let vaultURL = try requireOpenVaultURL()
+        let url = vaultURL.appendingPathComponent(
+            Self.quickTaskNoteName,
+            isDirectory: false)
+        _ = try await repository.updateNote(at: url) { text in
+            try TaskListDocument.restoringSectionResult(
+                record,
+                in: text
+            ).get()
+        }
+        await refreshIndex(changedURLs: [url])
     }
 
     private func requireOpenVaultURL() throws -> URL {
@@ -1019,8 +1205,7 @@ final class VaultManager {
         // and widget from the same snapshot.
         let tasks = index.allTasks
         publishWidgetState(tasks: tasks)
-        let health = await notificationScheduler.rebuildNotifications(
-            for: tasks)
+        let health = await rebuildNotifications(tasks)
         if health.state != .superseded {
             notificationHealth = health
         }
@@ -1077,7 +1262,7 @@ final class VaultManager {
                         + failures.joined(separator: " "))
             }
         #endif
-        WidgetCenter.shared.reloadTimelines(ofKind: CoveSharedContainer.todayWidgetKind)
+        reloadWidgetTimelines()
     }
 
     /// Clears derived state when there is intentionally no usable vault.
@@ -1085,8 +1270,7 @@ final class VaultManager {
     /// while the widget receives an explicit reconnect state rather than a
     /// misleading successful “All clear.”
     private func publishUnavailableDerivedState() async {
-        notificationHealth =
-            await notificationScheduler.cancelAllNotifications()
+        notificationHealth = await cancelNotifications()
         if case .failure(let error) =
             widgetStore.writeUnavailableSnapshot(.vaultUnavailable)
         {
@@ -1097,8 +1281,7 @@ final class VaultManager {
             #endif
         }
         widgetHealth = widgetStore.health()
-        WidgetCenter.shared.reloadTimelines(
-            ofKind: CoveSharedContainer.todayWidgetKind)
+        reloadWidgetTimelines()
     }
 
     /// Applies toggles the widget recorded but couldn't write — the extension
@@ -1253,7 +1436,30 @@ final class VaultManager {
                     .isEmpty
             })
         guard let url = requestedVaultURL ?? vaultURL else { return }
-        await loadTree(from: url, coalescing: true, changedURLs: changes)
+        await loadTree(
+            from: url,
+            coalescing: true,
+            changedURLs: Self.changedURLsForRefresh(
+                changes, vaultRoot: url))
+    }
+
+    /// macOS' root descriptor reports only that something below the vault
+    /// changed. Treating that root URL as a targeted file refresh reuses the
+    /// old tree and can miss same-size, timestamp-preserving edits as well as
+    /// newly added or removed paths. A root event therefore requests the safe
+    /// fallback: a fresh tree scan and full index rebuild.
+    nonisolated static func changedURLsForRefresh(
+        _ changes: Set<URL>,
+        vaultRoot: URL
+    ) -> Set<URL>? {
+        guard !changes.isEmpty else { return nil }
+        let root = vaultRoot.standardizedFileURL
+        guard
+            !changes.contains(where: {
+                $0.standardizedFileURL == root
+            })
+        else { return nil }
+        return changes
     }
 
     private func materializeNativeConflicts(at conflicts: Set<URL>) async {

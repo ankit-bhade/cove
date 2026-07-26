@@ -41,6 +41,14 @@ enum TaskListDocument {
         let message: String
     }
 
+    struct SectionRemovalRecord: Equatable, Sendable {
+        let name: String
+        let sourceText: String
+        let previousSectionName: String?
+        let nextSectionName: String?
+        let approximateLineNumber: Int
+    }
+
     private enum Heading: Equatable {
         case document
         case list(String)
@@ -236,20 +244,130 @@ enum TaskListDocument {
         named name: String,
         from fileText: String
     ) -> Result<String, EditError> {
+        removingSectionWithRecordResult(
+            named: name,
+            from: fileText
+        ).map(\.text)
+    }
+
+    static func removingSectionWithRecordResult(
+        named name: String,
+        from fileText: String
+    ) -> Result<
+        (text: String, record: SectionRemovalRecord),
+        EditError
+    > {
         let matches = matchingHeadings(named: name, in: fileText)
         guard !matches.isEmpty else { return .failure(.missingSection(name)) }
         guard matches.count == 1 else { return .failure(.duplicateSection(name)) }
-        guard let bounds = sectionBounds(for: matches[0], in: fileText) else {
+        let section = matches[0]
+        guard let bounds = sectionBounds(for: section, in: fileText) else {
             return .failure(.missingSection(name))
         }
+        let headings = sectionHeadings(in: fileText)
+        guard
+            let sectionIndex = headings.firstIndex(where: {
+                $0.line.range == section.line.range
+            })
+        else { return .failure(.missingSection(name)) }
         let ns = fileText as NSString
-        return .success(ns.substring(to: bounds.headingStart) + ns.substring(from: bounds.end))
+        let sourceRange = NSRange(
+            location: bounds.headingStart,
+            length: bounds.end - bounds.headingStart)
+        let record = SectionRemovalRecord(
+            name: section.name,
+            sourceText: ns.substring(with: sourceRange),
+            previousSectionName:
+                sectionIndex > 0
+                ? headings[sectionIndex - 1].name : nil,
+            nextSectionName:
+                sectionIndex + 1 < headings.count
+                ? headings[sectionIndex + 1].name : nil,
+            approximateLineNumber: section.line.number)
+        return .success(
+            (
+                ns.substring(to: bounds.headingStart)
+                    + ns.substring(from: bounds.end),
+                record
+            ))
     }
 
     /// Fail-closed compatibility wrapper: duplicate headings are never
     /// destructively collapsed into whichever section happened to come first.
     static func removingSection(named name: String, from fileText: String) -> String {
         (try? removingSectionResult(named: name, from: fileText).get()) ?? fileText
+    }
+
+    /// Semantic inverse of section deletion. Existing content is never
+    /// replaced: the exact removed section is inserted beside a surviving
+    /// neighboring list, or near its old line when both neighbors are gone.
+    static func restoringSectionResult(
+        _ record: SectionRemovalRecord,
+        in fileText: String
+    ) -> Result<String, EditError> {
+        let existing = matchingHeadings(named: record.name, in: fileText)
+        guard existing.count <= 1 else {
+            return .failure(.duplicateSection(record.name))
+        }
+        if let existing = existing.first,
+            let bounds = sectionBounds(for: existing, in: fileText)
+        {
+            let ns = fileText as NSString
+            let existingText = ns.substring(
+                with: NSRange(
+                    location: bounds.headingStart,
+                    length: bounds.end - bounds.headingStart))
+            return existingText == record.sourceText
+                ? .success(fileText)
+                : .failure(.nameAlreadyExists(record.name))
+        }
+
+        let insertionPoint: Int
+        if let next = record.nextSectionName {
+            let matches = matchingHeadings(named: next, in: fileText)
+            if matches.count == 1 {
+                insertionPoint = matches[0].line.range.location
+            } else {
+                insertionPoint = fallbackInsertionPoint(
+                    forLine: record.approximateLineNumber,
+                    in: fileText)
+            }
+        } else if let previous = record.previousSectionName {
+            let matches = matchingHeadings(named: previous, in: fileText)
+            if matches.count == 1,
+                let bounds = sectionBounds(for: matches[0], in: fileText)
+            {
+                insertionPoint = bounds.end
+            } else {
+                insertionPoint = fallbackInsertionPoint(
+                    forLine: record.approximateLineNumber,
+                    in: fileText)
+            }
+        } else {
+            insertionPoint = fallbackInsertionPoint(
+                forLine: record.approximateLineNumber,
+                in: fileText)
+        }
+
+        let ns = fileText as NSString
+        let newline = MarkdownContextScanner.scan(fileText).preferredLineEnding
+        var source = record.sourceText
+        let prefix = ns.substring(to: insertionPoint)
+        let suffix = ns.substring(from: insertionPoint)
+        if !prefix.isEmpty, !endsInLineEnding(prefix),
+            !source.hasPrefix("\n"), !source.hasPrefix("\r")
+        {
+            source = newline + source
+        }
+        if !suffix.isEmpty, !endsInLineEnding(source),
+            !suffix.hasPrefix("\n"), !suffix.hasPrefix("\r")
+        {
+            source += newline
+        }
+        return .success(
+            ns.replacingCharacters(
+                in: NSRange(location: insertionPoint, length: 0),
+                with: source))
     }
 
     static func renamingSectionResult(
@@ -339,6 +457,17 @@ enum TaskListDocument {
             headingLineRange: headingLine.range,
             end: end,
             insertionPoint: insertionPoint)
+    }
+
+    private static func fallbackInsertionPoint(
+        forLine lineNumber: Int,
+        in fileText: String
+    ) -> Int {
+        let lines = MarkdownContextScanner.scan(fileText).lines
+        guard lineNumber < lines.count else {
+            return (fileText as NSString).length
+        }
+        return lines[max(0, lineNumber)].enclosingRange.location
     }
 
     // MARK: - Validation

@@ -26,10 +26,21 @@ final class VaultManagerLatestWinsTests: XCTestCase {
             creationOptions: [],
             resolutionOptions: [])
         let loader = DelayedVaultLoader()
-        let manager = VaultManager(bookmarkStore: bookmarkStore) {
-            url, _, _, _ in
-            await loader.load(url)
-        }
+        let widgetRoot = root.appendingPathComponent(
+            ".widget-test",
+            isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: widgetRoot,
+            withIntermediateDirectories: true)
+        let manager = VaultManager(
+            bookmarkStore: bookmarkStore,
+            loadOperation: { url, _, _, _ in
+                await loader.load(url)
+            },
+            notificationRebuild: { _ in .superseded() },
+            notificationCancel: { .superseded() },
+            widgetStore: WidgetSnapshotStore(containerURL: widgetRoot),
+            reloadWidgetTimelines: {})
 
         let firstOpen = Task { await manager.openVault(at: firstURL) }
         await loader.waitUntilStarted(firstURL)

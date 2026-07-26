@@ -135,6 +135,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   date, or a token that isn't a time. A bare past time, two competing dates,
   and a clamped count warn under the field and still capture on return, which
   is the documented behavior the live preview exists to make safe.
+- Quick capture blocks competing time or recurrence expressions instead of
+  silently consuming the first, and rejects nonexistent daylight-saving wall
+  times in both live parsing and final draft validation.
 - Recovery-draft writes moved off the main actor. Encoding a whole document,
   synchronizing it, and swapping it into place ran on every debounce while
   typing, which stuttered on a large note.
@@ -289,6 +292,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Recovery cleanup recognizes only owner/schema-marked manifest entries and
+  exact Cove timestamp/UUID names; unknown files and lookalike write
+  temporaries are left untouched.
+- Widget controls use a semantic task fingerprint plus explicit desired state,
+  so stale controls cannot mutate replacement content at the same path and
+  line. Malformed snapshots are backed up and rebuilt, while future schemas
+  remain untouched.
+- Hosted tests use isolated bookmarks, notifications, and widget storage, so
+  running the suite cannot open a developer vault or mutate real system state.
+- macOS root change events force a full rescan, scanners and persisted widget
+  paths reject packages and aliases, and incremental editor styling keeps
+  whole-document Markdown context for fenced code and front matter.
+- Bulk task clears preflight all files, roll back earlier batches on failure,
+  and register grouped semantic Undo. List deletion also restores only its
+  removed section, preserving unrelated later `Tasks.md` edits.
+- The large-vault performance test executes the scan and index build inside
+  its measured closure instead of measuring closure construction.
 - List rows draw their separators at one depth. SwiftUI derived the inset from
   whichever nested label it happened to select, so in the same list a folder
   row carrying a caption and a note row without one broke the line at two

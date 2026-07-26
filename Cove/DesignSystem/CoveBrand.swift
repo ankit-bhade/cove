@@ -1,69 +1,80 @@
 import SwiftUI
 
-/// The app's in-product mark: two concentric arcs on one axis — an ink C with
-/// an ember arc echoing it. Drawn rather than set in type, so the mark is
-/// centred by construction and carries no serif stress.
+/// The app's in-product mark: a bay cut into the land's edge, the shoreline
+/// traced in ember. Drawn rather than set in type, so the mark is centred by
+/// construction and carries no serif stress.
+///
+/// The land silhouette and the shoreline are the same curve, so the fill and
+/// the stroke can never drift apart. The shoreline widens optically below
+/// ~32pt — a 4-unit hairline is sub-pixel there and would simply disappear.
+///
+/// The tile carries `CoveTheme.hairline` around its edge, which the app icon
+/// deliberately does not. An icon is masked by the system and sits on a
+/// wallpaper; this mark sits on Cove's own surfaces, and its ground *is* the
+/// canvas — paper on a card in light, night on a card in dark. Without the
+/// edge the tile's ground half simply vanishes into what it is drawn on and
+/// the mark reads as a bay floating on the page rather than as a tile. The
+/// edge only shows along that half, since over the land it composites to the
+/// land's own colour, which is the half that never needed it.
 struct CoveMark: View {
     var size: CGFloat = 34
 
     @Environment(\.colorScheme) private var scheme
 
     private let paperGround = Color(red: 0.965, green: 0.953, blue: 0.933)
-    private let nightTop = Color(red: 0.133, green: 0.114, blue: 0.094)
-    private let nightBottom = Color(red: 0.078, green: 0.067, blue: 0.055)
+    private let nightGround = Color(red: 0.090, green: 0.075, blue: 0.059)
     private let ink = Color(red: 0.141, green: 0.129, blue: 0.114)
-    private let paper = Color(red: 0.976, green: 0.961, blue: 0.933)
+    private let paper = Color(red: 0.929, green: 0.902, blue: 0.855)
+    private let shore = Color(red: 0.620, green: 0.345, blue: 0.153)
 
     private var isDark: Bool { scheme == .dark }
+
+    /// 4 design units, never thinner than one point on screen.
+    private var shoreWidth: CGFloat { max(size * 0.04, 1) }
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
-                .fill(ground)
-            CoveArc(radius: 0.20, halfGap: 30)
-                .stroke(
-                    isDark ? paper : ink,
-                    style: StrokeStyle(lineWidth: size * 0.16, lineCap: .butt)
-                )
-            CoveArc(radius: 0.36, halfGap: 22)
-                .stroke(
-                    CoveTheme.accent,
-                    style: StrokeStyle(lineWidth: max(size * 0.07, 1.5), lineCap: .butt)
-                )
+                .fill(isDark ? nightGround : paperGround)
+            CoveLand()
+                .fill(isDark ? paper : ink)
+            CoveShore()
+                .stroke(shore, style: StrokeStyle(lineWidth: shoreWidth, lineJoin: .round))
         }
         .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                .strokeBorder(CoveTheme.hairline, lineWidth: 1)
+        }
         .accessibilityHidden(true)
-    }
-
-    private var ground: AnyShapeStyle {
-        isDark
-            ? AnyShapeStyle(
-                LinearGradient(
-                    colors: [nightTop, nightBottom],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            : AnyShapeStyle(paperGround)
     }
 }
 
-/// One arc of the mark: a circle of the given radius (a fraction of the frame)
-/// opened by halfGap degrees either side of the trailing axis.
-private struct CoveArc: Shape {
-    let radius: CGFloat
-    let halfGap: Double
+/// The shoreline: two cubics across the frame, in a 0…100 design space.
+/// The bay sits left of centre and the right headland stands higher, so the
+/// mark reads as a place rather than a symmetrical diagram.
+private func coveShorePath(in rect: CGRect) -> Path {
+    let u = { (x: CGFloat, y: CGFloat) in
+        CGPoint(x: rect.minX + rect.width * x / 100, y: rect.minY + rect.height * y / 100)
+    }
+    var path = Path()
+    path.move(to: u(0, 42))
+    path.addCurve(to: u(44, 74), control1: u(20, 42), control2: u(22, 74))
+    path.addCurve(to: u(100, 34), control1: u(70, 74), control2: u(76, 34))
+    return path
+}
 
+private struct CoveShore: Shape {
+    func path(in rect: CGRect) -> Path { coveShorePath(in: rect) }
+}
+
+private struct CoveLand: Shape {
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let side = min(rect.width, rect.height)
-        path.addArc(
-            center: CGPoint(x: rect.midX, y: rect.midY),
-            radius: side * radius,
-            startAngle: .degrees(halfGap),
-            endAngle: .degrees(360 - halfGap),
-            clockwise: false
-        )
+        var path = coveShorePath(in: rect)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
         return path
     }
 }

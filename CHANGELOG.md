@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A tinted iOS app icon, so the Home Screen's tinted appearance draws Cove
+  from the coastline's own greys rather than from a flattened light tile.
 - A crash-recovery journal for the editor. Unsaved text is written to Cove's
   own container as you type — never into the vault, so it can't become an
   iCloud conflict or show up as another note — and offered back on reopen. A
@@ -77,14 +79,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Reminders' own spacing. The shared row grid is untouched: the checkbox
   column, the text inset, the padding, and the separator all still match every
   other row in the app.
-- Redesigned the app icon as two concentric arcs — an ink C with an ember arc
-  echoing it, read equally as a ripple leaving an inlet. The serif `c` it
-  replaces carried a diagonal stress and tapered terminals, so the mark leaned
-  right while the ember dot pulled further right again: centred in the tile,
-  off balance to the eye. The new mark is drawn from one axis and is centred
-  by construction, with no axis left to look crooked. `CoveMark` draws the
-  same two arcs, so the springboard icon, the launch screen, and the mark
+- Redesigned the app icon as a coastline: a bay cut into the land's edge, the
+  shoreline traced in ember. It replaces first a serif `c` cupping an ember
+  dot and then two concentric arcs — the letter leaned right, because a serif
+  face is drawn with a diagonal stress, and the arcs that fixed the lean said
+  nothing about what the app is. The land and the shoreline are one curve, so
+  the fill and the stroke cannot drift apart, and the tile is the mark rather
+  than a ground the mark sits on: warm paper over ink in light, night over
+  paper in dark, with the ember held at one value in both. `CoveMark` draws
+  the same curve, so the springboard icon, the launch screen, and the mark
   inside the app stay one shape.
+- The mark carries a hairline around its tile everywhere it is drawn inside
+  the app — the setup and loading cards, the Mac sidebar stamp, and the launch
+  screen. Its ground is the app's own canvas, so on those surfaces the tile's
+  ground half simply vanished into what it was drawn on and the mark read as a
+  bay floating on the page. The app icon deliberately has no such edge: the
+  system masks it and it sits on a wallpaper, not on Cove's canvas.
 - The Mac app icon follows light and dark. An `appiconset` has no dark `mac`
   slot — `actool` accepts the entries and then assigns them to nothing, and
   says so as a warning rather than an error — so the dark tile is installed on

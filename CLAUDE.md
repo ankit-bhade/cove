@@ -30,10 +30,14 @@ rather than on a sentence about itself. Then the one row that had
 stayed off the shared grid — the task row, with its own insets, its own
 padding, and its own separator inset — was put on it, so the text column and
 the row rhythm are the same on all four screens. Most recently the mark
-itself was redrawn: the serif `c` and its ember dot, the last piece of the
-identity still set in type and the one that leaned right because a serif face
-has a diagonal stress, is now two concentric arcs on a single axis, centred by
-construction. See `CHANGELOG.md`
+itself was redrawn twice: the serif `c` and its ember dot — the last piece of
+the identity still set in type, and the one that leaned right because a serif
+face has a diagonal stress — became two concentric arcs on a single axis, and
+those arcs in turn became a coastline, a bay cut into the land's edge with its
+shoreline traced in ember. The arcs fixed the lean and were centred by
+construction, but they said nothing about what the app is; the coastline does,
+and it makes the tile itself the mark rather than a ground the mark sits on.
+See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
 
@@ -869,25 +873,53 @@ often it comes back — rather than as parts assembled.
 `CoveRecurrenceLabel` takes the rule's wording rather than a `RecurrenceRule`,
 which keeps the design system clear of the task model.
 
-**`CoveMark` is drawn, not loaded, and it is geometry rather than type.** Two
-concentric arcs opened on one axis: an ink C at r = 0.20 under a 16% stroke,
-and an ember arc at r = 0.36 under a 7% one — a C, and equally a ripple
-leaving an inlet. It replaced a serif `c` cupping an ember dot, and the reason
-is that a serif face is drawn with a diagonal stress and tapered terminals, so
-the letter leaned right while the dot beside it pulled further right again:
-geometrically centred in the tile and visibly off balance. Arcs have no
-stress. The mark is centred by construction, there is no axis left to look
-crooked, and the offsets and the `markScale` fudge factor that were tuning the
-old glyph's optical centre are gone with it. Drawing it still means it
-inherits the appearance and scales to any size without a new export. The stamp
-inverts with appearance — ink on warm paper in light, paper on night-black in
-dark, the arcs and the ember held constant — so it reads as the two faces of
-the same app icon rather than two different marks.
+**`CoveMark` is drawn, not loaded, and it is geometry rather than type.** A
+coastline in a 0…100 design space — `M0 42 C20 42 22 74 44 74 C70 74 76 34
+100 34` — filled down to the bottom two corners as land and stroked along its
+own length in ember. The bay sits left of centre and the right headland stands
+higher, so the mark reads as a place rather than a symmetrical diagram.
 
-**The ember arc holds a 1.5pt floor.** At 7% of the frame it is sub-pixel
-below about 21pt, and the mark is drawn as small as a 32pt sidebar stamp and
+**The land and the shoreline are the same curve**, so a fill and a stroke that
+describe the same edge cannot drift apart under a geometry change; `CoveLand`
+is `coveShorePath` with three lines added to close it.
+
+Two marks preceded it. A serif `c` cupping an ember dot leaned right, because
+a serif face is drawn with a diagonal stress and tapered terminals, so the
+letter pulled one way and the dot beside it pulled further: geometrically
+centred in the tile and visibly off balance. Two concentric arcs on one axis
+fixed that — arcs have no stress — but a C and a ripple is a shape that has to
+be explained, and the tile it sat on was a ground rather than part of the
+mark. The coastline makes the whole tile the mark: **the split is the
+subject**, which is also why the ground now has to be visible (see the
+hairline below). The mark still inherits the appearance and scales to any size
+without a new export.
+
+**Only the ground and the land invert with appearance; the ember does not.**
+Warm paper over ink in light, night over paper in dark, with the shoreline
+held at `#9E5827` — the light `CoveTheme.accent` value — in both. A shoreline
+that changed value with the appearance would be two marks; one that does not
+is the same mark seen in two lights. This is the one place a token's light
+value is used as a constant rather than as a token, and it is deliberate.
+
+**The shoreline holds a 1pt floor.** At 4 design units it is sub-pixel below
+about 25pt, and the mark is drawn as small as a 32pt sidebar stamp and
 rasterized as small as a 16px Dock tile; without the floor the ember thins to
-nothing and the mark loses the half of itself that carries the colour.
+nothing and the mark loses the half of itself that carries the colour. The 16
+and 32px Mac renders carry a proportionally heavier stroke for the same
+reason.
+
+**The tile carries `CoveTheme.hairline`, and the app icon deliberately does
+not.** The mark's ground is Cove's own canvas, so on a setup card, a loading
+card, the Mac sidebar, or the launch screen — where `LaunchBackground` is
+*exactly* the tile's paper — the ground half vanished into what it was drawn
+on and the mark read as a bay floating on the page with its top corners cut by
+an invisible edge. `strokeBorder` inside the clip is what puts the edge back.
+It shows along the ground half only: over the land it composites to the land's
+own colour, which is the half that never needed it. An icon is masked by the
+system and sits on a wallpaper rather than on Cove's canvas, so the PNGs in
+`AppIcon.appiconset` and `DockIconDark` have no edge; the `LaunchIcon` PNGs
+have it baked in at one point (`canvas / 128`, since the image is laid out at
+128pt), which is the same weight the live mark strokes.
 
 **Tab and sidebar symbols are outline names.** The iOS tab bar substitutes
 the filled variant itself, so the choice only shows through on the macOS
@@ -916,24 +948,31 @@ screens; an unrecognized stored value falls back to `system`.
 
 ### Icon and launch screen
 
-The asset catalog carries generated `CoveMark` artwork — the two concentric
-arcs the interface draws. The set is a full-bleed 1024 iOS icon plus a dark
-variant, icon-grid rounded rects for every mac size, and a `LaunchIcon`
-imageset used by the iOS launch screen. The mark is identical in both
-appearances; only the ground changes — warm paper in light, a night-black
-gradient in dark — and the ink arc inverts with it so it reads on both.
+The asset catalog carries generated `CoveMark` artwork — the coastline the
+interface draws. The set is a full-bleed 1024 iOS icon plus dark and tinted
+variants, icon-grid rounded rects for every mac size, and a `LaunchIcon`
+imageset used by the iOS launch screen. Ground and land swap with the
+appearance — warm paper over ink in light, night over paper in dark — while
+the ember shoreline is held at one value, so the two read as one mark seen in
+two lights.
 
 **The icon and the in-app mark are now one shape.** The catalog art is
 `CoveMark` rendered to PNG, the interface draws the live `CoveMark`, and both
 carry the ink-and-ember palette — so the springboard icon, the launch screen,
 and the loading/setup mark all agree. The coastal wordmark is retired.
 
-**The icon's light ember is a shade deeper than `CoveTheme.accent`** (`#A85E2A`
-against the token's `#9E5827`), the same call the widget palette makes and for
-the same reason: a Home Screen tile sits among other apps rather than on Cove's
-own canvas. In dark the two are the same colour. Every other value in the
-artwork *is* a token — the ink, the paper, and the warm ground are `CoveTheme`'s
-own literals — so this is the one deliberate divergence and not a drifted copy.
+**Every value in the artwork is a `CoveTheme` literal**, the shoreline
+included: the icon's ember is the token's own light value rather than the
+deeper `#A85E2A` the arcs carried, so the palette no longer forks between the
+app and its icon. The widget still runs its accent a shade deeper, which is
+now the only such divergence and is documented where `WidgetPalette` is.
+
+**The tinted iOS variant is a real render, not a derived one.** iOS builds a
+tinted icon from the luminance of whatever it is given, so without an entry it
+would flatten the light tile — paper and ink at nearly the same luminance in
+places — into mush. The supplied render is the dark arrangement in greys
+(`#1C1C1E` ground, `#D6D6D6` land, `#909090` shoreline), which keeps the
+split legible under the system's tint.
 
 **The Mac's dark icon is applied at runtime, because the catalog has nowhere
 to put it.** `luminosity` appearances on an `appiconset` are honoured for the
@@ -967,8 +1006,9 @@ other things stop it, and they are the ones to weigh if this is revisited:
 
 * **macOS 26 renders `.icon` files with its own material treatment**, and it is
   not optional — it is why native icons follow appearance at all. Cove's flat
-  ink C comes out as a glossy gradient and the ember arc picks up a metallic
-  sheen, against a direction whose whole premise is flat shapes at one weight.
+  land comes out as a glossy gradient and the ember shoreline picks up a
+  metallic sheen, against a direction whose whole premise is flat shapes at
+  one weight.
 * **The light/dark colour schema is undocumented and fails silently.** `actool`
   accepts an invented `"totally-bogus-key"` without a word, and `dark-color`,
   `light-color`/`dark-color`, and `fill-specializations` each left the dark
@@ -1131,7 +1171,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **409 tests** (macOS host), plus clean macOS and
+Current verified suite: **433 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1165,7 +1205,7 @@ someone, not what the design says.
 
 ### Regenerating the app icon
 
-The mark is the `CoveMark` stamp — two concentric arcs — so it needs no font
+The mark is the `CoveMark` stamp — one coastline curve — so it needs no font
 at all, and with it went the webfont, the headless Chrome, and the network the
 Cormorant wordmark once needed. Every PNG is rendered straight from SwiftUI
 with `ImageRenderer` on a macOS host. The spec is the Claude Design doc `Cove
@@ -1174,20 +1214,32 @@ this repo; the geometry it states is reproduced in `CoveMark` itself, which is
 the real reference.
 
 The generator is throwaway — a standalone `swift` script (or a small `@main`
-target) that draws the same two arcs at each size and writes the PNGs into
+target) that draws the same curve at each size and writes the PNGs into
 `Cove/Assets.xcassets/`, then is deleted. It never ships. **Size the view in
 points equal to the target pixel count and render at `scale = 1`**, so the
-ember's 1.5px floor and the small-size inset are decided in real pixels; a
+shoreline's 1px floor and the baked hairline are decided in real pixels; a
 1024pt view rendered at a fractional scale silently scales both away.
 
+**Render the light Mac tile too, even though the catalog already has one, and
+diff it against `icon-mac-1024.png`.** The generator and the shipped artwork
+are two independent drawings of one curve, and the diff is the only thing that
+proves they still agree — a correct-looking render that has drifted a few
+units is invisible by eye. Differences should be hairline antialiasing along
+the tile outline and the stroke boundaries, nothing filled.
+
 Three shapes: full-bleed square for iOS (no baked corners — iOS masks it), a
-rounded-rect body inset into the macOS icon grid at 824/1024 — tightening to
-0.875 below 64px, so the mark holds its size in the Dock and the menu bar —
-and full-bleed rounded tiles (radius `0.2237·S`) for `LaunchIcon`. Only the
-macOS tile carries the bevel and drop shadow; the iOS and launch grounds are
-flat. iOS carries a light and a dark ground and the launch tiles carry both
-(`.png` light, `-dark.png` dark). `Contents.json` for both sets already names
-these exact filenames, so no manifest edit is needed.
+rounded-rect body inset into the macOS icon grid at 824/1024 at *every* size,
+corner radius 185/824 of the artwork, and full-bleed rounded tiles (radius
+`0.2237·S`) for `LaunchIcon`. Nothing carries a bevel or a drop shadow; the
+grounds are flat. iOS carries light, dark, and tinted renders, and the launch
+tiles carry light and dark (`.png` light, `-dark.png` dark). `Contents.json`
+for both sets already names these exact filenames, so no manifest edit is
+needed.
+
+**Only the `LaunchIcon` tiles take the baked hairline** (`CoveTheme.hairline`
+at `canvas / 128`, since the launch image is laid out at 128pt). The app icon
+and the Dock tile must not have it — see the hairline note under "The visual
+system" for why.
 
 macOS is the exception: `AppIcon.appiconset` takes the light tile at every
 size, and the dark one is a *separate* `DockIconDark` imageset at 512 (1x) and
@@ -1198,7 +1250,8 @@ both.
 Verify with a macOS and an iOS build afterwards — `actool` reports icon
 problems as build *warnings*, not errors, and "unassigned children" is how it
 says a `Contents.json` entry it parsed is being used by nothing. Then eyeball
-the renders at 32 and 16 px, where the two arcs either stay two arcs or merge.
+the renders at 32 and 16 px, where the shoreline either stays a distinct ember
+band between paper and land or closes up into a single dark mass.
 
 ---
 
@@ -1428,6 +1481,16 @@ Rough edges and surprises, not restatements of the design above.
   guidance prefers a transparent dark icon over a system backdrop, but the mark
   supplies its own night-black ground. iOS 17 ignores the variant entirely.
 * The launch screen is iOS-only; macOS windows open with the app's content.
+* The mark's hairline lives in two places that cannot check each other: a
+  `strokeBorder` in `CoveMark` and baked pixels in the `LaunchIcon` PNGs. They
+  agree today at one point, but the launch tiles are rendered by a throwaway
+  script, so changing one leaves nothing to catch the other. The launch screen
+  is where a mismatch would show, since its backdrop is exactly the tile's
+  paper.
+* iOS caches the launch-screen snapshot, so after reinstalling a build with
+  new launch artwork the *first* launch can still draw the previous tile. A
+  simulator reboot, or simply launching twice, clears it — worth knowing
+  before concluding that a launch-screen change did not take.
 
 ### Testing
 

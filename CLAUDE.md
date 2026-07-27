@@ -1112,11 +1112,39 @@ weekday is wide on the medium family and abbreviated on the small one, with
 the month and day secondary. "Today" survives as the widget's name in the
 gallery, which is how it gets found.
 
+**How many rows are drawn is measured, not declared.** The families took a
+literal `prefix(2)` and `prefix(3)`, and a small widget is 148pt tall on one
+iPhone and 170pt on another — so the count was wrong on both ends: it clipped
+nothing only because it withheld a row the tile had room for, and three tasks
+due today showed as two above a third of blank tile. `ViewThatFits(in:
+.vertical)` is handed four candidates, longest first, and takes the tallest
+that fits under the header. The candidates are spelled out rather than
+generated, because `ViewThatFits` reads its content as a list of alternatives
+and a `ForEach` inside it is *one* child, not four. What the space actually
+holds today is three rows on every current iPhone; the point is that it is the
+space that decides, so an accessibility text size drops a row rather than
+squashing three.
+
+**The checkbox's target is exactly a row tall and wider than its column.**
+Vertical overflow is the one direction that must not happen — a hit region
+reaching into the next row would dispatch a neighbouring App Intent — so the
+button's height is `rowHeight` and its extra width falls into the widget's own
+padding on one side and the gap before the title on the other. Laying it out
+in a column as wide as the ring is what puts the ring's leading edge under the
+date above it, rather than the 6pt inside it that a centred 32pt frame gave.
+
 **Checkboxes are drawn in `checkboxRest`, a muted accent, not the full one.**
 The boxes repeat down the widget while the count and the times appear once
 each, so at full saturation the rings were the loudest thing on a surface
 whose job is to be glanced at. A completed row fills the same soft tone, so
 finishing something quiets the row rather than lighting it up.
+
+**The due time is a subtitle and the count badge disappears at zero.** The
+time carried a clock glyph, or an exclamation mark once it had passed, on
+every row that had one — the same restatement the app removed from its own due
+lines, and here it repeated down a surface meant to be glanced at. Lateness is
+the tint, as it is in the app. The badge went for the same reason: a `0` beside
+"All clear" is a shape that asks to be read and then says nothing.
 
 **Deep link:** `.widgetURL` is `cove://tasks`, handled in `RootView.onOpenURL`;
 the scheme is registered in the root `Info.plist` under `CFBundleURLTypes`.
@@ -1481,8 +1509,12 @@ Rough edges and surprises, not restatements of the design above.
   queue that can't be written also can't be pruned. Deliberate — the
   alternative is dropping an operation on a failure we couldn't record — but
   an unwritable container leaves retries unbounded.
-* The 44×44pt checkbox targets are larger than the row pitch, so a tap in the
-  ~8pt band between two rows may hit the neighbour.
+* A widget checkbox's target is a row tall — well under the 44pt an app
+  control gets. It no longer overlaps its neighbour, but it is a small thing
+  to hit, and that is the cost of fitting three tasks on a tile.
+* Three rows is what a small or medium tile holds, so a fourth task due today
+  is only implied by the count in the corner. Nothing says "2 more"; the
+  badge and the row count are what the reader has to reconcile.
 
 ### Visual system
 
@@ -1563,6 +1595,18 @@ Rough edges and surprises, not restatements of the design above.
   operation queue is still the fallback for when it can't. Adding a widget
   needs tap injection (long-press the Home Screen → Edit → Add Widget), not
   `simctl` alone.
+* Widget *layout* can be checked without any of that, and the row-count work
+  was. `TodayWidgetView` is pure SwiftUI, so a throwaway harness under `Cove/`
+  — the synchronized folder picks it up with no pbxproj edit — renders it at
+  exact tile sizes (148/158/170 square, and the medium widths) in both
+  appearances, with `RootView`'s `.open` case routed to it. Two things have to
+  be faked: `\.widgetFamily` is not writable, so the copy takes the family as
+  a plain property, and `.containerBackground(for: .widget)` paints nothing
+  outside a widget, so the harness supplies `WidgetPalette.background` itself.
+  Everything else is the shipping view. It is not a substitute for the Home
+  Screen — App Intent taps and timeline reloads only happen there — but it is
+  the only way to see all the sizes and states at once, and it needs no
+  permission.
 * Date handling is tested against UTC-ahead and -behind zones, New York DST
   transitions, and midnight. A non-Gregorian calendar can no longer be handed
   to a date API at all — the parameter is a `TimeZone` — so what was a runtime

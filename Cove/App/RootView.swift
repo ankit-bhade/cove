@@ -93,6 +93,10 @@ struct RootView: View {
             return
                 "\(health.taskDiagnosticCount) task line\(health.taskDiagnosticCount == 1 ? " needs" : "s need") review."
         }
+        if health.subscriptionDiagnosticCount > 0 {
+            return
+                "\(health.subscriptionDiagnosticCount) subscription line\(health.subscriptionDiagnosticCount == 1 ? " needs" : "s need") review."
+        }
         let conflictCount =
             health.unresolvedConflictURLs.count
             + health.conflictReviewURLs.count
@@ -172,6 +176,7 @@ struct RootView: View {
         case .notes: VaultBrowserView()
         case .tasks: TasksView()
         case .lists: ListsView()
+        case .trackers: TrackersView()
         case .settings: SettingsView()
         }
     }
@@ -181,11 +186,14 @@ struct RootView: View {
 /// and Tasks leads both: it is the section the app opens on, so leaving it
 /// second put the landing screen under the second target while the first one
 /// sat unvisited. Notes follows, then Lists, then Settings — structure, then
-/// grouping, then configuration.
+/// grouping, then configuration. Trackers follows them and Settings stays
+/// last — and that fills the bar: iOS collapses a sixth tab into "More", so
+/// anything after this has to displace something rather than join it.
 private enum AppSection: String, CaseIterable, Identifiable {
     case tasks
     case notes
     case lists
+    case trackers
     case settings
 
     var id: Self { self }
@@ -195,6 +203,7 @@ private enum AppSection: String, CaseIterable, Identifiable {
         case .notes: "Notes"
         case .tasks: "Tasks"
         case .lists: "Lists"
+        case .trackers: "Trackers"
         case .settings: "Settings"
         }
     }
@@ -208,6 +217,7 @@ private enum AppSection: String, CaseIterable, Identifiable {
         case .notes: "folder"
         case .tasks: "checkmark.circle"
         case .lists: "list.bullet.rectangle"
+        case .trackers: "chart.bar"
         case .settings: "gearshape"
         }
     }

@@ -11,6 +11,18 @@ struct DeletedTaskRecord: Sendable {
     let sourceNoteURL: URL
 }
 
+/// What a deleted subscription needs to come back: its exact source line and
+/// the category it sat under. Unlike a task, it is restored into its `##`
+/// section rather than between remembered neighbours — a subscription note is
+/// a short list whose order carries no meaning, so re-inserting under the
+/// right heading is the whole of "put it back".
+struct DeletedSubscriptionRecord: Sendable {
+    let identity: SubscriptionIdentity
+    let originalLine: String
+    let category: String?
+    let sourceNoteURL: URL
+}
+
 struct TaskToggleRecord: Sendable {
     let originalIdentity: TaskIdentity
     let previousCompletion: Bool
@@ -36,6 +48,7 @@ struct CoveStorageHealth: Equatable, Sendable {
     let lastIssue: String?
     let unavailableNoteCount: Int
     let taskDiagnosticCount: Int
+    let subscriptionDiagnosticCount: Int
     let unresolvedConflictURLs: [URL]
     let conflictReviewURLs: [URL]
     let bookmarkIsPersisted: Bool
@@ -108,6 +121,7 @@ final class VaultManager {
             lastIssue: lastErrorDescription,
             unavailableNoteCount: index.indexingFailures.count,
             taskDiagnosticCount: index.taskDiagnostics.count,
+            subscriptionDiagnosticCount: index.subscriptionDiagnostics.count,
             unresolvedConflictURLs: unresolvedConflictURLs.sorted {
                 $0.path < $1.path
             },
@@ -523,6 +537,298 @@ final class VaultManager {
 
     /// The lists in the capture note, from the current index.
     var lists: [TaskList] { index.lists }
+
+    // MARK: - Trackers
+
+    /// The folder at the vault root that tracker notes live in, created on
+    /// demand with the first charge.
+    ///
+    /// Trackers get a folder rather than sitting beside `Tasks.md` at the root
+    /// because there will be more than one of them, and a vault root
+    /// accumulating a note per tracker is a root that stops being about the
+    /// user's own notes. It is still a *fixed* location — one path, nothing to
+    /// configure, no ambiguity about which file is meant.
+    nonisolated static let trackerFolderName = "Trackers"
+
+    /// The note inside it that recurring charges are recorded in.
+    nonisolated static let subscriptionNoteName = "Subscriptions.md"
+
+    nonisolated static func trackerFolderURL(in vaultRoot: URL) -> URL {
+        vaultRoot.appendingPathComponent(trackerFolderName, isDirectory: true)
+    }
+
+    nonisolated static func subscriptionNoteURL(in vaultRoot: URL) -> URL {
+        trackerFolderURL(in: vaultRoot)
+            .appendingPathComponent(subscriptionNoteName, isDirectory: false)
+    }
+
+    /// The subscription note is the one note whose `- Name @cost(…)` lines are
+    /// recurring charges and whose `##` headings are categories. Matched at
+    /// `Trackers/Subscriptions.md` only, so a `Subscriptions.md` anywhere else
+    /// — including the vault root — stays an ordinary note.
+    ///
+    /// The folder name is matched case-insensitively like the file name is: a
+    /// path-string comparison is case-sensitive, and APFS is not, so `trackers/`
+    /// and `Trackers/` are the same folder on disk and must read the same here.
+    nonisolated static func isSubscriptionNote(_ url: URL, vaultRoot: URL) -> Bool {
+        let parent = url.deletingLastPathComponent()
+        return url.lastPathComponent.caseInsensitiveCompare(subscriptionNoteName)
+            == .orderedSame
+            && parent.lastPathComponent.caseInsensitiveCompare(trackerFolderName)
+                == .orderedSame
+            && parent.deletingLastPathComponent().standardizedFileURL.path
+                == vaultRoot.standardizedFileURL.path
+    }
+
+    /// A `Subscriptions.md` sitting at the vault root instead of inside
+    /// `Trackers/`. It is an ordinary note as far as everything else is
+    /// concerned, and the tracker's empty state says so — otherwise moving the
+    /// file, or making it by hand in the obvious place, shows an empty tracker
+    /// with nothing explaining why.
+    var misplacedSubscriptionNoteURL: URL? {
+        guard let vaultURL else { return nil }
+        let candidate = vaultURL.appendingPathComponent(
+            Self.subscriptionNoteName, isDirectory: false)
+        guard index.subscriptions.isEmpty,
+            rootNode?.allFiles.contains(where: {
+                $0.url.standardizedFileURL == candidate.standardizedFileURL
+            }) == true
+        else { return nil }
+        return candidate
+    }
+
+    /// Every recurring charge, from the current index.
+    var subscriptions: [Subscription] { index.subscriptions }
+
+    /// A category already exists under that name.
+    struct SubscriptionCategoryExistsError: LocalizedError {
+        let name: String
+        var errorDescription: String? {
+            "A category named “\(name)” already exists."
+        }
+    }
+
+    /// One coordinated read-modify-write of the subscription note, creating
+    /// `Trackers/` first when it isn't there yet.
+    ///
+    /// `updateNote(named:in:)` creates the *file* on demand but not the folder
+    /// holding it, so without this the very first charge fails on a vault that
+    /// has never had a tracker.
+    private func mutateSubscriptionNote(
+        _ transform: @escaping @Sendable (String) throws -> String?
+    ) async throws {
+        let vaultURL = try requireOpenVaultURL()
+        try await ensureTrackerFolder(in: vaultURL)
+        try await mutateNote(
+            named: Self.subscriptionNoteName,
+            in: Self.trackerFolderURL(in: vaultURL),
+            transform: transform)
+    }
+
+    /// Creates `Trackers/` unless it is already there. An existing folder is
+    /// success, not a collision.
+    private func ensureTrackerFolder(in vaultURL: URL) async throws {
+        let folder = Self.trackerFolderURL(in: vaultURL)
+        guard !FileManager.default.fileExists(atPath: folder.path) else { return }
+        let operations = fileOperations
+        let name = Self.trackerFolderName
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                _ = try operations.createFolder(named: name, in: vaultURL)
+            }.value
+        } catch VaultFileOperations.OperationError.itemAlreadyExists {
+            return
+        }
+    }
+
+    /// Writes a new charge into the subscription note, under `category` when
+    /// one is given — created on demand, since a category is only a heading.
+    /// Without one the line goes into the note's unlisted region rather than
+    /// the end of the file, which would otherwise file it under whichever
+    /// heading happens to sit last.
+    func addSubscription(
+        _ draft: SubscriptionDraft,
+        into category: String? = nil
+    ) async throws {
+        let line = try draft.validatedMarkdownLine()
+        try await mutateSubscriptionNote { text in
+            guard let category else {
+                return try TaskListDocument.insertingUnlistedLineResult(
+                    line, in: text
+                ).get()
+            }
+            return try TaskListDocument.insertingLineResult(
+                line, inSection: category, in: text
+            ).get()
+        }
+    }
+
+    /// Rewrites one charge's line, moving it between categories when that
+    /// changed. Both halves of a move happen inside one coordinated
+    /// read-modify-write, so a failure can never leave the line removed from
+    /// its old category and missing from its new one.
+    func updateSubscription(
+        _ subscription: Subscription,
+        to draft: SubscriptionDraft,
+        category: String?
+    ) async throws {
+        let line = try draft.validatedMarkdownLine()
+        let identity = subscription.identity
+        let staysPut =
+            TaskListDocument.canonicalName(category ?? "")
+            == TaskListDocument.canonicalName(subscription.category ?? "")
+
+        try await mutateSubscriptionNote { text in
+            if staysPut {
+                return try SubscriptionParser.replacingSubscriptionResult(
+                    identity, with: line, in: text)
+            }
+            let removed = try SubscriptionParser.removingSubscriptionResult(
+                identity, in: text)
+            guard let category else {
+                return try TaskListDocument.insertingUnlistedLineResult(
+                    line, in: removed
+                ).get()
+            }
+            return try TaskListDocument.insertingLineResult(
+                line, inSection: category, in: removed
+            ).get()
+        }
+    }
+
+    /// Pausing, cancelling, or reactivating — the one field a row can change
+    /// without opening the sheet.
+    func setSubscriptionStatus(
+        _ subscription: Subscription,
+        to status: SubscriptionStatus
+    ) async throws {
+        var draft = SubscriptionDraft(subscription)
+        draft.status = status
+        try await updateSubscription(
+            subscription, to: draft, category: subscription.category)
+    }
+
+    /// Removes one charge's line, returning what Undo needs to put it back.
+    @discardableResult
+    func deleteSubscription(
+        _ subscription: Subscription
+    ) async throws -> DeletedSubscriptionRecord {
+        let url = Self.subscriptionNoteURL(in: try requireOpenVaultURL())
+        let identity = subscription.identity
+        // Read once to capture the exact source line, then re-find it inside
+        // the coordinated write; the transform refuses if it changed meanwhile.
+        let preflight = try await repository.readNote(at: url)
+        let parsed = try SubscriptionParser.matching(identity, in: preflight)
+        _ = try await repository.updateNote(at: url) { text in
+            try SubscriptionParser.removingSubscriptionResult(identity, in: text)
+        }
+        await refreshIndex(changedURLs: [url])
+        return DeletedSubscriptionRecord(
+            identity: identity,
+            originalLine: parsed.sourceLine,
+            category: parsed.category,
+            sourceNoteURL: url)
+    }
+
+    func restoreDeletedSubscription(
+        _ record: DeletedSubscriptionRecord
+    ) async throws {
+        let line = record.originalLine.trimmingCharacters(in: .newlines)
+        let category = record.category
+        try await mutateSubscriptionNote { text in
+            guard let category else {
+                return try TaskListDocument.insertingUnlistedLineResult(
+                    line, in: text
+                ).get()
+            }
+            return try TaskListDocument.insertingLineResult(
+                line, inSection: category, in: text
+            ).get()
+        }
+    }
+
+    /// Adds an empty `## name` heading to the subscription note.
+    func createSubscriptionCategory(named name: String) async throws {
+        // Fails fast on a closed vault; `mutateSubscriptionNote` needs the URL
+        // itself and resolves it again.
+        _ = try requireOpenVaultURL()
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            !index.subscriptionCategoryNames.contains(where: {
+                TaskListDocument.canonicalName($0)
+                    == TaskListDocument.canonicalName(trimmed)
+            })
+        else { throw SubscriptionCategoryExistsError(name: trimmed) }
+
+        try await mutateSubscriptionNote { text in
+            try TaskListDocument.addingSectionResult(named: trimmed, to: text).get()
+        }
+    }
+
+    /// Renames a category's heading, keeping every charge under it.
+    func renameSubscriptionCategory(
+        named name: String,
+        to newName: String
+    ) async throws {
+        _ = try requireOpenVaultURL()
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != name else { return }
+        guard
+            !index.subscriptionCategoryNames.contains(where: {
+                TaskListDocument.canonicalName($0)
+                    == TaskListDocument.canonicalName(trimmed)
+                    && TaskListDocument.canonicalName($0)
+                        != TaskListDocument.canonicalName(name)
+            })
+        else { throw SubscriptionCategoryExistsError(name: trimmed) }
+
+        try await mutateSubscriptionNote { text in
+            try TaskListDocument.renamingSectionResult(
+                named: name, to: trimmed, in: text
+            ).get()
+        }
+    }
+
+    /// Removes a category's heading and everything filed under it, returning
+    /// the exact source section for semantic Undo.
+    ///
+    /// This takes the charges with it, exactly as deleting a task list takes
+    /// its tasks. Keeping them by relocating every line into the note's
+    /// unlisted region was the alternative, and it is worse in the way that
+    /// matters: it silently rewrites lines the user did not ask to touch, and
+    /// its Undo cannot put them back where they were. Emptying a category
+    /// first — each charge's own sheet has a Category field — is the explicit
+    /// path, and the confirmation dialog says how many charges are at stake.
+    @discardableResult
+    func deleteSubscriptionCategory(
+        named name: String
+    ) async throws -> TaskListDocument.SectionRemovalRecord {
+        let url = Self.subscriptionNoteURL(in: try requireOpenVaultURL())
+        let preflightText = try await repository.readNote(at: url)
+        let removal = try TaskListDocument.removingSectionWithRecordResult(
+            named: name,
+            from: preflightText
+        ).get()
+        _ = try await repository.updateNote(at: url) { text in
+            guard text == preflightText else {
+                throw VaultFileOperations.OperationError.fileChangedDuringWrite(
+                    url.lastPathComponent)
+            }
+            return try TaskListDocument.removingSectionResult(
+                named: name, from: text
+            ).get()
+        }
+        await refreshIndex(changedURLs: [url])
+        return removal.record
+    }
+
+    func restoreDeletedSubscriptionCategory(
+        _ record: TaskListDocument.SectionRemovalRecord
+    ) async throws {
+        try await mutateSubscriptionNote { text in
+            try TaskListDocument.restoringSectionResult(record, in: text).get()
+        }
+    }
 
     /// Toggles one task in its original Markdown file: re-reads the file,
     /// re-finds the task by content, rewrites the line (flipping the status,

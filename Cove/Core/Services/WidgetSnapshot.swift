@@ -436,7 +436,7 @@ struct TodaySnapshot: Codable, Sendable {
         let today =
             allTasks
             .filter { $0.belongsOnTasksScreen && $0.dueDateString == dayString }
-            .sorted(by: VaultIndex.byDueDate)
+            .sorted(by: TaskItem.byDueDate)
         return (today.filter { !$0.isCompleted } + today.filter(\.isCompleted))
             .map(SnapshotTask.init)
     }
@@ -557,7 +557,7 @@ struct TodaySnapshot: Codable, Sendable {
             if lhsActionable != rhsActionable {
                 return lhsActionable
             }
-            return VaultIndex.byDueDate(lhs.taskItem, rhs.taskItem)
+            return TaskItem.byDueDate(lhs.taskItem, rhs.taskItem)
         }
         if tasks.count > Self.maximumStoredTasks {
             tasks.removeLast(tasks.count - Self.maximumStoredTasks)

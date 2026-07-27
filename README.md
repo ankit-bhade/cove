@@ -5,7 +5,8 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 11 — all build phases complete): select a vault folder,
+Current state (Phase 12 — trackers, on top of the eleven complete build
+phases): select a vault folder,
 browse its nested folders, and open any note in a live-styled
 Markdown editor that saves automatically as you type. Opening a folder pushes
 it onto the Notes screen, so the system back button and the iOS swipe-back
@@ -122,6 +123,25 @@ leaves its open ones; both clears are undoable. Lists can be renamed, and deleti
 or by swiping or right-clicking its row in the overview — removes it and its
 items from `Tasks.md` after confirmation. Undo reinserts only the removed
 section into the latest file and refuses if a new list has reused the name.
+A Trackers tab holds the things Cove keeps that aren't tasks. Today that is
+Subscriptions, kept in `Trackers/Subscriptions.md` as one line per
+recurring charge — `- Netflix @cost(15.49 USD) @every(month)
+@since(2024-03-04)` — with `##` headings as categories, so it stays a note you
+can edit by hand. The screen shows what everything costs per month and per
+year, the charges landing in the next thirty days, and the rest grouped by
+category and ranked by monthly cost, which is what lets a yearly charge and a
+monthly one be compared in one list, with a chart above them ranking the same
+figures. It is meant for software and service subscriptions — streaming,
+games, tools, a gym — rather than large recurring bills. `@since` is the *first* charge, never the
+next, so the file is never rewritten as time passes and a charge on the 31st
+doesn't drift to the 28th after February. A subscription can be paused or
+cancelled — it then counts toward nothing and folds away at the bottom — and
+adding or editing one uses a form that shows what the note will say before
+anything is written. Categories can be created, renamed, and deleted from the
+screen itself; deleting one takes the charges filed under it, so the
+confirmation says how many and how to keep them, and the deletion is undoable. Currencies are never converted: totals are kept per
+currency, and weekly or daily charges are averaged over a year, which the
+screen says rather than implying otherwise.
 The vault selection persists across launches, and the app
 recovers gracefully when the saved folder access goes stale. A Settings tab
 shows the current vault (and can point Cove at a different folder — the same

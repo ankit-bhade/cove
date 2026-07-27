@@ -108,14 +108,27 @@ extension CovePanel where Trailing == EmptyView {
 }
 
 struct CoveStat: Identifiable {
-    let value: Int
+    /// Already-formatted, because not every figure a panel reports is a
+    /// count: a currency total carries its own symbol and fraction digits and
+    /// has to be formatted in the reader's locale before it gets here.
+    let text: String
     let label: String
+    /// Counts animate between values; a formatted string does too, and the
+    /// transition is the same one either way.
+    let value: Int?
 
     var id: String { label }
 
     init(_ value: Int, _ label: String) {
-        self.value = value
+        self.text = value.formatted(.number)
         self.label = label
+        self.value = value
+    }
+
+    init(_ text: String, _ label: String) {
+        self.text = text
+        self.label = label
+        self.value = nil
     }
 }
 
@@ -148,17 +161,19 @@ struct CoveStatStrip: View {
 
     private func figure(_ stat: CoveStat) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(stat.value, format: .number)
+            Text(stat.text)
                 .font(.title3.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.primary)
                 .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             Text(stat.label)
                 .coveEyebrow()
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(stat.value) \(stat.label)")
+        .accessibilityLabel("\(stat.text) \(stat.label)")
     }
 }
 

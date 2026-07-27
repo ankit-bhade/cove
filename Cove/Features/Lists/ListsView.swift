@@ -71,11 +71,20 @@ struct ListsView: View {
                     .listRowBackground(Color.clear)
                 }
             } else {
-                Section {
-                    listsOverview(lists)
-                        .listRowInsets(CoveTheme.headerRowInsets())
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                // A summary of one thing is not a summary. With a single list
+                // the panel said "1 list · 3 open · 1 done" directly above a
+                // row saying "3 open · 1 done", which is the screen stating
+                // itself twice and the reason overview cards started reading
+                // as a template rather than as information. Summing means
+                // something once there is more than one thing to sum — the
+                // same call the subscriptions chart makes at one bar.
+                if lists.count > 1 {
+                    Section {
+                        listsOverview(lists)
+                            .listRowInsets(CoveTheme.headerRowInsets())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
                 }
                 Section {
                     ForEach(lists) { list in

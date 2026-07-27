@@ -81,7 +81,11 @@ struct SubscriptionSpendChart: View {
                             SubscriptionChartStyle.axisAmount(
                                 amount, currencyCode: currencyCode)
                         )
-                        .coveEyebrow()
+                        // An axis amount is a number, not a heading: tracked
+                        // capitals did nothing to a "$40" but put it in the
+                        // same voice as the section headers around it.
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
                     }
                 }
             }

@@ -53,13 +53,16 @@ struct CoveRow<Content: View>: View {
 
 /// A row's primary text with an optional caption under it, at the one weight
 /// and gap every titled row in the app uses.
+///
+/// The caption used to come in two voices — tracked capitals when it was data
+/// ("2 ITEMS", "3 OPEN · 1 DONE") and quiet sentence case when it was a path
+/// or a snippet. The distinction was real and it was still one voice too many:
+/// a list of rows shouting their counts under a section header already set in
+/// the same capitals left nothing for the header to be. Every caption is now
+/// the quiet one; tracked capitals belong to headings.
 struct CoveRowTitle: View {
     let title: String
     var caption: String?
-    /// Captions that are data ("2 items", "3 open · 1 done") are tracked
-    /// capitals like every other label; a caption that is a path or a
-    /// sentence stays sentence case and readable.
-    var captionIsLabel = true
     var lineLimit: Int? = 2
 
     var body: some View {
@@ -68,14 +71,9 @@ struct CoveRowTitle: View {
                 .font(.body.weight(.medium))
                 .lineLimit(lineLimit)
             if let caption {
-                if captionIsLabel {
-                    Text(caption).coveEyebrow()
-                } else {
-                    Text(caption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+                Text(caption)
+                    .coveMetaLabel()
+                    .lineLimit(2)
             }
         }
     }

@@ -51,6 +51,28 @@ enum CoveTheme {
         dark: .white.opacity(0.10)
     )
 
+    /// The fill behind an editable field sunk into a panel.
+    ///
+    /// It was `canvas`, which is the right idea in light — a well cut into the
+    /// lighter `surface` reads as a place to put something — and exactly wrong
+    /// in dark, where the canvas is *darker* than the surface it sits in by
+    /// four points of luminance. An empty capture field and its placeholder all
+    /// but vanished into the panel. In dark the well is therefore lifted above
+    /// the surface instead of sunk below it: the direction flips, the idea
+    /// doesn't, and the field is visible before anything is typed in it.
+    static let field = dynamic(
+        light: Color(red: 0.965, green: 0.953, blue: 0.933),
+        dark: Color(red: 0.184, green: 0.176, blue: 0.161)
+    )
+
+    /// A field's edge, a step stronger than `hairline`. A hairline is enough
+    /// to separate two surfaces that already differ; the edge of an empty
+    /// control is the only thing saying it is there at all.
+    static let fieldStroke = dynamic(
+        light: Color(red: 0.141, green: 0.129, blue: 0.114).opacity(0.18),
+        dark: .white.opacity(0.22)
+    )
+
     // MARK: - Metrics
 
     enum Space {
@@ -87,8 +109,46 @@ enum CoveTheme {
     /// The insets a masthead or a panel takes as the first row of a list:
     /// no side padding, since the card already draws its own edge.
     static func headerRowInsets() -> EdgeInsets {
-        EdgeInsets(top: 8, leading: 0, bottom: 14, trailing: 0)
+        EdgeInsets(top: 6, leading: 0, bottom: 10, trailing: 0)
     }
+
+    /// The insets a group heading takes when it sits *inside* one continuous
+    /// list surface rather than above a card of its own.
+    ///
+    /// A screen whose groups are each their own inset-grouped section is a
+    /// stack of soft capsules inside the platform's own rounded chrome, and
+    /// every gap between two of them costs a row of what fits above the fold.
+    /// Set as rows within a single section the headings divide the list
+    /// without breaking it, and the space they take is this rather than the
+    /// system's section spacing: room above to separate a group from the one
+    /// before it, almost none below, since the heading belongs to the rows
+    /// under it.
+    ///
+    /// `isLast` is for a folded heading that ends the surface — a collapsed
+    /// Done section is a header with nothing beneath it, and with the rows
+    /// gone there is nothing left to hold it off the card's bottom corner.
+    static func groupHeaderRowInsets(isFirst: Bool = false, isLast: Bool = false) -> EdgeInsets {
+        EdgeInsets(
+            top: isFirst ? 7 : 16,
+            leading: Space.regular,
+            bottom: isLast ? 11 : 0,
+            trailing: Space.regular)
+    }
+
+    /// The gap between two list sections, on every iOS list in the app.
+    ///
+    /// The system's own is around 35pt, which is a lot of empty canvas to
+    /// spend saying that a panel and the list under it are two things — and on
+    /// the screen the app opens on it is spent twice before the first task.
+    /// Sections that genuinely differ (a chart, then charges, then categories)
+    /// still read as separate at this; what it stops paying for is the
+    /// distance between a screen's header card and the screen.
+    ///
+    /// It is set once in `coveListStyle` rather than per screen. The two task
+    /// screens once asked for `.listSectionSpacing(.compact)` on their own and
+    /// it was removed for exactly that reason: a section gap that changes
+    /// between tabs is felt before it is seen.
+    static let sectionSpacing: CGFloat = 18
 
     // MARK: - Dynamic colors
 
@@ -127,12 +187,29 @@ extension View {
             }
     }
 
+    /// Tracked capitals, and **only for a heading that names a region of the
+    /// screen**: a section header, a panel's own label, the sidebar's tagline.
+    ///
+    /// It used to carry everything that was not body text — stat names, row
+    /// captions, a per-month suffix — which meant QUICK CAPTURE, OVERDUE,
+    /// COLLECTIONS, LISTS, OPEN, DONE and 2 ITEMS all spoke in one voice on one
+    /// screen. A style that marks everything marks nothing, so what is under a
+    /// heading now speaks a step quieter; see `coveMetaLabel`.
     func coveEyebrow(tint: Color? = nil) -> some View {
         self
             .font(.caption2.weight(.semibold))
             .textCase(.uppercase)
             .tracking(0.9)
             .foregroundStyle(tint ?? .secondary)
+    }
+
+    /// A secondary label — a stat's name, a row's caption, a unit suffix — in
+    /// the reader's own sentence case. Quiet by design: it sits under
+    /// something that already said what this region is.
+    func coveMetaLabel() -> some View {
+        self
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }
 
@@ -146,12 +223,45 @@ private struct CoveScrollBackground: ViewModifier {
     }
 }
 
+/// The canvas under a list, its section spacing, and its row-height floor.
+private struct CoveListMetrics: ViewModifier {
+    func body(content: Content) -> some View {
+        sectionSpaced(content)
+            // A list row is 44pt tall whatever is in it. That floor is right
+            // for a row you can tap and wrong for a group heading set inside a
+            // continuous surface: a line of caption text got 30pt of padding
+            // the row's own insets cannot take back, which handed most of the
+            // saving from merging the sections straight back. Removing the
+            // floor changes nothing else here — every other row in the app is
+            // past 44 from its own content and the system's insets before the
+            // floor is consulted, and the only rows under it are the headings
+            // this is for.
+            .environment(\.defaultMinListRowHeight, 0)
+            .modifier(CoveScrollBackground())
+    }
+
+    /// `listSectionSpacing` is unavailable in AppKit — a macOS `.inset` list
+    /// draws no card per section for it to space out. The gap it tightens is
+    /// an iOS one, so it is applied where it exists and the macOS list keeps
+    /// what it already had.
+    @ViewBuilder
+    private func sectionSpaced(_ content: Content) -> some View {
+        #if os(iOS)
+            content.listSectionSpacing(CoveTheme.sectionSpacing)
+        #else
+            content
+        #endif
+    }
+}
+
 extension View {
     func coveListStyle() -> some View {
         #if os(iOS)
-            self.listStyle(.insetGrouped).modifier(CoveScrollBackground())
+            self.listStyle(.insetGrouped)
+                .modifier(CoveListMetrics())
         #else
-            self.listStyle(.inset).modifier(CoveScrollBackground())
+            self.listStyle(.inset)
+                .modifier(CoveListMetrics())
         #endif
     }
 

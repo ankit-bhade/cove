@@ -16,9 +16,10 @@ You select a folder with the system picker and Cove remembers it per device
 via a security-scoped bookmark; if the folder is later moved or deleted, a
 recovery screen offers to reselect one. The Notes screen browses nested
 folders one level at a time — opening a folder pushes it, so the system back
-button and the iOS swipe-back gesture return you to its parent — and each
-level opens with a compact count of direct folders, deeper subfolders, and
-notes.
+button and the iOS swipe-back gesture return you to its parent. The vault root
+opens with a compact count of direct folders, deeper subfolders, and notes; a
+folder you have pushed into does not, since the title bar already names it and
+each row already carries its own item count.
 
 Notes and folders can be created, renamed, moved, and deleted: swipe a row on
 iPhone or iPad, right-click it on any platform, or use the **+** toolbar
@@ -125,7 +126,7 @@ no day to appear under and stays in its list alone.
 
 The Tasks screen's Clear All takes the completed items it showed, lists
 included, and leaves undated list items alone; each list has its own Clear
-All in its Done header. Both are undoable. Lists can be renamed, and deleting
+All as the last row of its Done section. Both are undoable. Lists can be renamed, and deleting
 one — from its Options menu, or by swiping or right-clicking its row —
 removes it and its items after confirmation; Undo reinserts only the removed
 section into the latest file and refuses if a new list has reused the name.

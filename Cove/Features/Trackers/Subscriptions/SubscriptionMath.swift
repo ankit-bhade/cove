@@ -1,8 +1,8 @@
 import Foundation
 
 /// Everything the subscription tracker computes: when the next charge lands,
-/// what a cycle costs per month and per year, and how the charges fall across
-/// the coming months.
+/// what a cycle costs per month and per year, and which charges fall inside a
+/// window.
 ///
 /// Pure and tested against a fixed `now`, the way `TaskPresentation` is. Dates
 /// are Gregorian `YYYY-MM-DD` strings throughout, so a lexicographic comparison
@@ -16,10 +16,11 @@ enum SubscriptionMath {
 
     /// Ceiling on any occurrence walk.
     ///
-    /// A daily subscription genuinely has ~365 charges in a projected year, so
-    /// this is not a tight bound — it exists so a rule that somehow stops
-    /// advancing returns what it has instead of spinning, which is the same
-    /// reasoning behind `RecurrenceRule`'s own search ceiling.
+    /// A daily subscription has one charge a day, so a month-long window is
+    /// already thirty of them and this is not a tight bound — it exists so a
+    /// rule that somehow stops advancing returns what it has instead of
+    /// spinning, which is the same reasoning behind `RecurrenceRule`'s own
+    /// search ceiling.
     static let maximumProjectedOccurrences = 512
 
     // MARK: - Occurrences
@@ -121,42 +122,6 @@ enum SubscriptionMath {
                 $0.yearly == $1.yearly
                     ? $0.currencyCode < $1.currencyCode
                     : $0.yearly > $1.yearly
-            }
-    }
-
-    struct CategoryTotal: Identifiable, Hashable, Sendable {
-        /// Nil for lines that sit above every `##` heading.
-        let category: String?
-        let monthly: Decimal
-        let subscriptionCount: Int
-
-        var id: String { category ?? "\u{0}uncategorized" }
-        var displayName: String { category ?? "Uncategorized" }
-    }
-
-    /// Monthly spend per `##` category within one currency, largest first.
-    static func categoryTotals(
-        for subscriptions: [Subscription],
-        currencyCode: String
-    ) -> [CategoryTotal] {
-        let counted = subscriptions.filter {
-            $0.countsTowardSpending && $0.cost.currencyCode == currencyCode
-        }
-        let byCategory = Dictionary(grouping: counted) {
-            $0.category.map(TaskListDocument.canonicalName)
-        }
-        return
-            byCategory
-            .map { _, items in
-                CategoryTotal(
-                    category: items.first?.category,
-                    monthly: items.reduce(0) { $0 + monthlyEquivalent($1) },
-                    subscriptionCount: items.count)
-            }
-            .sorted {
-                $0.monthly == $1.monthly
-                    ? $0.displayName < $1.displayName
-                    : $0.monthly > $1.monthly
             }
     }
 
@@ -265,69 +230,6 @@ enum SubscriptionMath {
             }
     }
 
-    // MARK: - Projection
-
-    struct MonthBucket: Identifiable, Hashable, Sendable {
-        /// First day of the month, `YYYY-MM-DD`.
-        let monthStartDateString: String
-        let total: Decimal
-        let chargeCount: Int
-
-        var id: String { monthStartDateString }
-    }
-
-    /// What each of the next `months` calendar months actually costs, starting
-    /// with the month `from` falls in.
-    ///
-    /// This is the figure a flat monthly average hides: a yearly subscription
-    /// contributes nothing to eleven months and its whole price to one. Months
-    /// are counted in full, charges already made this month included, because
-    /// the question the chart answers is "what does March cost" rather than
-    /// "what is left to pay".
-    static func monthlyProjection(
-        for subscriptions: [Subscription],
-        currencyCode: String,
-        months: Int,
-        from today: Date,
-        timeZone: TimeZone = .autoupdatingCurrent
-    ) -> [MonthBucket] {
-        guard months > 0 else { return [] }
-        let calendar = TaskCalendar.gregorian(timeZone: timeZone)
-        let parts = calendar.dateComponents(
-            [.year, .month], from: today)
-        guard let year = parts.year, let month = parts.month else { return [] }
-
-        let starts: [String] = (0..<months).compactMap { offset in
-            let absolute = year * 12 + (month - 1) + offset
-            return String(
-                format: "%04d-%02d-01", absolute / 12, absolute % 12 + 1)
-        }
-        guard let first = starts.first, let lastStart = starts.last,
-            let end = endOfMonthDateString(for: lastStart, timeZone: timeZone)
-        else { return [] }
-
-        let counted = subscriptions.filter {
-            $0.countsTowardSpending && $0.cost.currencyCode == currencyCode
-        }
-        var totals: [String: Decimal] = [:]
-        var counts: [String: Int] = [:]
-        for subscription in counted {
-            for date in chargeDateStrings(
-                for: subscription, from: first, through: end, timeZone: timeZone)
-            {
-                let key = String(date.prefix(7)) + "-01"
-                totals[key, default: 0] += subscription.cost.amount
-                counts[key, default: 0] += 1
-            }
-        }
-        return starts.map { start in
-            MonthBucket(
-                monthStartDateString: start,
-                total: totals[start] ?? 0,
-                chargeCount: counts[start] ?? 0)
-        }
-    }
-
     // MARK: - Date helpers
 
     static func dateString(
@@ -376,17 +278,5 @@ enum SubscriptionMath {
                 .date(byAdding: .day, value: days, to: base)
         else { return nil }
         return Self.dateString(from: shifted, timeZone: timeZone)
-    }
-
-    private static func endOfMonthDateString(
-        for monthStart: String,
-        timeZone: TimeZone
-    ) -> String? {
-        let calendar = TaskCalendar.gregorian(timeZone: timeZone)
-        guard let start = date(from: monthStart, timeZone: timeZone),
-            let range = calendar.range(of: .day, in: .month, for: start)
-        else { return nil }
-        return String(monthStart.prefix(8))
-            + String(format: "%02d", range.count)
     }
 }

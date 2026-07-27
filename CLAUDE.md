@@ -48,8 +48,8 @@ derived and the file is never rewritten by the passage of time. It arrived
 under a fifth tab, **Trackers** — a hub holding one row today, so a later
 tracker is a row rather than a navigation rework — with monthly and yearly
 totals, the charges landing in the next thirty days, the charges themselves
-grouped by `##` category, and two single-hue charts: cost per month ranked by
-subscription, and what each of the next twelve months actually costs.
+grouped by `##` category, and one single-hue chart ranking what each
+subscription costs per month.
 See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
@@ -238,6 +238,15 @@ subscription-specific, the same way Lists and Tasks are concrete.
   a screen is in
 * A weekday set (`every mon wed`) is a valid task recurrence and is not a
   billing cycle, so `BillingCycle` cannot hold one
+
+**The intended scope is software and service subscriptions** — streaming,
+games, tools, a gym — not large recurring bills. Rent and a mortgage are not
+what this is for. Nothing in the format or the arithmetic forbids them, and
+they would be reported correctly; the reason it is written down is that the
+chart is tuned for that range. One charge an order of magnitude above the rest
+compresses every other bar to a sliver, which is the data reported honestly (a
+log scale would misstate the magnitudes) but makes the chart useless. At
+subscription scale that does not happen.
 
 **Settings** — select or reselect vault, recover from stale bookmarks,
 system/light/dark appearance, notification permission. Task *and* subscription
@@ -657,15 +666,24 @@ inside that tracker; the hub says which trackers exist and each row carries
 its own summary. The **Lists** overview is not the same case and keeps its
 panel: every list is the same kind of thing, so summing them means something.
 
-**Both charts are single-hue ember bars, and neither is a pie.** The palette
-allows one accent, moss for containers, and rust for lateness — nothing else
-gets a colour, and the deliberate absence is a second bright hue. A pie needs
-one hue per slice, so at eight subscriptions it needs eight, which would mean
-inventing exactly the categorical ramp this system does without. A bar chart
-ranked by value says what a pie says and says it better: length is the
-encoding people read accurately and slice angle is the one they read worst.
-Depth comes from opacity against each bar's own share, which is the same
-single-hue trick `coveTintedSurface` uses everywhere else.
+**There is one chart, and it is single-hue ember bars rather than a pie.** The
+palette allows one accent, moss for containers, and rust for lateness —
+nothing else gets a colour, and the deliberate absence is a second bright hue.
+A pie needs one hue per slice, so at eight subscriptions it needs eight, which
+would mean inventing exactly the categorical ramp this system does without. A
+bar chart ranked by value says what a pie says and says it better: length is
+the encoding people read accurately and slice angle is the one they read
+worst. Depth comes from opacity against each bar's own share, which is the
+same single-hue trick `coveTintedSurface` uses everywhere else.
+
+**A twelve-month projection chart shipped beside it and was removed.** It
+bucketed the coming year's charges by month, and it was genuinely the more
+*informative* of the two — a flat monthly average cannot show that a yearly
+renewal lands entirely in one month. It went because it answers a different
+question from the one this screen is for: what a *month* will cost, rather
+than what a *subscription* costs. `SubscriptionMath.monthlyProjection`,
+`MonthBucket`, and `categoryTotals` went with it rather than being left as
+unreferenced code with tests keeping them alive.
 
 **The breakdown is by subscription, not by category.** A category breakdown
 says nothing at all for a vault that never used categories, and the list
@@ -676,9 +694,7 @@ into a remainder rather than dropped**, because the bars sit under a total and
 a dropped tail would make them visibly fail to add up to it.
 
 **A chart with nothing to say is not drawn.** One bar is not a comparison, so
-the breakdown appears only with two or more; and a vault of nothing but
-monthly charges projects twelve identical bars, so the projection appears only
-when the months actually differ. Both are the same call as the widget's count
+the chart appears only with two or more — the same call as the widget's count
 badge disappearing at zero.
 
 **Axis amounts carry no fraction digits and are not compact-formatted.**
@@ -1385,7 +1401,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **521 tests** (macOS host), plus clean macOS and
+Current verified suite: **515 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1628,19 +1644,15 @@ Rough edges and surprises, not restatements of the design above.
 
 ### Subscriptions
 
-* Charts are drawn in the **leading currency only** — nothing is converted, so
-  bars from two currencies on one axis would be a comparison that isn't one.
-  The totals panel above still reports every currency; the charts quietly show
-  one.
-* One dominant charge flattens both charts. Put rent in beside a $15 streaming
-  service and every other bar is a sliver, and the twelve-month projection's
-  lumps compress to almost nothing. That is the data being reported honestly —
-  a log scale would misstate the magnitudes — but it does mean the charts earn
-  their keep on subscription-shaped numbers rather than on a mortgage.
-* The projection walks occurrences per subscription on every redraw rather
-  than memoizing, so a daily charge over twelve months is ~365 `Calendar` steps
-  recomputed each pass. Cheap at real counts, and the minute tick is what
-  triggers it.
+* The chart is drawn in the **leading currency only** — nothing is converted,
+  so bars from two currencies on one axis would be a comparison that isn't
+  one. The totals panel above still reports every currency; the chart quietly
+  shows one.
+* Nothing shows what a given *month* will cost. A yearly charge is spread
+  evenly across twelve months in every figure on the screen, so the month its
+  renewal actually lands in is not called out anywhere. That is a deliberate
+  scope choice rather than an oversight — see the projection note in
+  Architecture.
 * **A price change is not history, deliberately.** The line holds one cost, so
   editing it rewrites the only record and every figure recomputes at the new
   price. Keeping history would need a second place to put it, and Cove was

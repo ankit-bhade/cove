@@ -32,17 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a monthly one comparable in one list. Paused and cancelled charges fold away
   at the bottom and count toward nothing. A charge landing within the week is
   the one thing the screen raises its voice for.
-- Two charts on the subscriptions screen: cost per month ranked by
-  subscription, and what each of the next twelve months actually costs. The
-  second is the one that earns its place — a flat monthly average hides that a
-  yearly charge contributes nothing to eleven months and its whole price to
-  one, so the month the annual renewals land in is invisible in every other
-  figure on the screen. Both are single-hue ember bars rather than pie charts:
-  a pie needs one colour per slice, and length is the encoding people read
-  accurately where slice angle is the one they read worst. Past the eighth bar
-  the tail is pooled into a remainder rather than dropped, so the bars still
-  add up to the total printed above them. A breakdown of one bar and a
-  projection of twelve identical months are not drawn at all.
+- A chart on the subscriptions screen ranking what each subscription costs per
+  month, which is what makes a yearly charge and a monthly one comparable.
+  Single-hue ember bars rather than a pie: a pie needs one colour per slice,
+  and length is the encoding people read accurately where slice angle is the
+  one they read worst. Past the eighth bar the tail is pooled into a remainder
+  rather than dropped, so the bars still add up to the total printed above
+  them, and a chart of one bar is not drawn at all.
 - Adding, editing, pausing, cancelling, and deleting a subscription, with a
   form sheet that shows what the note will say — "Renews in 4 days. That is
   $7.50 per month." — before anything is written. Deletion is undoable.

@@ -2,8 +2,8 @@ import XCTest
 
 @testable import Cove
 
-/// Normalization and projection, against a fixed `now` so nothing depends on
-/// the day the suite runs.
+/// Normalization, occurrences, and totals, against a fixed `now` so nothing
+/// depends on the day the suite runs.
 final class SubscriptionMathTests: XCTestCase {
 
     private let zone = TimeZone(identifier: "America/New_York")!
@@ -180,27 +180,6 @@ final class SubscriptionMathTests: XCTestCase {
         XCTAssertEqual(totals[1].monthly, Decimal(10))
     }
 
-    func testCategoryTotalsAreRankedAndScopedToOneCurrency() {
-        let totals = SubscriptionMath.categoryTotals(
-            for: [
-                subscription(
-                    "A", "5.00", since: "2024-01-01", category: "Streaming"),
-                subscription(
-                    "B", "20.00", since: "2024-01-01", category: "Infrastructure",
-                    line: 1),
-                subscription("C", "1.00", since: "2024-01-01", line: 2),
-                subscription(
-                    "D", "999.00", since: "2024-01-01", currency: "GBP",
-                    category: "Streaming", line: 3),
-            ],
-            currencyCode: "USD")
-        XCTAssertEqual(
-            totals.map(\.displayName),
-            ["Infrastructure", "Streaming", "Uncategorized"])
-        XCTAssertEqual(totals[0].monthly, Decimal(20))
-        XCTAssertEqual(totals[2].monthly, Decimal(1))
-    }
-
     // MARK: - Spend bars
 
     func testSpendBarsAreRankedByMonthlyCost() {
@@ -292,75 +271,6 @@ final class SubscriptionMathTests: XCTestCase {
             on: day("2026-07-27"),
             timeZone: zone)
         XCTAssertTrue(charges.isEmpty)
-    }
-
-    // MARK: - Projection
-
-    /// The whole point of the chart: a yearly charge contributes nothing to
-    /// eleven months and its whole price to one, which a flat monthly average
-    /// hides completely.
-    func testYearlyChargeLandsInOneMonthRatherThanBeingSpread() {
-        let buckets = SubscriptionMath.monthlyProjection(
-            for: [subscription("Domain", "120.00", .yearly, since: "2022-11-02")],
-            currencyCode: "USD",
-            months: 12,
-            from: day("2026-07-27"),
-            timeZone: zone)
-        XCTAssertEqual(buckets.count, 12)
-        XCTAssertEqual(buckets.first?.monthStartDateString, "2026-07-01")
-        let charged = buckets.filter { $0.total > 0 }
-        XCTAssertEqual(charged.count, 1)
-        XCTAssertEqual(charged.first?.monthStartDateString, "2026-11-01")
-        XCTAssertEqual(charged.first?.total, Decimal(120))
-    }
-
-    func testMonthlyChargeAppearsInEveryBucket() {
-        let buckets = SubscriptionMath.monthlyProjection(
-            for: [subscription("Netflix", "15.49", since: "2024-03-04")],
-            currencyCode: "USD",
-            months: 12,
-            from: day("2026-07-27"),
-            timeZone: zone)
-        XCTAssertEqual(buckets.count, 12)
-        XCTAssertTrue(buckets.allSatisfy { $0.chargeCount == 1 })
-        XCTAssertTrue(
-            buckets.allSatisfy { $0.total == Decimal(string: "15.49")! })
-    }
-
-    /// Months are counted in full, so a charge already made earlier this month
-    /// is still part of what this month costs.
-    func testTheCurrentMonthIncludesChargesAlreadyMade() {
-        let buckets = SubscriptionMath.monthlyProjection(
-            for: [subscription("Rent", "1450.00", since: "2021-06-01")],
-            currencyCode: "USD",
-            months: 1,
-            from: day("2026-07-27"),
-            timeZone: zone)
-        XCTAssertEqual(buckets.count, 1)
-        XCTAssertEqual(buckets[0].total, Decimal(1450))
-    }
-
-    func testProjectionRollsIntoTheNextYear() {
-        let buckets = SubscriptionMath.monthlyProjection(
-            for: [subscription("Netflix", "15.49", since: "2024-03-04")],
-            currencyCode: "USD",
-            months: 12,
-            from: day("2026-11-15"),
-            timeZone: zone)
-        XCTAssertEqual(buckets.first?.monthStartDateString, "2026-11-01")
-        XCTAssertEqual(buckets.last?.monthStartDateString, "2027-10-01")
-    }
-
-    func testProjectionIgnoresOtherCurrencies() {
-        let buckets = SubscriptionMath.monthlyProjection(
-            for: [
-                subscription("GBP", "99.00", since: "2024-01-01", currency: "GBP")
-            ],
-            currencyCode: "USD",
-            months: 3,
-            from: day("2026-07-27"),
-            timeZone: zone)
-        XCTAssertTrue(buckets.allSatisfy { $0.total == 0 })
     }
 
     // MARK: - Bounds

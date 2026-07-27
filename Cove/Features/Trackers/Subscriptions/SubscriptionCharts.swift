@@ -1,19 +1,22 @@
 import Charts
 import SwiftUI
 
-/// The two charts on the subscriptions screen.
+/// The subscriptions screen's one chart.
 ///
-/// **Both are single-hue ember bars, and neither is a pie.** The palette
-/// allows one accent, moss for containers, and rust for lateness — nothing
-/// else gets a colour. A pie needs one hue per slice, so at eight
-/// subscriptions it needs eight, and inventing a categorical ramp would be the
-/// second bright hue this design system deliberately does without. A bar chart
-/// ranked by value says what a pie says and says it better: length is the one
-/// encoding people read accurately, where slice angle is the one they read
-/// worst.
+/// **Single-hue ember bars, and not a pie.** The palette allows one accent,
+/// moss for containers, and rust for lateness — nothing else gets a colour. A
+/// pie needs one hue per slice, so at eight subscriptions it needs eight, and
+/// inventing a categorical ramp would be the second bright hue this design
+/// system deliberately does without. A bar chart ranked by value says what a
+/// pie says and says it better: length is the one encoding people read
+/// accurately, where slice angle is the one they read worst.
 ///
 /// Depth is carried by opacity against each bar's own share, which is the same
 /// single-hue trick `coveTintedSurface` uses everywhere else.
+///
+/// A twelve-month projection chart shipped beside this one and was removed:
+/// what a month *will* cost is a different question from what a subscription
+/// costs, and only the second one was wanted here.
 enum SubscriptionChartStyle {
     /// The floor keeps the smallest bar a visible ember rather than a ghost.
     static func opacity(for value: Decimal, of maximum: Decimal) -> Double {
@@ -101,76 +104,5 @@ struct SubscriptionSpendChart: View {
         .frame(height: rowHeight * CGFloat(max(bars.count, 1)) + 28)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Monthly cost by subscription")
-    }
-}
-
-/// What each of the next twelve months actually costs.
-///
-/// This is the chart that earns its place. A flat "per month" average hides
-/// that a yearly charge contributes nothing to eleven months and its whole
-/// price to one — so the month the annual renewals land in is invisible in
-/// every other figure on the screen, and it is the one worth knowing about.
-struct SubscriptionProjectionChart: View {
-    let buckets: [SubscriptionMath.MonthBucket]
-    let currencyCode: String
-    let timeZone: TimeZone
-
-    private var maximum: Decimal {
-        buckets.map(\.total).max() ?? 0
-    }
-
-    private func date(for bucket: SubscriptionMath.MonthBucket) -> Date? {
-        SubscriptionMath.date(
-            from: bucket.monthStartDateString, timeZone: timeZone)
-    }
-
-    var body: some View {
-        Chart(buckets) { bucket in
-            if let date = date(for: bucket) {
-                BarMark(
-                    x: .value("Month", date, unit: .month),
-                    y: .value("Charged", SubscriptionChartStyle.double(bucket.total))
-                )
-                .foregroundStyle(
-                    CoveTheme.accent.opacity(
-                        SubscriptionChartStyle.opacity(
-                            for: bucket.total, of: maximum))
-                )
-                .cornerRadius(3)
-                .accessibilityLabel(
-                    date.formatted(.dateTime.month(.wide).year()))
-                .accessibilityValue(
-                    SubscriptionPresentation.money(
-                        bucket.total, currencyCode: currencyCode))
-            }
-        }
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .month, count: 3)) { value in
-                AxisGridLine().foregroundStyle(CoveTheme.hairline)
-                AxisValueLabel {
-                    if let date = value.as(Date.self) {
-                        Text(date.formatted(.dateTime.month(.abbreviated)))
-                            .coveEyebrow()
-                    }
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading) { value in
-                AxisGridLine().foregroundStyle(CoveTheme.hairline)
-                AxisValueLabel {
-                    if let amount = value.as(Double.self) {
-                        Text(
-                            SubscriptionChartStyle.axisAmount(
-                                amount, currencyCode: currencyCode)
-                        )
-                        .coveEyebrow()
-                    }
-                }
-            }
-        }
-        .frame(height: 170)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Charges over the next twelve months")
     }
 }

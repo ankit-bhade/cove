@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Subscriptions are read from a Markdown note. `Subscriptions.md` at the vault
-  root records one recurring charge per line —
+- Subscriptions are read from a Markdown note. `Trackers/Subscriptions.md`
+  records one recurring charge per line —
   `- Netflix @cost(15.49 USD) @every(month) @since(2024-03-04)` — with `##`
   headings as categories and an optional `@status(paused)` or
   `@status(cancelled)`. The note is the source of truth and stays editable by
@@ -39,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one they read worst. Past the eighth bar the tail is pooled into a remainder
   rather than dropped, so the bars still add up to the total printed above
   them, and a chart of one bar is not drawn at all.
+- Tracker notes live in a `Trackers/` folder at the vault root, created on
+  demand with the first charge, rather than beside `Tasks.md` in the root
+  itself — there will be more than one tracker, and a root accumulating a note
+  each is a root that stops being about your own notes. Still one fixed path
+  with nothing to configure. A `Subscriptions.md` left at the vault root is an
+  ordinary note, and the tracker's empty state says so and offers to open it
+  instead of showing nothing.
 - Categories can be created, renamed, and deleted from the tracker. Each
   category heading carries a menu, and the toolbar's plus adds either a
   subscription or an empty category. Deleting one takes the charges filed

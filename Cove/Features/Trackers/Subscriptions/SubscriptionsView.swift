@@ -138,17 +138,38 @@ struct SubscriptionsView: View {
         List {
             if subscriptions.isEmpty {
                 Section {
-                    CoveEmptyState(
-                        "Nothing Tracked Yet",
-                        systemName: "creditcard",
-                        description: "Add what you pay for on a schedule and Cove keeps the monthly and yearly totals."
-                    ) {
-                        Button("New Subscription") { isAdding = true }
+                    // A `Subscriptions.md` in the wrong place is the one empty
+                    // state that has a cause worth naming: without this it
+                    // reads as "you have no subscriptions" while the file sits
+                    // in the vault full of them.
+                    if let misplaced = vaultManager.misplacedSubscriptionNoteURL {
+                        CoveEmptyState(
+                            "Subscriptions.md Is at the Vault Root",
+                            systemName: "folder.badge.questionmark",
+                            description:
+                                "Cove reads subscriptions from Trackers/Subscriptions.md. Move this note into a “Trackers” folder at the top of your vault and it will be picked up."
+                        ) {
+                            NavigationLink(value: misplaced) {
+                                Text("Open the Note")
+                            }
                             .buttonStyle(.borderedProminent)
                             .buttonBorderShape(
                                 .roundedRectangle(radius: CoveTheme.fieldRadius))
+                        }
+                        .listRowBackground(Color.clear)
+                    } else {
+                        CoveEmptyState(
+                            "Nothing Tracked Yet",
+                            systemName: "creditcard",
+                            description: "Add what you pay for on a schedule and Cove keeps the monthly and yearly totals."
+                        ) {
+                            Button("New Subscription") { isAdding = true }
+                                .buttonStyle(.borderedProminent)
+                                .buttonBorderShape(
+                                    .roundedRectangle(radius: CoveTheme.fieldRadius))
+                        }
+                        .listRowBackground(Color.clear)
                     }
-                    .listRowBackground(Color.clear)
                 }
             } else {
                 Section {

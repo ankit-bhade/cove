@@ -43,7 +43,7 @@ screen too, naming its list under its title, while an undated one stays in
 its list alone — which is the distinction the feature was always about.
 Most recently, Phase 12 opened on the first thing Cove tracks that is not a
 task: **subscriptions**, recorded as one line per recurring charge in
-`Subscriptions.md`, with `@since` as a fixed anchor so the next charge is
+`Trackers/Subscriptions.md`, with `@since` as a fixed anchor so the next charge is
 derived and the file is never rewritten by the passage of time. It arrived
 under a fifth tab, **Trackers** — a hub holding one row today, so a later
 tracker is a row rather than a navigation rework — with monthly and yearly
@@ -218,8 +218,8 @@ them visually separate from the Tasks screen.
 * Lists can be created, renamed, and deleted; deleting one removes its heading
   and every task under it
 
-**Subscriptions** — recurring charges, recorded in `Subscriptions.md` at the
-vault root and created on demand. One line per charge, `##` headings as
+**Subscriptions** — recurring charges, recorded in `Trackers/Subscriptions.md`,
+with the folder and the note both created on demand. One line per charge, `##` headings as
 categories, and the grammar in Fixed rules above. This is the first
 **tracker**: a Markdown note at the vault root with a fixed line grammar and a
 screen that reads it. The plan is a Trackers hub section holding one row per
@@ -701,6 +701,27 @@ badge disappearing at zero.
 `.notation(.compactName)` — the "$1.5K" form — is macOS 15 and up, and Cove's
 floor is macOS 14. Whole units in the reader's locale work on every supported
 target and are short enough at four axis marks anyway.
+
+**Tracker notes live in `Trackers/` at the vault root, not beside `Tasks.md`
+in it.** There will be more than one tracker, and a vault root accumulating a
+note per tracker is a root that stops being about the user's own notes. It is
+still a *fixed* path — one location, nothing to configure, no ambiguity about
+which file is meant — so it keeps everything the root-only rule had and only
+changes where the rule points. The folder is created on demand with the first
+charge, since `updateNote(named:in:)` creates the file but not the directory
+holding it.
+
+The folder name is matched **case-insensitively**, like the file name already
+was: a path-string comparison is case-sensitive and APFS is not, so
+`trackers/` and `Trackers/` are one folder on disk and have to read as one
+here.
+
+**A `Subscriptions.md` at the vault root gets named in the empty state.** It
+is an ordinary note as far as the index is concerned, and that is correct —
+but the root is where the note used to live and where a person would put it by
+hand, so an empty tracker sitting beside a file full of charges is the one
+wrong-place case worth explaining rather than leaving silent. No other folder
+gets that treatment; this is a signpost, not a search.
 
 **Category management is `TaskListDocument`'s section surgery, unchanged.**
 Create, rename, and delete all route through the same primitives the Lists
@@ -1423,7 +1444,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **527 tests** (macOS host), plus clean macOS and
+Current verified suite: **529 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1701,9 +1722,11 @@ Rough edges and surprises, not restatements of the design above.
   edited or deleted — the mutation refuses rather than guess, exactly as with
   duplicate tasks. Settings lists them; making one distinct is the only way
   out.
-* `Subscriptions.md` is fixed at the vault root and is not configurable, and
-  the note must be a file — if iCloud syncs a *folder* of that name, nothing
-  is tracked.
+* `Trackers/Subscriptions.md` is fixed and not configurable, and the note must
+  be a file — if iCloud syncs a *folder* of that name, nothing is tracked. A
+  `Subscriptions.md` anywhere else is an ordinary note; the tracker's empty
+  state calls out the vault-root case by name, since that is where it used to
+  live and where a person would put it by hand, but not any other folder.
 * An amount needing more than two decimal places is refused rather than
   rounded, so a cost cannot silently change by a fraction of a cent on save.
 * A charge whose cycle is shorter than the projection window is walked one

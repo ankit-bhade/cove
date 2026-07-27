@@ -540,19 +540,61 @@ final class VaultManager {
 
     // MARK: - Trackers
 
-    /// The note at the vault root that recurring charges are recorded in.
-    /// Created on demand, and fixed for the same reason the capture note is.
+    /// The folder at the vault root that tracker notes live in, created on
+    /// demand with the first charge.
+    ///
+    /// Trackers get a folder rather than sitting beside `Tasks.md` at the root
+    /// because there will be more than one of them, and a vault root
+    /// accumulating a note per tracker is a root that stops being about the
+    /// user's own notes. It is still a *fixed* location — one path, nothing to
+    /// configure, no ambiguity about which file is meant.
+    nonisolated static let trackerFolderName = "Trackers"
+
+    /// The note inside it that recurring charges are recorded in.
     nonisolated static let subscriptionNoteName = "Subscriptions.md"
 
+    nonisolated static func trackerFolderURL(in vaultRoot: URL) -> URL {
+        vaultRoot.appendingPathComponent(trackerFolderName, isDirectory: true)
+    }
+
+    nonisolated static func subscriptionNoteURL(in vaultRoot: URL) -> URL {
+        trackerFolderURL(in: vaultRoot)
+            .appendingPathComponent(subscriptionNoteName, isDirectory: false)
+    }
+
     /// The subscription note is the one note whose `- Name @cost(…)` lines are
-    /// recurring charges and whose `##` headings are categories. Matched at the
-    /// vault root only, so a `Subscriptions.md` in a subfolder stays an
-    /// ordinary note.
+    /// recurring charges and whose `##` headings are categories. Matched at
+    /// `Trackers/Subscriptions.md` only, so a `Subscriptions.md` anywhere else
+    /// — including the vault root — stays an ordinary note.
+    ///
+    /// The folder name is matched case-insensitively like the file name is: a
+    /// path-string comparison is case-sensitive, and APFS is not, so `trackers/`
+    /// and `Trackers/` are the same folder on disk and must read the same here.
     nonisolated static func isSubscriptionNote(_ url: URL, vaultRoot: URL) -> Bool {
-        url.lastPathComponent.caseInsensitiveCompare(subscriptionNoteName)
+        let parent = url.deletingLastPathComponent()
+        return url.lastPathComponent.caseInsensitiveCompare(subscriptionNoteName)
             == .orderedSame
-            && url.deletingLastPathComponent().standardizedFileURL.path
+            && parent.lastPathComponent.caseInsensitiveCompare(trackerFolderName)
+                == .orderedSame
+            && parent.deletingLastPathComponent().standardizedFileURL.path
                 == vaultRoot.standardizedFileURL.path
+    }
+
+    /// A `Subscriptions.md` sitting at the vault root instead of inside
+    /// `Trackers/`. It is an ordinary note as far as everything else is
+    /// concerned, and the tracker's empty state says so — otherwise moving the
+    /// file, or making it by hand in the obvious place, shows an empty tracker
+    /// with nothing explaining why.
+    var misplacedSubscriptionNoteURL: URL? {
+        guard let vaultURL else { return nil }
+        let candidate = vaultURL.appendingPathComponent(
+            Self.subscriptionNoteName, isDirectory: false)
+        guard index.subscriptions.isEmpty,
+            rootNode?.allFiles.contains(where: {
+                $0.url.standardizedFileURL == candidate.standardizedFileURL
+            }) == true
+        else { return nil }
+        return candidate
     }
 
     /// Every recurring charge, from the current index.
@@ -566,6 +608,39 @@ final class VaultManager {
         }
     }
 
+    /// One coordinated read-modify-write of the subscription note, creating
+    /// `Trackers/` first when it isn't there yet.
+    ///
+    /// `updateNote(named:in:)` creates the *file* on demand but not the folder
+    /// holding it, so without this the very first charge fails on a vault that
+    /// has never had a tracker.
+    private func mutateSubscriptionNote(
+        _ transform: @escaping @Sendable (String) throws -> String?
+    ) async throws {
+        let vaultURL = try requireOpenVaultURL()
+        try await ensureTrackerFolder(in: vaultURL)
+        try await mutateNote(
+            named: Self.subscriptionNoteName,
+            in: Self.trackerFolderURL(in: vaultURL),
+            transform: transform)
+    }
+
+    /// Creates `Trackers/` unless it is already there. An existing folder is
+    /// success, not a collision.
+    private func ensureTrackerFolder(in vaultURL: URL) async throws {
+        let folder = Self.trackerFolderURL(in: vaultURL)
+        guard !FileManager.default.fileExists(atPath: folder.path) else { return }
+        let operations = fileOperations
+        let name = Self.trackerFolderName
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                _ = try operations.createFolder(named: name, in: vaultURL)
+            }.value
+        } catch VaultFileOperations.OperationError.itemAlreadyExists {
+            return
+        }
+    }
+
     /// Writes a new charge into the subscription note, under `category` when
     /// one is given — created on demand, since a category is only a heading.
     /// Without one the line goes into the note's unlisted region rather than
@@ -575,9 +650,8 @@ final class VaultManager {
         _ draft: SubscriptionDraft,
         into category: String? = nil
     ) async throws {
-        let vaultURL = try requireOpenVaultURL()
         let line = try draft.validatedMarkdownLine()
-        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+        try await mutateSubscriptionNote { text in
             guard let category else {
                 return try TaskListDocument.insertingUnlistedLineResult(
                     line, in: text
@@ -598,14 +672,13 @@ final class VaultManager {
         to draft: SubscriptionDraft,
         category: String?
     ) async throws {
-        let vaultURL = try requireOpenVaultURL()
         let line = try draft.validatedMarkdownLine()
         let identity = subscription.identity
         let staysPut =
             TaskListDocument.canonicalName(category ?? "")
             == TaskListDocument.canonicalName(subscription.category ?? "")
 
-        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+        try await mutateSubscriptionNote { text in
             if staysPut {
                 return try SubscriptionParser.replacingSubscriptionResult(
                     identity, with: line, in: text)
@@ -640,9 +713,7 @@ final class VaultManager {
     func deleteSubscription(
         _ subscription: Subscription
     ) async throws -> DeletedSubscriptionRecord {
-        let vaultURL = try requireOpenVaultURL()
-        let url = vaultURL.appendingPathComponent(
-            Self.subscriptionNoteName, isDirectory: false)
+        let url = Self.subscriptionNoteURL(in: try requireOpenVaultURL())
         let identity = subscription.identity
         // Read once to capture the exact source line, then re-find it inside
         // the coordinated write; the transform refuses if it changed meanwhile.
@@ -662,10 +733,9 @@ final class VaultManager {
     func restoreDeletedSubscription(
         _ record: DeletedSubscriptionRecord
     ) async throws {
-        let vaultURL = try requireOpenVaultURL()
         let line = record.originalLine.trimmingCharacters(in: .newlines)
         let category = record.category
-        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+        try await mutateSubscriptionNote { text in
             guard let category else {
                 return try TaskListDocument.insertingUnlistedLineResult(
                     line, in: text
@@ -679,7 +749,9 @@ final class VaultManager {
 
     /// Adds an empty `## name` heading to the subscription note.
     func createSubscriptionCategory(named name: String) async throws {
-        let vaultURL = try requireOpenVaultURL()
+        // Fails fast on a closed vault; `mutateSubscriptionNote` needs the URL
+        // itself and resolves it again.
+        _ = try requireOpenVaultURL()
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             !index.subscriptionCategoryNames.contains(where: {
@@ -688,7 +760,7 @@ final class VaultManager {
             })
         else { throw SubscriptionCategoryExistsError(name: trimmed) }
 
-        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+        try await mutateSubscriptionNote { text in
             try TaskListDocument.addingSectionResult(named: trimmed, to: text).get()
         }
     }
@@ -698,7 +770,7 @@ final class VaultManager {
         named name: String,
         to newName: String
     ) async throws {
-        let vaultURL = try requireOpenVaultURL()
+        _ = try requireOpenVaultURL()
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != name else { return }
         guard
@@ -710,7 +782,7 @@ final class VaultManager {
             })
         else { throw SubscriptionCategoryExistsError(name: trimmed) }
 
-        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+        try await mutateSubscriptionNote { text in
             try TaskListDocument.renamingSectionResult(
                 named: name, to: trimmed, in: text
             ).get()
@@ -731,9 +803,7 @@ final class VaultManager {
     func deleteSubscriptionCategory(
         named name: String
     ) async throws -> TaskListDocument.SectionRemovalRecord {
-        let vaultURL = try requireOpenVaultURL()
-        let url = vaultURL.appendingPathComponent(
-            Self.subscriptionNoteName, isDirectory: false)
+        let url = Self.subscriptionNoteURL(in: try requireOpenVaultURL())
         let preflightText = try await repository.readNote(at: url)
         let removal = try TaskListDocument.removingSectionWithRecordResult(
             named: name,
@@ -755,8 +825,7 @@ final class VaultManager {
     func restoreDeletedSubscriptionCategory(
         _ record: TaskListDocument.SectionRemovalRecord
     ) async throws {
-        let vaultURL = try requireOpenVaultURL()
-        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+        try await mutateSubscriptionNote { text in
             try TaskListDocument.restoringSectionResult(record, in: text).get()
         }
     }

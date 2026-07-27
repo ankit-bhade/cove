@@ -45,20 +45,20 @@ final class VaultIndexSubscriptionTests: XCTestCase {
     // MARK: - Reaching the index
 
     func testSubscriptionsAreIndexedFromTheSubscriptionNote() throws {
-        try makeFile("Subscriptions.md", contents: subscriptionNote)
+        try makeFile("Trackers/Subscriptions.md", contents: subscriptionNote)
         let index = try builtIndex()
         XCTAssertEqual(index.subscriptions.map(\.name), ["Netflix", "Spotify"])
         XCTAssertEqual(index.subscriptions.first?.category, "Streaming")
     }
 
     func testCategoriesIncludeOnesWithNothingUnderThem() throws {
-        try makeFile("Subscriptions.md", contents: subscriptionNote)
+        try makeFile("Trackers/Subscriptions.md", contents: subscriptionNote)
         XCTAssertEqual(
             try builtIndex().subscriptionCategoryNames, ["Streaming", "Empty"])
     }
 
     func testSubscriptionsCarryTheirFileAndLine() throws {
-        try makeFile("Subscriptions.md", contents: subscriptionNote)
+        try makeFile("Trackers/Subscriptions.md", contents: subscriptionNote)
         let netflix = try builtIndex().subscriptions.first { $0.name == "Netflix" }
         XCTAssertEqual(netflix?.fileURL.lastPathComponent, "Subscriptions.md")
         XCTAssertEqual(netflix?.lineNumber, 1)
@@ -69,9 +69,24 @@ final class VaultIndexSubscriptionTests: XCTestCase {
 
     /// A `Subscriptions.md` in a subfolder is an ordinary note, exactly as a
     /// nested `Tasks.md` is.
-    func testOnlyTheRootNoteTracksSubscriptions() throws {
+    func testOnlyTheTrackerFolderNoteTracksSubscriptions() throws {
         try makeFile("Archive/Subscriptions.md", contents: subscriptionNote)
         XCTAssertTrue(try builtIndex().subscriptions.isEmpty)
+    }
+
+    /// The vault root is where it used to live, and is now just another wrong
+    /// place — the tracker's empty state is what explains that, not the index.
+    func testARootLevelNoteIsNotTracked() throws {
+        try makeFile("Subscriptions.md", contents: subscriptionNote)
+        XCTAssertTrue(try builtIndex().subscriptions.isEmpty)
+    }
+
+    /// APFS is case-insensitive, so the folder on disk may be spelled either
+    /// way and has to read the same.
+    func testTheTrackerFolderIsMatchedCaseInsensitively() throws {
+        try makeFile("trackers/Subscriptions.md", contents: subscriptionNote)
+        XCTAssertEqual(
+            try builtIndex().subscriptions.map(\.name), ["Netflix", "Spotify"])
     }
 
     func testSubscriptionLinesInAnOrdinaryNoteAreNotIndexed() throws {
@@ -82,7 +97,7 @@ final class VaultIndexSubscriptionTests: XCTestCase {
     /// The failure that would be invisible: subscription lines are not
     /// checkboxes, so the task parser must produce no warnings about them.
     func testSubscriptionLinesProduceNoTaskDiagnostics() throws {
-        try makeFile("Subscriptions.md", contents: subscriptionNote)
+        try makeFile("Trackers/Subscriptions.md", contents: subscriptionNote)
         let index = try builtIndex()
         XCTAssertTrue(index.taskDiagnostics.isEmpty)
         XCTAssertTrue(index.allTasks.isEmpty)
@@ -112,7 +127,7 @@ final class VaultIndexSubscriptionTests: XCTestCase {
                 ## Groceries
                 - [ ] Milk
                 """)
-        try makeFile("Subscriptions.md", contents: subscriptionNote)
+        try makeFile("Trackers/Subscriptions.md", contents: subscriptionNote)
         let index = try builtIndex()
         XCTAssertEqual(index.listNames, ["Groceries"])
         XCTAssertEqual(index.subscriptionCategoryNames, ["Streaming", "Empty"])
@@ -124,7 +139,7 @@ final class VaultIndexSubscriptionTests: XCTestCase {
     /// note in every other respect.
     func testTheSubscriptionNoteMayAlsoHoldTasks() throws {
         try makeFile(
-            "Subscriptions.md",
+            "Trackers/Subscriptions.md",
             contents: """
                 - [ ] Review these @due(2027-01-05)
                 - Netflix @cost(15.49 USD) @every(month) @since(2024-03-04)
@@ -138,7 +153,7 @@ final class VaultIndexSubscriptionTests: XCTestCase {
 
     func testMalformedLinesAreReportedThroughTheIndex() throws {
         try makeFile(
-            "Subscriptions.md",
+            "Trackers/Subscriptions.md",
             contents: "- Netflix @cost(abc USD) @every(month) @since(2024-03-04)\n")
         let index = try builtIndex()
         XCTAssertTrue(index.subscriptions.isEmpty)
@@ -153,7 +168,7 @@ final class VaultIndexSubscriptionTests: XCTestCase {
     /// An unchanged note reuses its entry, so its subscriptions and categories
     /// have to survive the reuse path rather than being dropped.
     func testUnchangedNoteReusesItsSubscriptions() throws {
-        try makeFile("Subscriptions.md", contents: subscriptionNote)
+        try makeFile("Trackers/Subscriptions.md", contents: subscriptionNote)
         let tree = try VaultTreeScanner().scanTree(at: root)
         let builder = VaultIndexBuilder()
         let first = try builder.buildIndex(from: tree)

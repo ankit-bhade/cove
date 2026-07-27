@@ -124,7 +124,7 @@ or by swiping or right-clicking its row in the overview — removes it and its
 items from `Tasks.md` after confirmation. Undo reinserts only the removed
 section into the latest file and refuses if a new list has reused the name.
 A Trackers tab holds the things Cove keeps that aren't tasks. Today that is
-Subscriptions, kept in `Subscriptions.md` at the vault root as one line per
+Subscriptions, kept in `Trackers/Subscriptions.md` as one line per
 recurring charge — `- Netflix @cost(15.49 USD) @every(month)
 @since(2024-03-04)` — with `##` headings as categories, so it stays a note you
 can edit by hand. The screen shows what everything costs per month and per

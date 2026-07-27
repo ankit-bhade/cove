@@ -55,7 +55,7 @@ struct SubscriptionRow: View {
             .foregroundStyle(
                 subscription.countsTowardSpending ? .primary : .secondary)
             Text("/mo")
-                .coveEyebrow()
+                .coveMetaLabel()
         }
         .lineLimit(1)
         .opacity(subscription.countsTowardSpending ? 1 : 0.6)

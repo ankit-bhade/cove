@@ -42,8 +42,7 @@ struct TrackersView: View {
                         CoveRowTitle(
                             title: "Subscriptions",
                             caption: SubscriptionPresentation.hubCaption(
-                                for: vaultManager.index.subscriptions),
-                            captionIsLabel: false)
+                                for: vaultManager.index.subscriptions))
                         Spacer(minLength: 0)
                         if activeCount > 0 {
                             CoveCountBadge("\(activeCount)")

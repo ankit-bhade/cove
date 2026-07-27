@@ -171,8 +171,7 @@ struct SettingsView: View {
                 ) {
                     CoveRowTitle(
                         title: "Cove Recovery",
-                        caption: recoveryCaption(health),
-                        captionIsLabel: false)
+                        caption: recoveryCaption(health))
                     Spacer(minLength: 0)
                     CoveCountBadge(
                         "\(health.recoveryItemCount + health.recoveryDraftCount)",
@@ -262,7 +261,6 @@ struct SettingsView: View {
                     CoveRowTitle(
                         title: vaultURL.lastPathComponent,
                         caption: vaultURL.path(percentEncoded: false),
-                        captionIsLabel: false,
                         lineLimit: 1)
                     Spacer(minLength: 0)
                 }

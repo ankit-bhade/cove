@@ -65,6 +65,7 @@ struct TasksView: View {
     private var list: some View {
         let incomplete = vaultManager.index.incompleteTasks
         let completed = vaultManager.index.completedTasks
+        let groups = TaskGroup.grouping(incomplete, now: now)
         return List {
             Section {
                 captureMasthead(openCount: incomplete.count)
@@ -72,37 +73,53 @@ struct TasksView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
-            ForEach(TaskGroup.grouping(incomplete, now: now)) { group in
+            // Overdue, Today, Tomorrow, Upcoming, and Completed are one list
+            // partitioned five ways, not five lists — so they take one surface
+            // with the headings set inside it. As five inset-grouped sections
+            // they were five rounded cards stacked inside iOS's own rounded
+            // chrome, and the gap between each pair cost roughly a task of what
+            // fit above the fold on the screen the app opens on. The capture
+            // panel keeps its own elevation: it is a different kind of thing.
+            if !groups.isEmpty || !completed.isEmpty {
                 Section {
-                    if isShowing(group) {
-                        TaskRows(
-                            tasks: group.tasks, now: now, actions: actions,
-                            showsListNames: true)
-                    }
-                } header: {
-                    header(for: group)
-                }
-            }
-            if !completed.isEmpty {
-                Section {
-                    if isCompletedExpanded {
-                        TaskRows(
-                            tasks: completed, now: now, actions: actions,
-                            showsListNames: true)
-                        ClearCompletedTasksRow(
-                            isClearing: actions.isClearingCompleted
-                        ) {
-                            showsClearCompletedConfirmation = true
+                    ForEach(Array(groups.enumerated()), id: \.element.id) { position, group in
+                        header(for: group)
+                            .coveGroupHeaderRow(
+                                isFirst: position == 0,
+                                // Upcoming is the last group and the only one
+                                // that folds, so folded away with nothing
+                                // completed below it, its heading is the last
+                                // row on the surface.
+                                isLast: !isShowing(group)
+                                    && position == groups.count - 1
+                                    && completed.isEmpty)
+                        if isShowing(group) {
+                            TaskRows(
+                                tasks: group.tasks, now: now, actions: actions,
+                                showsListNames: true)
                         }
                     }
-                } header: {
-                    CompletedTasksHeader(
-                        title: "Completed",
-                        count: completed.count,
-                        isExpanded: $isCompletedExpanded)
+                    if !completed.isEmpty {
+                        CompletedTasksHeader(
+                            title: "Completed",
+                            count: completed.count,
+                            isExpanded: $isCompletedExpanded
+                        )
+                        .coveGroupHeaderRow(
+                            isFirst: groups.isEmpty, isLast: !isCompletedExpanded)
+                        if isCompletedExpanded {
+                            TaskRows(
+                                tasks: completed, now: now, actions: actions,
+                                showsListNames: true)
+                            ClearCompletedTasksRow(
+                                isClearing: actions.isClearingCompleted
+                            ) {
+                                showsClearCompletedConfirmation = true
+                            }
+                        }
+                    }
                 }
-            }
-            if incomplete.isEmpty, completed.isEmpty {
+            } else {
                 Section {
                     CoveEmptyState(
                         "Nothing Due",

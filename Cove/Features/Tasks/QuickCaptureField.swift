@@ -48,17 +48,23 @@ struct QuickCaptureField: View {
                 preview(draft)
             }
         }
-        // Inset into the masthead rather than raised out of it: the field is
-        // a place to put something, so it reads as a well, not a button.
+        // Set apart from the panel rather than raised out of it: the field is
+        // a place to put something, so it reads as a well, not a button. In
+        // light that means sinking it below the surface and in dark lifting it
+        // above — `CoveTheme.field` owns that flip, because the canvas it used
+        // to take is *darker* than the panel in dark mode, and an empty field
+        // with nothing typed in it disappeared into the card. The edge is the
+        // stronger `fieldStroke` for the same reason: when the field is empty
+        // its outline is the only thing saying it is there.
         .background(
-            CoveTheme.canvas,
+            CoveTheme.field,
             in: RoundedRectangle(
                 cornerRadius: CoveTheme.fieldRadius,
                 style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: CoveTheme.fieldRadius, style: .continuous)
-                .stroke(CoveTheme.hairline, lineWidth: 1)
+                .stroke(CoveTheme.fieldStroke, lineWidth: 1)
         }
         .animation(.easeInOut(duration: 0.15), value: draft)
         .background {
@@ -87,14 +93,32 @@ struct QuickCaptureField: View {
 
     private var entryRow: some View {
         HStack(spacing: 10) {
-            TextField(placeholder, text: $text)
+            // The placeholder is drawn rather than handed to the field. The
+            // system's own is a tertiary fill at about a third opacity, which
+            // on a dark panel left the one sentence explaining what this field
+            // takes almost invisible — and it is the only instruction the
+            // capture screen has, now that the masthead's prose is gone. Set
+            // as ordinary secondary text it reads at a glance and still sits
+            // clearly below what is typed over it. The label the field loses
+            // by taking an empty title is given straight back.
+            TextField("", text: $text)
                 .textFieldStyle(.plain)
                 .focused($isFieldFocused)
                 .autocorrectionDisabled()
                 .onSubmit { startCapture(draft) }
                 .submitLabel(.done)
+                .accessibilityLabel(placeholder)
                 .accessibilityHint(accessibilityHint)
                 .disabled(isCapturing)
+                .overlay(alignment: .leading) {
+                    if text.isEmpty {
+                        Text(placeholder)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
             Button {
                 startCapture(draft)
             } label: {

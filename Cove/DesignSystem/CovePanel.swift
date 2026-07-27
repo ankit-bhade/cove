@@ -68,7 +68,7 @@ struct CovePanel<Trailing: View, Content: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: CoveTheme.Space.snug + 2) {
+        VStack(alignment: .leading, spacing: CoveTheme.Space.snug) {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: CoveTheme.Space.snug) {
                     label
@@ -83,7 +83,12 @@ struct CovePanel<Trailing: View, Content: View>: View {
             }
             content()
         }
-        .padding(CoveTheme.Space.regular)
+        // A point tighter than the app's regular inset. The panel is the one
+        // card that sits above every screen's content rather than in it, so
+        // its padding is paid on every launch and on every tab switch — and on
+        // the landing screen it is the difference between the fifth task being
+        // visible and being implied.
+        .padding(CoveTheme.Space.regular - 3)
         .background { CovePanelBackground() }
     }
 
@@ -168,7 +173,7 @@ struct CoveStatStrip: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             Text(stat.label)
-                .coveEyebrow()
+                .coveMetaLabel()
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -260,6 +265,28 @@ struct CoveSectionHeader<Trailing: View>: View {
             .opacity(0.65)
             .rotationEffect(.degrees(isExpanded ? 90 : 0))
             .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// Places a section heading as a **row inside** one continuous list
+    /// surface, rather than above a card of its own.
+    ///
+    /// An inset-grouped `Section` draws its own rounded card, so a screen with
+    /// four groups is four soft capsules stacked inside the platform's own
+    /// rounded chrome — card inside card — and each gap between them costs a
+    /// row of what fits above the fold. Where a screen's groups are all the
+    /// same kind of thing partitioned by one rule (task rows split by day),
+    /// they belong on one surface with the headings dividing it. Where they
+    /// are genuinely different things (a chart, then upcoming charges, then
+    /// categories), separate sections are still right.
+    func coveGroupHeaderRow(isFirst: Bool = false, isLast: Bool = false) -> some View {
+        self
+            .listRowInsets(CoveTheme.groupHeaderRowInsets(isFirst: isFirst, isLast: isLast))
+            // The space above the heading is what divides one group from the
+            // next; a hairline as well would put a rule through a surface
+            // whose whole point is that it is continuous.
+            .listRowSeparator(.hidden)
     }
 }
 

@@ -37,28 +37,35 @@ struct TaskListDetailView: View {
                     .listRowSeparator(.hidden)
             }
             if let list {
-                if !list.openTasks.isEmpty {
+                // To Do and Done are one list split in two, so they take one
+                // surface with the headings inside it — the same arrangement
+                // the Tasks screen uses, because a list's items are ordinary
+                // tasks and the two screens are not allowed to drift.
+                if !list.isEmpty {
                     Section {
-                        TaskRows(tasks: list.openTasks, now: now, actions: actions)
-                    } header: {
-                        CoveSectionHeader("To Do", count: list.openTasks.count)
-                    }
-                }
-                if !list.completedTasks.isEmpty {
-                    Section {
-                        if isDoneExpanded {
-                            TaskRows(tasks: list.completedTasks, now: now, actions: actions)
-                            ClearCompletedTasksRow(
-                                isClearing: actions.isClearingCompleted
-                            ) {
-                                showsClearCompletedConfirmation = true
+                        if !list.openTasks.isEmpty {
+                            CoveSectionHeader("To Do", count: list.openTasks.count)
+                                .coveGroupHeaderRow(isFirst: true)
+                            TaskRows(tasks: list.openTasks, now: now, actions: actions)
+                        }
+                        if !list.completedTasks.isEmpty {
+                            CompletedTasksHeader(
+                                title: "Done",
+                                count: list.completedTasks.count,
+                                isExpanded: $isDoneExpanded
+                            )
+                            .coveGroupHeaderRow(
+                                isFirst: list.openTasks.isEmpty,
+                                isLast: !isDoneExpanded)
+                            if isDoneExpanded {
+                                TaskRows(tasks: list.completedTasks, now: now, actions: actions)
+                                ClearCompletedTasksRow(
+                                    isClearing: actions.isClearingCompleted
+                                ) {
+                                    showsClearCompletedConfirmation = true
+                                }
                             }
                         }
-                    } header: {
-                        CompletedTasksHeader(
-                            title: "Done",
-                            count: list.completedTasks.count,
-                            isExpanded: $isDoneExpanded)
                     }
                 }
                 if list.isEmpty {

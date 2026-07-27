@@ -192,9 +192,16 @@ struct VaultBrowserView: View {
         let nodes = folder?.children ?? []
 
         return List {
-            if let folder {
+            // Only the vault root carries the panel. A pushed level had the
+            // navigation bar naming the folder above it and a row naming every
+            // child with its own item count below it, so the card between them
+            // was the screen saying a third time what it had already said
+            // twice — and it pushed the folders themselves, the thing the
+            // reader came for, down the display. At the root the eyebrow names
+            // the open vault, which nothing else on screen does.
+            if let folder, folder.url == vaultManager.vaultURL {
                 Section {
-                    overview(for: folder, isRoot: folder.url == vaultManager.vaultURL)
+                    overview(for: folder)
                         .listRowInsets(CoveTheme.headerRowInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -245,17 +252,14 @@ struct VaultBrowserView: View {
         return nil
     }
 
-    /// The panel over a folder level: what's in it, counted. The same compact
-    /// card the other screens carry, for the same reason — the greeting and
-    /// the line under it that used to sit here were the one thing on screen
-    /// that changed while saying nothing about the folder being looked at.
-    ///
-    /// The eyebrow never repeats the navigation title above it: at the root it
-    /// names the open vault, which nothing else on screen says, and deeper in
-    /// the bar is already naming the folder.
-    private func overview(for folder: VaultNode, isRoot: Bool) -> some View {
+    /// The panel over the vault root: what the whole vault holds, counted, under
+    /// the vault's own name. It is the one level where the counts are not
+    /// already on screen — a pushed folder's rows each carry their own item
+    /// count — and the one place the eyebrow says something the navigation bar
+    /// does not.
+    private func overview(for folder: VaultNode) -> some View {
         let counts = overviewCounts(for: folder)
-        return CovePanel(eyebrow: isRoot ? folder.displayName : "Overview") {
+        return CovePanel(eyebrow: folder.displayName) {
             CoveStatStrip(stats: [
                 CoveStat(counts.folders, counts.folders == 1 ? "Folder" : "Folders"),
                 CoveStat(counts.subfolders, counts.subfolders == 1 ? "Subfolder" : "Subfolders"),

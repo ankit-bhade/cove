@@ -162,6 +162,37 @@ meaning something and this history gets cut into releases.
 
 ### Changed
 
+- **The task screens are one continuous list surface rather than a stack of
+  cards.** Overdue, Today, Tomorrow, Upcoming, and Completed were each their
+  own inset-grouped section, which drew five rounded capsules inside iOS's own
+  rounded chrome and spent a task's worth of screen on every gap between two
+  of them. They are one list partitioned five ways, so they now take one
+  surface with the headings set inside it. A list's To Do and Done sections
+  went the same way. Quick Capture keeps its own elevation: it is a different
+  kind of thing.
+- **More fits above the fold on Tasks.** Between the merged surface, a tighter
+  gap between list sections everywhere in the app, and a slightly tighter
+  panel, the landing screen opens on five tasks and all four day headings
+  where it opened on four tasks and three.
+- **Overview panels appear only where they summarize more than one thing.**
+  The Lists panel reported "1 list · 3 open · 1 done" directly above the only
+  row, which said "3 open · 1 done" — the screen stating itself twice. It now
+  appears from two lists on. In the browser the panel is the vault root's
+  alone: a pushed folder had the navigation bar naming it above and every row
+  carrying its own item count below, so the card between them was the third
+  telling.
+- **Tracked capitals are for headings only.** A section header, a panel's
+  label, and nothing else. Stat names, row captions, chart axis amounts, and
+  the subscription rows' "/mo" spoke in the same voice as the headers above
+  them, so QUICK CAPTURE, OVERDUE, COLLECTIONS, LISTS, OPEN and 2 ITEMS were
+  all one screen shouting at itself. Everything under a heading is now quiet
+  sentence case.
+- **The quick-capture field is legible in dark mode.** It took the canvas,
+  which is a well on paper and, at night, four points of luminance *below* the
+  panel it sits in — an empty field and its placeholder all but disappeared.
+  The field has its own token that sinks in light and lifts in dark, a
+  stronger edge, and a placeholder drawn as ordinary secondary text rather
+  than the system's third-opacity fill.
 - The widget snapshot and the notification schedule are only rebuilt when the
   tasks (or the day) actually change. Every index rebuild used to republish
   and re-diff both, so typing in an ordinary note did the work of a task

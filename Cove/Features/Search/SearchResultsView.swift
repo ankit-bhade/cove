@@ -32,8 +32,7 @@ struct SearchResultsView: View {
                             CoveRow(systemName: "doc.text.fill", alignment: .top) {
                                 CoveRowTitle(
                                     title: result.node.displayName,
-                                    caption: result.snippet,
-                                    captionIsLabel: false)
+                                    caption: result.snippet)
                                 Spacer(minLength: 0)
                             }
                         }

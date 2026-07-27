@@ -63,6 +63,16 @@ opened. And the things a reader could not see are visible — recovered drafts
 raise their own non-alarming state rather than reading as "Ready", a capped
 diagnostic list says how much it is hiding, and a chart drawn in one currency
 says which one.
+Most recently the direction was pressed on the one thing it had been
+accumulating: **surfaces**. A UI review found the app coherent and slightly
+over-layered — a masthead, a capture well, a card per task group, and the
+platform's own rounded chrome all reading as cards inside cards, with only
+four tasks visible on the screen the app opens on. So the task groups became
+one continuous list surface with their headings set inside it, section gaps
+tightened app-wide, overview panels are drawn only where summing more than one
+thing means something, tracked capitals were pulled back to headings alone,
+and the quick-capture field got a token of its own so that at night it lifts
+off the panel rather than sinking invisibly into it.
 See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
@@ -1072,9 +1082,22 @@ accent, and alert to their WCAG contrast floors on the canvas.
 reads once — screen titles, headings inside a note, empty states, the brand
 mark — are set
 in the system serif; data, labels, and anything scanned stay in the system
-sans. It scales with Dynamic Type and needs no font asset. Labels are tracked
-capitals (`coveEyebrow`) and every count is monospaced, so a badge doesn't
-resize as its number changes.
+sans. It scales with Dynamic Type and needs no font asset. Every count is
+monospaced, so a badge doesn't resize as its number changes.
+
+**Tracked capitals name a region of the screen and nothing else.**
+`coveEyebrow` is for a section header, a panel's own label, and the sidebar's
+tagline; `coveMetaLabel` — plain caption, secondary, the reader's own sentence
+case — is for everything *under* one of those: a stat's name, a row's caption,
+a unit suffix. The style used to carry both, which put QUICK CAPTURE, OVERDUE,
+COLLECTIONS, LISTS, OPEN, DONE and 2 ITEMS in one voice on one screen, and a
+style that marks everything marks nothing. `CoveRowTitle`'s caption lost its
+`captionIsLabel` split in the process: the distinction between a data caption
+and a path was real, and it was still one voice too many under a header set in
+the same capitals.
+
+A chart axis is the one place worth naming separately: `$40` is a number, not
+a heading, so uppercasing it did nothing but put it in the headers' voice.
 
 **`NavigationBarAppearance` is the one UIKit appearance-proxy call in the
 app.** SwiftUI has no modifier for a `navigationTitle`'s font, and that title
@@ -1101,9 +1124,52 @@ The panel's ornament sits *inline* with its label rather than stacked above
 it: a compact card has no room for a rule on its own line.
 
 **An eyebrow never repeats the navigation title above it**: at the vault root
-it names the open vault, which nothing else on screen says; a level down the
-bar is already naming the folder, so it says "Overview" like the lists screen
-does; on a capture card it names the card.
+it names the open vault, which nothing else on screen says; on a capture card
+it names the card. There is no longer a case where it has to say "Overview"
+because the bar is already naming the folder — that panel is gone (below).
+
+**A panel is only drawn where summing means something.** The Lists panel
+reported "1 list · 3 open · 1 done" directly above the only row, which said
+"3 open · 1 done"; a pushed folder level's panel sat between a navigation bar
+naming the folder and rows each carrying their own item count. In both cases
+the card was the screen saying a third time what it had already said twice,
+and that repetition is what makes every screen start to feel templated rather
+than informative. So the Lists panel appears from two lists on, and the
+browser's belongs to the vault root alone — the one level whose counts are
+nowhere else on screen and whose eyebrow names something the bar does not.
+This is the same call as "a chart with nothing to say is not drawn". It is
+*not* a case against panels: the subscriptions overview stays unconditionally,
+because a monthly and a yearly total are not derivable from any row.
+
+**One continuous list surface for a screen whose groups are one list
+partitioned.** An inset-grouped `Section` draws its own rounded card, so the
+Tasks screen's Overdue, Today, Tomorrow, Upcoming, and Completed were five
+soft capsules stacked inside iOS's own rounded chrome — card inside card — and
+each gap between two of them cost roughly a task of what fits above the fold
+on the screen the app opens on. They are one sorted list split five ways by a
+single rule, so they take one section with the headings set inside it
+(`coveGroupHeaderRow`), and a list's To Do and Done do the same. Quick Capture
+stays a raised panel of its own, being a different kind of thing.
+
+Where a screen's sections are *genuinely* different things — the subscriptions
+chart, then the next thirty days, then the categories — separate sections are
+still right, and that screen keeps them.
+
+**Three numbers make that merge pay for itself, and the third is the one that
+is easy to miss.** `CoveTheme.sectionSpacing` replaces the system's ~35pt gap
+between sections app-wide (iOS only — `listSectionSpacing` is unavailable in
+AppKit, and a macOS `.inset` list draws no per-section card for it to space).
+`groupHeaderRowInsets` gives a heading room above and almost none below, since
+it belongs to the rows under it. And `defaultMinListRowHeight` goes to 0,
+because a list row is 44pt tall whatever is in it: a line of caption text was
+getting 30pt of padding the row's own insets cannot take back, which handed
+most of the saving straight back. Nothing else in the app shrinks — every
+other row is past 44 from its own content plus the system's insets before the
+floor is ever consulted.
+
+`isLast` on a heading is for the folded case: a collapsed Done section is a
+header with nothing beneath it, and with the rows gone there is nothing left
+holding it off the card's bottom corner.
 
 **A collapsible section's header is the control, because SwiftUI's own is
 not.** `Section(isExpanded:)` exists and looks like the right answer, but
@@ -1178,10 +1244,11 @@ out in the 32pt column: the target overflows into the row's own padding
 rather than widening the column and pushing this one row's text past every
 other row's. `Space.rowGlyph` is the `@ScaledMetric` base at both call sites,
 so the two columns grow together under Dynamic Type. For the same reason the
-two task screens no longer ask for `.listSectionSpacing(.compact)` — nothing
-else in the app did, and a section gap that changes between tabs is the kind
-of difference that is felt before it is seen. It costs roughly a row of
-what fits above the fold, which is the price of the grid being one grid.
+two task screens no longer ask for `.listSectionSpacing(.compact)` on their
+own: a section gap that changes between tabs is the kind of difference that is
+felt before it is seen. The gap *is* tighter than the system's now — but
+through `CoveTheme.sectionSpacing` in `coveListStyle`, which every list in the
+app takes, so it is still one number rather than a screen's private one.
 
 **Tinted surfaces come from `Tint.fill`/`Tint.stroke`, applied through
 `coveTintedSurface(_:in:)`.** A tile, a badge, an editor banner, and the
@@ -1189,6 +1256,28 @@ recovery emblem are all one idea — a wash of a hue under a hairline of the
 same hue — and they had drifted to five hand-tuned pairs across 0.11–0.13
 fills and 0.14–0.22 strokes. The modifier takes any `InsettableShape`, so the
 caller keeps the shape it already had.
+
+**A field is a well on paper and a lift at night, and `CoveTheme.field` owns
+the flip.** The quick-capture field took `canvas`, which is right in light — a
+well cut into the lighter `surface` reads as a place to put something — and
+wrong in dark, where the canvas sits *below* the panel it is set into by four
+points of luminance. An empty field and its placeholder all but vanished into
+the card. Sinking it further had no room left; lifting it has all the room
+there is, so in dark the field is lighter than the surface and the idea
+survives with the direction reversed. `fieldStroke` is a step past `hairline`
+for the same reason: a hairline separates two surfaces that already differ,
+while the edge of an *empty* control is the only thing saying it is there.
+
+`CoveThemeTests` pins the direction in each appearance rather than a single
+ratio, because a token that quietly went back to sinking in dark would look
+plausible in a screenshot and fail the one reader it was changed for.
+
+**The capture placeholder is drawn, not handed to the field.** The system's is
+a tertiary fill at about a third opacity, and it is the only instruction the
+capture screen has now that the masthead's prose is gone. Set as ordinary
+secondary text it reads at a glance and still sits clearly below what is typed
+over it; the accessibility label the field loses by taking an empty title is
+given straight back.
 
 **A due date is a subtitle, not a capsule.** It used to be a tinted pill
 carrying a clock or calendar glyph, and every part of that was wrong for a
@@ -1571,7 +1660,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **554 tests** (macOS host), plus clean macOS and
+Current verified suite: **557 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1935,6 +2024,20 @@ Rough edges and surprises, not restatements of the design above.
   bar that discovers them.
 * The eyebrow is uppercased by `textCase`, so a vault or list name that is
   already an acronym or deliberately lowercase is restyled in the panel.
+* The Lists overview panel appears and disappears as the second list is added
+  or removed, which is a card materializing over a screen you were already
+  looking at. Deliberate — a summary of one thing is not a summary — but it is
+  the one place a figure a reader saw once is simply not there any more.
+* `coveListStyle` sets `defaultMinListRowHeight` to 0, so a list row no longer
+  has a 44pt floor. Nothing in the app relies on it today — every row is past
+  44 from its own content and insets — but a new row built from short text
+  alone would silently come out under the platform's minimum target, with
+  nothing failing to say so.
+* A merged surface's group headings are ordinary rows rather than `Section`
+  headers, so whatever a future OS does with real section semantics —
+  sticky headers, an index, a VoiceOver rotor — the task screens will not get
+  it. In practice SwiftUI reads an inset-grouped section header as a line of
+  text anyway, which is what these are.
 
 ### Icon and platform
 

@@ -39,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one they read worst. Past the eighth bar the tail is pooled into a remainder
   rather than dropped, so the bars still add up to the total printed above
   them, and a chart of one bar is not drawn at all.
+- Categories can be created, renamed, and deleted from the tracker. Each
+  category heading carries a menu, and the toolbar's plus adds either a
+  subscription or an empty category. Deleting one takes the charges filed
+  under it, so the dialog names how many and points at the way to keep them —
+  set each charge's Category to None first; the deletion is undoable either
+  way. An empty category still appears, since one you created but haven't
+  filled would otherwise be impossible to rename or remove.
 - Adding, editing, pausing, cancelling, and deleting a subscription, with a
   form sheet that shows what the note will say — "Renews in 4 days. That is
   $7.50 per month." — before anything is written. Deletion is undoable.

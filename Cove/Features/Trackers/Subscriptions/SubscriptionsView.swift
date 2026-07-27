@@ -13,6 +13,12 @@ struct SubscriptionsView: View {
     @State private var editing: Subscription?
     @State private var isAdding = false
     @State private var pendingDeletion: Subscription?
+    /// The category whose heading is being renamed, and the field beside it.
+    @State private var renamingCategory: String?
+    @State private var categoryNameDraft = ""
+    @State private var pendingCategoryDeletion: String?
+    @State private var isAddingCategory = false
+    @State private var newCategoryName = ""
     @State private var errorMessage: String?
     @State private var isInactiveExpanded = false
     /// Keeps "renews today" and "renews in 4 days" true across midnight while
@@ -34,10 +40,20 @@ struct SubscriptionsView: View {
             .navigationTitle("Subscriptions")
             .toolbar {
                 ToolbarItem {
-                    Button {
-                        isAdding = true
+                    Menu {
+                        Button {
+                            isAdding = true
+                        } label: {
+                            Label("New Subscription", systemImage: "creditcard")
+                        }
+                        Button {
+                            newCategoryName = ""
+                            isAddingCategory = true
+                        } label: {
+                            Label("New Category", systemImage: "folder.badge.plus")
+                        }
                     } label: {
-                        Label("New Subscription", systemImage: "plus")
+                        Label("Add", systemImage: "plus")
                     }
                 }
                 ToolbarItem {
@@ -71,6 +87,44 @@ struct SubscriptionsView: View {
                 }
             } message: {
                 Text("This removes the line from Subscriptions.md. You can undo the deletion.")
+            }
+            .alert("New Category", isPresented: $isAddingCategory) {
+                TextField("Streaming", text: $newCategoryName)
+                Button("Cancel", role: .cancel) {}
+                Button("Create") { createCategory() }
+                    .disabled(
+                        newCategoryName.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty)
+            } message: {
+                Text("Categories are `##` headings in Subscriptions.md, so you can rearrange them as Markdown too.")
+            }
+            .alert(
+                "Rename “\(renamingCategory ?? "")”",
+                isPresented: $renamingCategory.covePresence()
+            ) {
+                TextField("Category name", text: $categoryNameDraft)
+                Button("Cancel", role: .cancel) {}
+                Button("Rename") {
+                    if let name = renamingCategory { renameCategory(name) }
+                }
+                .disabled(
+                    categoryNameDraft.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty)
+            } message: {
+                Text("Every subscription filed under it stays where it is.")
+            }
+            .confirmationDialog(
+                "Delete “\(pendingCategoryDeletion ?? "")”?",
+                isPresented: $pendingCategoryDeletion.covePresence(),
+                titleVisibility: .visible
+            ) {
+                Button("Delete Category", role: .destructive) {
+                    if let name = pendingCategoryDeletion { deleteCategory(name) }
+                }
+            } message: {
+                Text(deletionMessage(for: pendingCategoryDeletion ?? ""))
             }
             .coveErrorAlert($errorMessage)
             // Editor autosaves don't rescan the vault, so arriving here picks
@@ -107,13 +161,30 @@ struct SubscriptionsView: View {
                 upcomingSection
                 ForEach(categoryGroups, id: \.name) { group in
                     Section {
+                        if group.subscriptions.isEmpty {
+                            Text("Nothing filed here yet.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, CoveTheme.Space.rowPadding)
+                        }
                         ForEach(group.subscriptions) { subscription in
                             row(for: subscription)
                         }
                     } header: {
-                        CoveSectionHeader(
-                            group.name ?? "Uncategorized",
-                            count: group.subscriptions.count)
+                        // Uncategorized is not a heading in the file, so there
+                        // is nothing there to rename or remove.
+                        if let name = group.name {
+                            CoveSectionHeader(
+                                title: name,
+                                count: group.subscriptions.count
+                            ) {
+                                categoryMenu(for: name)
+                            }
+                        } else {
+                            CoveSectionHeader(
+                                "Uncategorized",
+                                count: group.subscriptions.count)
+                        }
                     }
                 }
                 if !inactive.isEmpty {
@@ -180,6 +251,95 @@ struct SubscriptionsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: - Categories
+
+    /// A category header's own actions. The header is not collapsible, so it
+    /// can carry a control — the rule against that applies to collapsible
+    /// headers, where the whole row has to stay one button.
+    private func categoryMenu(for name: String) -> some View {
+        Menu {
+            Button {
+                categoryNameDraft = name
+                renamingCategory = name
+            } label: {
+                Label("Rename Category", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                pendingCategoryDeletion = name
+            } label: {
+                Label("Delete Category", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityLabel("\(name) category options")
+    }
+
+    private func categoryCount(_ name: String) -> Int {
+        subscriptions.filter {
+            $0.category.map(TaskListDocument.canonicalName)
+                == TaskListDocument.canonicalName(name)
+        }.count
+    }
+
+    private func deletionMessage(for name: String) -> String {
+        let count = categoryCount(name)
+        guard count > 0 else {
+            return "This removes the empty “\(name)” heading from Subscriptions.md. You can undo it."
+        }
+        return
+            "This removes the heading and the \(count) subscription\(count == 1 ? "" : "s") filed under it from Subscriptions.md. To keep them, set each one's Category to None first. You can undo the deletion."
+    }
+
+    private func createCategory() {
+        let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            do {
+                try await vaultManager.createSubscriptionCategory(named: name)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func renameCategory(_ name: String) {
+        let newName = categoryNameDraft.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+        guard !newName.isEmpty else { return }
+        Task {
+            do {
+                try await vaultManager.renameSubscriptionCategory(
+                    named: name, to: newName)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func deleteCategory(_ name: String) {
+        Task {
+            do {
+                let record = try await vaultManager.deleteSubscriptionCategory(
+                    named: name)
+                undoManager?.registerUndo(withTarget: vaultManager) { manager in
+                    Task {
+                        do {
+                            try await manager.restoreDeletedSubscriptionCategory(
+                                record)
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                    }
+                }
+                undoManager?.setActionName("Delete Category")
+            } catch {
+                errorMessage = error.localizedDescription
             }
         }
     }
@@ -263,12 +423,15 @@ struct SubscriptionsView: View {
         if !uncategorized.isEmpty {
             groups.append((nil, uncategorized))
         }
+        // Every heading in the note, filled or not — a category created but
+        // not yet used still exists, the same way an empty list does, and it
+        // has to be on screen to be renamed or removed.
         for name in vaultManager.index.subscriptionCategoryNames {
             let members = ordered.filter {
                 $0.category.map(TaskListDocument.canonicalName)
                     == TaskListDocument.canonicalName(name)
             }
-            if !members.isEmpty { groups.append((name, members)) }
+            groups.append((name, members))
         }
         return groups
     }

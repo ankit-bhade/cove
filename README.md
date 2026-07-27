@@ -137,7 +137,9 @@ next, so the file is never rewritten as time passes and a charge on the 31st
 doesn't drift to the 28th after February. A subscription can be paused or
 cancelled — it then counts toward nothing and folds away at the bottom — and
 adding or editing one uses a form that shows what the note will say before
-anything is written. Currencies are never converted: totals are kept per
+anything is written. Categories can be created, renamed, and deleted from the
+screen itself; deleting one takes the charges filed under it, so the
+confirmation says how many and how to keep them, and the deletion is undoable. Currencies are never converted: totals are kept per
 currency, and weekly or daily charges are averaged over a year, which the
 screen says rather than implying otherwise.
 The vault selection persists across launches, and the app

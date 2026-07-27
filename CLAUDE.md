@@ -702,6 +702,28 @@ badge disappearing at zero.
 floor is macOS 14. Whole units in the reader's locale work on every supported
 target and are short enough at four axis marks anyway.
 
+**Category management is `TaskListDocument`'s section surgery, unchanged.**
+Create, rename, and delete all route through the same primitives the Lists
+feature uses, so the tracker inherits their fail-closed behaviour: a rename
+into an existing name is refused, a duplicate heading makes an edit ambiguous
+rather than guessing, and Undo restores the exact removed section and refuses
+if the name has been reused. `SubscriptionCategoryTests` covers what those
+primitives do to *subscription* lines specifically — a rename that dropped a
+charge would still leave a valid Markdown file, so nothing else would notice.
+
+**Deleting a category takes its charges with it, as deleting a list takes its
+tasks.** The alternative — remove the heading and relocate every line into the
+unlisted region — was rejected: it silently rewrites lines the user did not
+ask to touch, and its Undo cannot put them back where they were. Emptying a
+category first is the explicit path (each charge's sheet has a Category
+field), and the confirmation dialog names the count and says so.
+
+**An empty category is still a category, so it is still on screen.** The
+grouping is built from the note's headings rather than from the charges under
+them, the same way `VaultIndex.lists` is — otherwise a category created and
+not yet filled would be invisible, which also means unrenameable and
+undeletable.
+
 **The diagnostic path is wired end to end or it is not worth having.** The
 parser's rejections reach `NoteIndexEntry.subscriptionDiagnostics`,
 `CoveStorageHealth.subscriptionDiagnosticCount`, the attention banner, and a
@@ -1401,7 +1423,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **515 tests** (macOS host), plus clean macOS and
+Current verified suite: **527 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1659,9 +1681,13 @@ Rough edges and surprises, not restatements of the design above.
   asked not to track it — so this is a decision, not an oversight. It is here
   because a reader will still be surprised the first time a raise rewrites
   last year's numbers.
-* A category can be created from the draft sheet but not renamed or deleted
-  from the tracker — edit the `##` heading in the note. Deleting a heading in
-  the editor leaves its charges under whichever category precedes them.
+* Deleting a category takes its charges with it. The dialog says how many and
+  names the way out — set each charge's Category to None first — but there is
+  no "delete the heading, keep the charges" action.
+* Deleting a `##` heading by hand in the editor is a different thing from
+  deleting the category in the tracker: the charges under it survive and fall
+  into whichever category precedes them, or become uncategorized if there is
+  none.
 * Currencies are never converted, so a vault mixing them gets one set of
   totals per currency and no combined figure.
 * Weekly and daily cycles normalize over a 365.25-day year, so their monthly

@@ -693,6 +693,74 @@ final class VaultManager {
         }
     }
 
+    /// Renames a category's heading, keeping every charge under it.
+    func renameSubscriptionCategory(
+        named name: String,
+        to newName: String
+    ) async throws {
+        let vaultURL = try requireOpenVaultURL()
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != name else { return }
+        guard
+            !index.subscriptionCategoryNames.contains(where: {
+                TaskListDocument.canonicalName($0)
+                    == TaskListDocument.canonicalName(trimmed)
+                    && TaskListDocument.canonicalName($0)
+                        != TaskListDocument.canonicalName(name)
+            })
+        else { throw SubscriptionCategoryExistsError(name: trimmed) }
+
+        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+            try TaskListDocument.renamingSectionResult(
+                named: name, to: trimmed, in: text
+            ).get()
+        }
+    }
+
+    /// Removes a category's heading and everything filed under it, returning
+    /// the exact source section for semantic Undo.
+    ///
+    /// This takes the charges with it, exactly as deleting a task list takes
+    /// its tasks. Keeping them by relocating every line into the note's
+    /// unlisted region was the alternative, and it is worse in the way that
+    /// matters: it silently rewrites lines the user did not ask to touch, and
+    /// its Undo cannot put them back where they were. Emptying a category
+    /// first — each charge's own sheet has a Category field — is the explicit
+    /// path, and the confirmation dialog says how many charges are at stake.
+    @discardableResult
+    func deleteSubscriptionCategory(
+        named name: String
+    ) async throws -> TaskListDocument.SectionRemovalRecord {
+        let vaultURL = try requireOpenVaultURL()
+        let url = vaultURL.appendingPathComponent(
+            Self.subscriptionNoteName, isDirectory: false)
+        let preflightText = try await repository.readNote(at: url)
+        let removal = try TaskListDocument.removingSectionWithRecordResult(
+            named: name,
+            from: preflightText
+        ).get()
+        _ = try await repository.updateNote(at: url) { text in
+            guard text == preflightText else {
+                throw VaultFileOperations.OperationError.fileChangedDuringWrite(
+                    url.lastPathComponent)
+            }
+            return try TaskListDocument.removingSectionResult(
+                named: name, from: text
+            ).get()
+        }
+        await refreshIndex(changedURLs: [url])
+        return removal.record
+    }
+
+    func restoreDeletedSubscriptionCategory(
+        _ record: TaskListDocument.SectionRemovalRecord
+    ) async throws {
+        let vaultURL = try requireOpenVaultURL()
+        try await mutateNote(named: Self.subscriptionNoteName, in: vaultURL) { text in
+            try TaskListDocument.restoringSectionResult(record, in: text).get()
+        }
+    }
+
     /// Toggles one task in its original Markdown file: re-reads the file,
     /// re-finds the task by content, rewrites the line (flipping the status,
     /// or advancing a recurring task's due date to its next occurrence), and

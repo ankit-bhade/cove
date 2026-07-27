@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Subscriptions are read from a Markdown note. `Subscriptions.md` at the vault
+  root records one recurring charge per line —
+  `- Netflix @cost(15.49 USD) @every(month) @since(2024-03-04)` — with `##`
+  headings as categories and an optional `@status(paused)` or
+  `@status(cancelled)`. The note is the source of truth and stays editable by
+  hand; nothing in it is a new file format or needs migrating. Cove writes one
+  fixed form and reads a wider one: indentation, `*` and `+` bullets, extra
+  spacing, a lower-case currency code, and any cycle wording it understands
+  (`month`, `monthly`, `every 3 months`) all read.
+- A **Trackers** tab, holding one tracker today. It is a hub rather than a
+  Subscriptions tab so a later tracker becomes a row instead of a sixth tab —
+  iOS collapses a tab bar into "More" past five, and this takes the last slot.
+  The abstraction stops at the hub: the format, the parser, the arithmetic,
+  and the views below it are subscription-specific. The hub itself is a plain
+  list of trackers — a tracker's own figures live inside it, since a spend
+  total on a screen about trackers in general is a number the next tracker
+  could not contribute to.
+- A Subscriptions screen: monthly and yearly totals per currency, the charges
+  landing in the next thirty days, and the rest grouped by `##` category and
+  ranked by what they cost per month — which is what makes a yearly charge and
+  a monthly one comparable in one list. Paused and cancelled charges fold away
+  at the bottom and count toward nothing. A charge landing within the week is
+  the one thing the screen raises its voice for.
+- Adding, editing, pausing, cancelling, and deleting a subscription, with a
+  form sheet that shows what the note will say — "Renews in 4 days. That is
+  $7.50 per month." — before anything is written. Deletion is undoable.
+  Subscriptions are entered a handful of times a year and every field is
+  structured, so this is a form rather than a sentence: the opposite call from
+  quick capture, for the opposite reason.
+- `@since` is the **first** charge date and the permanent anchor. The next
+  charge is derived rather than stored, so the file is never rewritten by the
+  passage of time, and a charge on the 31st does not walk back to the 28th
+  after February. Monthly and yearly cycles normalize to the cent; weekly and
+  daily ones are averaged over a 365.25-day year and are reported as
+  approximate. Currencies are never converted — totals are computed per
+  currency.
+- Subscription format diagnostics, alongside the task ones. A line that looks
+  like a charge but could not be read — a cost that isn't a number, a date
+  that doesn't exist, a weekday set where a billing cycle belongs, or a
+  duplicate of another line — is reported in Settings with the note and line
+  number, and tapping it opens the editor there.
 - A tinted iOS app icon, so the Home Screen's tinted appearance draws Cove
   from the coastline's own greys rather than from a flattened light tile.
 - A crash-recovery journal for the editor. Unsaved text is written to Cove's
@@ -56,6 +97,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The index types moved out of the file the widget extension compiles.
+  `TaskCalendar`, `TaskIdentity`, and `TaskItem` are now `TaskItem.swift`,
+  which is what the widget shares; `NoteIndexEntry`, `TaskList`, and
+  `VaultIndex` stay in `VaultIndex.swift`, which only the app builds. The
+  sorting comparator moved with them, from `VaultIndex.byDueDate` to
+  `TaskItem.byDueDate` — it compares two tasks and nothing else, and the
+  widget sorts with it while compiling none of the index types. Without the
+  split, adding subscriptions to an index entry would have dragged the whole
+  subscription model into the extension.
 - The Today widget draws as many tasks as its tile actually has room for
   instead of a fixed two. A small widget held two rows no matter how tall the
   iPhone drew it, so three tasks due today showed as two with a third of the

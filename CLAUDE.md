@@ -37,10 +37,18 @@ those arcs in turn became a coastline, a bay cut into the land's edge with its
 shoreline traced in ember. The arcs fixed the lean and were centred by
 construction, but they said nothing about what the app is; the coastline does,
 and it makes the tile itself the mark rather than a ground the mark sits on.
-Most recently the wall between Lists and Tasks was moved from the heading to
+Then the wall between Lists and Tasks was moved from the heading to
 the date: a list item that carries a `@due` date now appears on the Tasks
 screen too, naming its list under its title, while an undated one stays in
 its list alone — which is the distinction the feature was always about.
+Most recently, Phase 12 opened on the first thing Cove tracks that is not a
+task: **subscriptions**, recorded as one line per recurring charge in
+`Subscriptions.md`, with `@since` as a fixed anchor so the next charge is
+derived and the file is never rewritten by the passage of time. It arrived
+under a fifth tab, **Trackers** — a hub holding one row today, so a later
+tracker is a row rather than a navigation rework — with monthly and yearly
+totals, the charges landing in the next thirty days, and the charges
+themselves grouped by `##` category. Charts are the piece still outstanding.
 See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
@@ -69,7 +77,7 @@ termination, and App Group behavior on a signed device build.
 The phases were: folder picker and bookmarks (1), editor and file operations
 (2), live Markdown styling (3), iCloud change detection (4), search (5), tasks
 (6), notifications (7), quick capture (8), appearance and icon (9), task lists
-(10), Today widget (11).
+(10), Today widget (11), trackers (12, in progress).
 
 ---
 
@@ -100,6 +108,17 @@ These are non-negotiable. A change that breaks one is wrong even if it works.
   February and a Feb-29 yearly task never returns to leap day.
 * The one relaxation of `@due` itself is `@due`-less lines inside a `##` list
   section of the capture note, and it applies nowhere else.
+* The subscription line Cove **writes** is fixed the same way:
+  `- Name @cost(0.00 CUR) @every(cycle) @since(YYYY-MM-DD)[ @status(paused|cancelled)]`
+  — one space between parts, `-` bullet, no indentation, tags in that order.
+  Every generated line is round-tripped through the parser before it is saved.
+  What it **reads** is wider in ways that cannot change meaning: indentation,
+  `*` and `+` bullets, runs of spaces or tabs, a lower-case currency code, a
+  cost with fewer than two fraction digits, and any cycle wording
+  `BillingCycle` understands. A cost that is not a number, a date that is not a
+  date, and a cycle that is not a cycle are rejected and reported.
+* Amounts are `Decimal`, never `Double`, and **no currency is ever converted**
+  — conversion needs a rate, a rate needs a network. Totals are per currency.
 * Task-looking text inside YAML front matter, a fenced code block, or an HTML
   comment is never indexed and never edited.
 * No persisted search index; search is on demand.
@@ -198,8 +217,31 @@ them visually separate from the Tasks screen.
 * Lists can be created, renamed, and deleted; deleting one removes its heading
   and every task under it
 
+**Subscriptions** — recurring charges, recorded in `Subscriptions.md` at the
+vault root and created on demand. One line per charge, `##` headings as
+categories, and the grammar in Fixed rules above. This is the first
+**tracker**: a Markdown note at the vault root with a fixed line grammar and a
+screen that reads it. The plan is a Trackers hub section holding one row per
+tracker, so a later one is a row rather than a navigation rework — but the
+abstraction stops there. The format, the parser, the math, and the views are
+subscription-specific, the same way Lists and Tasks are concrete.
+
+* `@since` is the **first** charge date and the permanent anchor. The next
+  charge is derived, never stored
+* `@status(paused|cancelled)` is written only when set; absent means active,
+  and only active charges count toward totals or upcoming
+* Monthly and yearly cycles normalize exactly — twelve monthly charges a year,
+  four quarterly ones — so a monthly subscription's monthly figure is its own
+  price. Weekly and daily cycles use the mean Gregorian year (365.25 days) and
+  are therefore averages; `SubscriptionMath.totalsAreExact` reports which case
+  a screen is in
+* A weekday set (`every mon wed`) is a valid task recurrence and is not a
+  billing cycle, so `BillingCycle` cannot hold one
+
 **Settings** — select or reselect vault, recover from stale bookmarks,
-system/light/dark appearance, notification permission.
+system/light/dark appearance, notification permission. Task *and* subscription
+format warnings are listed here with note and line number, each opening the
+editor at that line.
 
 ### In-memory index
 
@@ -228,7 +270,8 @@ separate file.
 
 The spec's layout lives under `Cove/` (the app target's synchronized folder):
 `App/`, `DesignSystem/`, `Core/Models/`, `Core/Services/`,
-`Features/{VaultBrowser, Editor, Search, Tasks, Lists, Settings}/`, and
+`Features/{VaultBrowser, Editor, Search, Tasks, Lists, Trackers, Settings}/`
+(with `Trackers/Subscriptions/` under it), and
 `Platform/{iOS, macOS}/`. Tests are in top-level `Tests/`. The widget
 extension is in top-level `CoveWidgets/`, outside `Cove/`, because it is a
 separate build target.
@@ -561,6 +604,81 @@ being finished by definition. Both keep their count in the header while
 closed, so a section still says how much is behind it. A minute tick keeps those groups
 true across a due moment or midnight, and the tab refreshes on appearance
 because editor autosaves don't trigger a rescan.
+
+### Subscriptions
+
+**A subscription is a task line's shape without being a task**, so it reuses
+the machinery and none of the meaning. `SubscriptionParser` is built on
+`MarkdownContextScanner`, so front matter, fences, and HTML comments are
+excluded for free and identically; `##` categories go through
+`TaskListDocument.headingName`, so the tracker and Lists cannot disagree about
+where a section starts and ends; and mutations re-find their line semantically
+and **refuse on ambiguity**, which is the same call `TaskParser` makes for the
+same reason. `TaskListDocument` is deliberately reused rather than copied: it
+deals in headings and lines, and is task-specific in name only.
+
+**The two grammars cannot see each other, and that is tested rather than
+assumed.** A subscription line has no `[ ]` after its bullet, so
+`TaskParser`'s checkbox-candidate regex never treats it as a candidate and it
+produces no task diagnostic; a task line has no `@cost(`, so the subscription
+candidate detector ignores it. Both directions are covered in
+`VaultIndexSubscriptionTests`, because the failure mode is silent — a note of
+subscriptions quietly generating a wall of task warnings, or the reverse.
+
+**`@since` is the anchor, and nothing rolls forward.** The obvious design
+stores the *next* charge and advances it as time passes, which is what tasks
+do — and it is exactly what forced `@anchor(...)` into the task grammar,
+because an anchor that moves walks "every month on the 31st" back off February
+and strands a Feb-29 yearly charge on the 28th forever. Storing the *first*
+charge instead makes the next one derived:
+`RecurrenceRule.nextDueDateString(after:anchoredTo:)` already computes it
+correctly, **the file is never rewritten by the passage of time**, and "how
+long have I been paying for this" is answerable for free.
+
+**`BillingCycle` wraps `RecurrenceRule` to narrow it.** The interval clamping,
+the occurrence search, and the month-end and leap-day handling are all there
+and all tested. What the wrapper adds is a refusal — `init?(rule:)` returns nil
+for a weekday set, which is a fine task recurrence and not a billing cycle —
+plus `@every(...)` wording, since `RecurrenceRule.tagText` is worded for
+`@repeat` and would produce `@every(monthly)`, "every monthly". It also reads
+bare unit forms (`month`, `3 months`, `1 month`) that `RecurrenceRule` has no
+grammar for at all.
+
+**The Trackers hub carries no overview panel, and the subscriptions screen
+does.** The hub shipped with one — tracked count, spend per month, spend per
+year — and every figure in it was a *subscription* figure sitting on a screen
+that is meant to be about trackers in general. A second tracker would have had
+to either go missing from that panel or force it to special-case each kind,
+and a weight or reading tracker has no monthly dollar total to contribute at
+all. It also restated the row directly beneath it, which is the exact fault
+that cost `CoveMasthead` its place everywhere else. A tracker's numbers belong
+inside that tracker; the hub says which trackers exist and each row carries
+its own summary. The **Lists** overview is not the same case and keeps its
+panel: every list is the same kind of thing, so summing them means something.
+
+**The diagnostic path is wired end to end or it is not worth having.** The
+parser's rejections reach `NoteIndexEntry.subscriptionDiagnostics`,
+`CoveStorageHealth.subscriptionDiagnosticCount`, the attention banner, and a
+Settings disclosure that opens the editor at the line. A count with nowhere to
+tap is worse than no count.
+
+**Money is `Decimal`, and the file format is not the display.** A binary float
+cannot hold 15.49, and a total built from a dozen of them drifts by cents on a
+screen whose only job is adding money up. `@cost(...)` renders through a POSIX
+locale at exactly two fraction digits so it round-trips byte for byte;
+presentation formats with the reader's own locale and currency style — the same
+split a stored `YYYY-MM-DD` already makes.
+
+**The index types were split so the widget doesn't compile any of this.**
+`VaultIndex.swift` was in the extension's shared-sources list, so putting
+subscriptions on `NoteIndexEntry` would have dragged the whole subscription
+model into a target that has no use for it. `TaskCalendar`, `TaskIdentity`, and
+`TaskItem` moved to `TaskItem.swift`, which is now what the widget shares;
+`NoteIndexEntry`, `TaskList`, and `VaultIndex` stayed behind in
+`VaultIndex.swift`, which only the app builds. `byDueDate` moved with them onto
+`TaskItem`, where it belonged anyway — it compares two tasks and nothing else,
+and the widget sorts with it while compiling none of the index types. The
+shared file is now named for what it shares, which it was not before.
 
 ### Quick capture
 
@@ -1237,7 +1355,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **440 tests** (macOS host), plus clean macOS and
+Current verified suite: **517 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1477,6 +1595,45 @@ Rough edges and surprises, not restatements of the design above.
   beyond the list name under its title.
 * An item captured into a list deleted meanwhile recreates the heading at the
   end of the note rather than failing.
+
+### Subscriptions
+
+* No charts yet. The screen carries the totals, the next thirty days, and the
+  charges by category; spend by category and a twelve-month projection are the
+  outstanding piece.
+* **A price change is not history, deliberately.** The line holds one cost, so
+  editing it rewrites the only record and every figure recomputes at the new
+  price. Keeping history would need a second place to put it, and Cove was
+  asked not to track it — so this is a decision, not an oversight. It is here
+  because a reader will still be surprised the first time a raise rewrites
+  last year's numbers.
+* A category can be created from the draft sheet but not renamed or deleted
+  from the tracker — edit the `##` heading in the note. Deleting a heading in
+  the editor leaves its charges under whichever category precedes them.
+* Currencies are never converted, so a vault mixing them gets one set of
+  totals per currency and no combined figure.
+* Weekly and daily cycles normalize over a 365.25-day year, so their monthly
+  figures are averages and will not match a bank statement to the cent.
+  `totalsAreExact` is what a screen should ask before implying otherwise.
+* Tag order is fixed in what Cove writes *and* in what it matches, so a
+  hand-edited line with `@since` before `@every` is reported as malformed
+  rather than understood. Unlike the widened bullet, spacing, and case rules,
+  order was not worth a second regex.
+* Two lines identical in name, cost, cycle, start date, and category cannot be
+  edited or deleted — the mutation refuses rather than guess, exactly as with
+  duplicate tasks. Settings lists them; making one distinct is the only way
+  out.
+* `Subscriptions.md` is fixed at the vault root and is not configurable, and
+  the note must be a file — if iCloud syncs a *folder* of that name, nothing
+  is tracked.
+* An amount needing more than two decimal places is refused rather than
+  rounded, so a cost cannot silently change by a fraction of a cent on save.
+* A charge whose cycle is shorter than the projection window is walked one
+  occurrence at a time, capped at
+  `SubscriptionMath.maximumProjectedOccurrences` (512). A daily charge over a
+  projected year is ~365 of those, so the cap is not tight — but the walk is
+  recomputed rather than memoized, and a screen redrawing it every frame would
+  feel it.
 
 ### Notifications
 

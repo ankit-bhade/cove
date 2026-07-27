@@ -154,6 +154,34 @@ struct SettingsView: View {
                 .foregroundStyle(CoveTheme.alert)
             }
 
+            if health.subscriptionDiagnosticCount > 0 {
+                DisclosureGroup(
+                    "\(health.subscriptionDiagnosticCount) subscription format warning\(health.subscriptionDiagnosticCount == 1 ? "" : "s")"
+                ) {
+                    ForEach(
+                        Array(
+                            vaultManager.index.subscriptionDiagnostics
+                                .prefix(20).enumerated()),
+                        id: \.offset
+                    ) { _, item in
+                        NavigationLink {
+                            EditorView(fileURL: item.fileURL)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(
+                                    "\(item.fileURL.lastPathComponent), line \(item.diagnostic.lineNumber + 1)"
+                                )
+                                Text(item.diagnostic.message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
+                        }
+                    }
+                }
+                .foregroundStyle(CoveTheme.alert)
+            }
+
             if !health.unresolvedConflictURLs.isEmpty
                 || !health.conflictReviewURLs.isEmpty
             {
@@ -199,7 +227,7 @@ struct SettingsView: View {
             CoveSectionHeader("Storage Health")
         } footer: {
             Text(
-                "Task warnings never rewrite Markdown automatically. Conflict and recovery copies remain ordinary files for you to review."
+                "Format warnings never rewrite Markdown automatically. Conflict and recovery copies remain ordinary files for you to review."
             )
         }
     }
@@ -209,6 +237,7 @@ struct SettingsView: View {
         return health.lastIssue != nil
             || health.unavailableNoteCount > 0
             || health.taskDiagnosticCount > 0
+            || health.subscriptionDiagnosticCount > 0
             || !health.unresolvedConflictURLs.isEmpty
             || !health.conflictReviewURLs.isEmpty
             || !health.bookmarkIsPersisted

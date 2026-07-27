@@ -62,7 +62,7 @@ enum TaskNotificationPlanner {
         let eligible =
             tasks
             .filter { !$0.isCompleted && $0.dueTimeString != nil }
-            .sorted(by: VaultIndex.byDueDate)
+            .sorted(by: TaskItem.byDueDate)
             .compactMap { task -> (task: TaskItem, fireDate: Date, components: DateComponents)? in
                 guard let dueDateString = task.dueDateString,
                     let dueTimeString = task.dueTimeString

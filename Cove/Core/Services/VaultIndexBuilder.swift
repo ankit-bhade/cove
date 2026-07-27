@@ -20,6 +20,7 @@ struct VaultIndexBuilder: Sendable {
         changedURLs: Set<URL>? = nil
     ) throws -> VaultIndex {
         var listNames: [String] = []
+        var subscriptionCategoryNames: [String] = []
         var entries: [NoteIndexEntry] = []
         let previousByURL = Dictionary(
             uniqueKeysWithValues: previous.entries.map {
@@ -31,6 +32,8 @@ struct VaultIndexBuilder: Sendable {
         for node in root.allFiles {
             try Task.checkCancellation()
             let sectioned = VaultManager.isCaptureNote(node.url, vaultRoot: root.url)
+            let tracksSubscriptions = VaultManager.isSubscriptionNote(
+                node.url, vaultRoot: root.url)
             let values: URLResourceValues?
             do {
                 values = try node.url.resourceValues(forKeys: [
@@ -57,6 +60,9 @@ struct VaultIndexBuilder: Sendable {
             {
                 entries.append(cached)
                 if sectioned { listNames = cached.listNames }
+                if tracksSubscriptions {
+                    subscriptionCategoryNames = cached.subscriptionCategoryNames
+                }
                 continue
             }
             let text: String
@@ -81,11 +87,17 @@ struct VaultIndexBuilder: Sendable {
                             title: cached.title,
                             tasks: cached.tasks,
                             listNames: cached.listNames,
+                            subscriptions: cached.subscriptions,
+                            subscriptionCategoryNames: cached.subscriptionCategoryNames,
                             taskDiagnostics: cached.taskDiagnostics,
+                            subscriptionDiagnostics: cached.subscriptionDiagnostics,
                             indexingErrorDescription: error.localizedDescription,
                             modificationDate: nil,
                             fileSize: nil))
                     if sectioned { listNames = cached.listNames }
+                    if tracksSubscriptions {
+                        subscriptionCategoryNames = cached.subscriptionCategoryNames
+                    }
                 } else {
                     entries.append(
                         NoteIndexEntry(
@@ -105,6 +117,31 @@ struct VaultIndexBuilder: Sendable {
             if sectioned && !isOperationallyExcluded {
                 noteListNames = TaskListDocument.sectionNames(in: text)
                 listNames = noteListNames
+            }
+            // Subscriptions are parsed for the one note at the vault root that
+            // tracks them, exactly as `##` headings mean lists in the one
+            // capture note. Every other note keeps `- Name @cost(…)` as
+            // ordinary text.
+            var noteSubscriptions: [Subscription] = []
+            var noteSubscriptionCategories: [String] = []
+            var noteSubscriptionDiagnostics: [SubscriptionParser.Diagnostic] = []
+            if tracksSubscriptions && !isOperationallyExcluded {
+                let scan = SubscriptionParser.scan(in: text)
+                noteSubscriptionCategories = SubscriptionParser.categoryNames(in: text)
+                subscriptionCategoryNames = noteSubscriptionCategories
+                noteSubscriptionDiagnostics = scan.diagnostics
+                noteSubscriptions = scan.subscriptions.map { parsed in
+                    Subscription(
+                        fileURL: node.url,
+                        lineNumber: parsed.lineNumber,
+                        name: parsed.name,
+                        cost: parsed.cost,
+                        cycle: parsed.cycle,
+                        firstChargeDateString: parsed.firstChargeDateString,
+                        status: parsed.status,
+                        category: parsed.category,
+                        sourceLine: parsed.sourceLine)
+                }
             }
             let taskScan =
                 isOperationallyExcluded
@@ -134,11 +171,17 @@ struct VaultIndexBuilder: Sendable {
                     title: node.displayName,
                     tasks: tasks,
                     listNames: noteListNames,
+                    subscriptions: noteSubscriptions,
+                    subscriptionCategoryNames: noteSubscriptionCategories,
                     taskDiagnostics: taskScan?.diagnostics ?? [],
+                    subscriptionDiagnostics: noteSubscriptionDiagnostics,
                     modificationDate: values?.contentModificationDate,
                     fileSize: values?.fileSize))
         }
         try Task.checkCancellation()
-        return VaultIndex(entries: entries, listNames: listNames)
+        return VaultIndex(
+            entries: entries,
+            listNames: listNames,
+            subscriptionCategoryNames: subscriptionCategoryNames)
     }
 }

@@ -16,14 +16,10 @@ struct TodayWidgetView: View {
     private var isAvailable: Bool { entry.snapshot.availability == .available }
     /// The empty state is about work, not history: once nothing is open the
     /// widget reads "All clear" even if checked-off rows are still around.
-    private var openTasks: [SnapshotTask] { entry.snapshot.openTasks }
     private var actionableTasks: [SnapshotTask] {
         entry.snapshot.tasks.filter {
             !$0.isCompleted || $0.pendingCompletion != nil
         }
-    }
-    private var visibleTasks: [SnapshotTask] {
-        Array(actionableTasks.prefix(isSmall ? 2 : 3))
     }
 
     var body: some View {
@@ -32,32 +28,57 @@ struct TodayWidgetView: View {
         // what sits under it changes.
         VStack(alignment: .leading, spacing: 0) {
             header
-                .padding(.bottom, 9)
+                .padding(.bottom, 7)
             if !isAvailable {
                 unavailableState
             } else if actionableTasks.isEmpty {
                 emptyState
             } else {
-                VStack(spacing: isSmall ? 6 : 7) {
-                    ForEach(visibleTasks) { task in
-                        row(for: task)
-                    }
-                }
-                // Rows hang from the header rather than centering in the
-                // leftover space: a single task belongs directly under
-                // "Today", where the next one added will sit below it,
-                // instead of drifting to the middle of the widget.
-                .frame(maxHeight: .infinity, alignment: .top)
+                taskList
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The design's own insets rather than WidgetKit's default content
         // margins, which are wider and would cost the small family a row.
         // Paired with `.contentMarginsDisabled()` on the configuration.
-        .padding(.vertical, 14)
+        .padding(.vertical, 13)
         .padding(.horizontal, isSmall ? 15 : 14)
         .containerBackground(palette.background, for: .widget)
         .widgetURL(URL(string: "cove://tasks"))
+    }
+
+    // MARK: - Task list
+
+    /// How many rows fit is a property of the device, not of the family: a
+    /// small widget is 148pt tall on one iPhone and 170pt on another, and a
+    /// fixed count either overflows the short one or — as it did — leaves the
+    /// tall one two thirds empty with tasks it had in hand and did not draw.
+    /// So the candidates are offered longest first and the layout takes the
+    /// tallest that fits the space actually left under the header.
+    ///
+    /// The candidates are spelled out rather than generated: `ViewThatFits`
+    /// reads its content as a list of alternatives, and a `ForEach` inside it
+    /// is one child, not four.
+    private var taskList: some View {
+        ViewThatFits(in: .vertical) {
+            rows(limitedTo: 4)
+            rows(limitedTo: 3)
+            rows(limitedTo: 2)
+            rows(limitedTo: 1)
+        }
+        // Rows hang from the header rather than centering in the leftover
+        // space: a single task belongs directly under the date, where the
+        // next one added will sit below it, instead of drifting to the
+        // middle of the widget.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private func rows(limitedTo count: Int) -> some View {
+        VStack(spacing: rowSpacing) {
+            ForEach(actionableTasks.prefix(count)) { task in
+                row(for: task)
+            }
+        }
     }
 
     // MARK: - Header
@@ -92,93 +113,104 @@ struct TodayWidgetView: View {
         }
     }
 
+    /// A zero carries nothing the empty state under it doesn't already say,
+    /// and a badge is a shape that asks to be read — so on a clear day there
+    /// is nothing in the corner at all.
+    @ViewBuilder
     private var countPill: some View {
-        Group {
-            if isAvailable {
+        if !isAvailable {
+            pillShape {
+                Image(systemName: "exclamationmark")
+                    .accessibilityLabel("Needs attention")
+            }
+        } else if entry.snapshot.totalOpenTaskCount > 0 {
+            pillShape {
                 Text(
                     isSmall
                         ? "\(entry.snapshot.totalOpenTaskCount)"
                         : "\(entry.snapshot.totalOpenTaskCount) left"
                 )
                 .monospacedDigit()
-            } else {
-                Image(systemName: "exclamationmark")
-                    .accessibilityLabel("Needs attention")
             }
         }
-        .font(.system(size: 11, weight: .bold))
-        .foregroundStyle(palette.accent)
-        .padding(.vertical, isSmall ? 2 : 3)
-        .padding(.horizontal, isSmall ? 7 : 8)
-        .background(
-            palette.accentSoft,
-            in: RoundedRectangle(
-                cornerRadius: 8,
-                style: .continuous))
+    }
+
+    private func pillShape(@ViewBuilder _ content: () -> some View) -> some View {
+        content()
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(palette.accent)
+            .padding(.vertical, isSmall ? 2 : 3)
+            .padding(.horizontal, isSmall ? 7 : 8)
+            .background(
+                palette.accentSoft,
+                in: RoundedRectangle(
+                    cornerRadius: 8,
+                    style: .continuous))
     }
 
     // MARK: - Rows
 
+    private var rowHeight: CGFloat { 28 }
+    private var rowSpacing: CGFloat { 4 }
+    /// The column the checkbox is laid out in — as wide as the ring itself, so
+    /// the ring's leading edge lines up with the date above it. The control's
+    /// larger hit area overflows this column into the widget's own padding.
+    private var glyphSize: CGFloat { 18 }
+    private var hitWidth: CGFloat { 30 }
+
     @ViewBuilder
     private func row(for task: SnapshotTask) -> some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             checkbox(for: task)
             if isSmall {
                 VStack(alignment: .leading, spacing: 1) {
                     title(for: task)
                     if task.dueTimeString != nil {
-                        HStack(spacing: 3) {
-                            Image(
-                                systemName: isOverdue(task)
-                                    ? "exclamationmark.circle.fill" : "clock"
-                            )
-                            .font(.system(size: 11, weight: .semibold))
-                            timeText(for: task)
-                        }
-                        .foregroundStyle(dueColor(for: task))
+                        timeText(for: task)
+                            .foregroundStyle(dueColor(for: task))
                     }
                 }
             } else {
                 title(for: task)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: 4) {
-                    if isOverdue(task) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(palette.overdue)
-                    }
-                    if task.dueTimeString != nil {
-                        timeText(for: task)
-                            .foregroundStyle(dueColor(for: task))
-                    }
+                if task.dueTimeString != nil {
+                    timeText(for: task)
+                        .foregroundStyle(dueColor(for: task))
                 }
             }
         }
         // Without a full-width row the HStack shrinks to its content and
         // centers, which leaves the checkboxes in a ragged column.
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 32)
+        .frame(minHeight: rowHeight)
         .accessibilityElement(children: .combine)
     }
 
     private func title(for task: SnapshotTask) -> some View {
         Text(task.text)
-            .font(.system(size: isSmall ? 12.5 : 13.5, weight: .medium))
+            .font(.system(size: isSmall ? 13 : 13.5))
             .lineLimit(1)
             .truncationMode(.tail)
             .strikethrough(task.isCompleted)
             .foregroundStyle(task.isCompleted ? palette.secondaryText : palette.primaryText)
     }
 
+    /// The time is a subtitle, not a badge — no clock beside it and no
+    /// exclamation mark when it has passed. The app made the same call for its
+    /// own due lines: the glyph only restated the text next to it, and one on
+    /// every row was the loudest thing in a list whose job is to be scanned.
+    /// Lateness is carried by the tint, exactly as it is in the app.
     private func timeText(for task: SnapshotTask) -> some View {
         Text(task.timeOfDayDescription)
-            .font(.system(size: isSmall ? 10.5 : 11, weight: .semibold))
+            .font(.system(size: isSmall ? 11 : 11.5, weight: .medium))
             .monospacedDigit()
     }
 
-    /// The checkbox's full hit area is reserved by the row. Widget rows are
-    /// necessarily denser than the app's 44pt controls, but hit regions must
-    /// never overflow into an adjacent App Intent button.
+    /// Widget rows are necessarily denser than the app's 44pt controls, and a
+    /// hit region must never overflow *vertically* into an adjacent App Intent
+    /// button — so the target is exactly a row tall. It is wider than its
+    /// column, which is free: the slack falls into the widget's own padding on
+    /// one side and the gap before the title on the other.
     private func checkbox(for task: SnapshotTask) -> some View {
         Button(
             intent: ToggleTaskIntent(
@@ -186,14 +218,13 @@ struct TodayWidgetView: View {
                 desiredCompletion: !task.isCompleted)
         ) {
             checkboxGlyph(for: task)
-                .font(.system(size: 20, weight: .regular))
-                .frame(width: 32, height: 32)
+                .font(.system(size: glyphSize, weight: .regular))
+                .frame(width: hitWidth, height: rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // The layout reserves exactly the button's hit region; it cannot
-        // overlap the next row and dispatch the wrong App Intent.
-        .frame(width: 32, height: 32)
+        .frame(width: hitWidth, height: rowHeight)
+        .frame(width: glyphSize)
         .disabled(task.pendingCompletion != nil)
         .accessibilityLabel(
             task.pendingCompletion != nil
@@ -224,16 +255,19 @@ struct TodayWidgetView: View {
 
     // MARK: - Empty state
 
+    /// Quieter than it was. A 34pt glyph over two lines of centred text was
+    /// the largest thing the widget ever drew, which put the most emphasis on
+    /// the state that has the least to say.
     private var emptyState: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: 6) {
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 34, weight: .light))
+                .font(.system(size: 26, weight: .light))
                 .foregroundStyle(palette.accent)
             Text("All clear")
-                .font(.system(size: 15, weight: .semibold, design: .serif))
+                .font(.system(size: 14, weight: .semibold, design: .serif))
                 .foregroundStyle(palette.primaryText)
             Text("Nothing due today")
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(palette.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

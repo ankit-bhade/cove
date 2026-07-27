@@ -56,6 +56,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Today widget draws as many tasks as its tile actually has room for
+  instead of a fixed two. A small widget held two rows no matter how tall the
+  iPhone drew it, so three tasks due today showed as two with a third of the
+  tile blank, and checking one off simply promoted the one that had been
+  hidden. The row count is now taken from the space left under the header, so
+  nothing is withheld while there is room for it.
+- The widget's rows sit on a tighter grid, and the checkbox lines up with the
+  date above it rather than sitting a few points inside it. The due time is a
+  quiet second line in the same shape the app's own task rows use — no clock
+  beside it and no exclamation mark when it has passed, since lateness is
+  already carried by the colour and one glyph per row was the loudest thing on
+  a surface meant to be glanced at. The "All clear" state is smaller, and the
+  count badge no longer shows a zero next to it.
 - A list item with a due date now appears on the Tasks screen as well as in
   its list, grouped by day among everything else and naming its list under
   the title. A dated chore is scheduled work wherever it was filed, so

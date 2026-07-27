@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A list item with a due date now appears on the Tasks screen as well as in
+  its list, grouped by day among everything else and naming its list under
+  the title. A dated chore is scheduled work wherever it was filed, so
+  laundry on Thursday and a weekly recurring item belong where you look for
+  what's due; an undated item like "milk" has no day to appear under and
+  stays in its list alone. The Tasks screen's Clear All takes the completed
+  items it showed, lists included, and still leaves undated list items to
+  their own list's Clear All. The Today widget follows the same rule, and a
+  dated list item's checkbox works there because the snapshot now carries the
+  `##` section a line sits under — without it a toggle sent back from the
+  widget could not re-find its line.
 - A task's due date reads as a subtitle instead of a tinted capsule, taking
   Apple Reminders' treatment of the same fact as the reference. The pill it
   replaces was a control's shape, so a list carrying one under every title

@@ -157,6 +157,36 @@ struct CoveRecurrenceLabel: View {
     }
 }
 
+/// The list a task was captured into, beside its due date on the Tasks
+/// screen. A row otherwise says nothing about where its line lives — tasks
+/// nearly all sit in the capture note, so naming the *note* was a repeated
+/// caption — but a dated list item appearing among unlisted ones is the one
+/// case where the row would otherwise be indistinguishable from a task that
+/// is not in any list.
+///
+/// It sits at `CoveDueLabel`'s size and tint for the same reason
+/// `CoveRecurrenceLabel` does: the metadata under a title reads as one line
+/// about the task, and a second size makes it look assembled from parts.
+struct CoveListLabel: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "list.bullet")
+            Text(text)
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("In list \(text)")
+    }
+}
+
 struct CoveEmptyState<Actions: View>: View {
     let title: String
     let description: String

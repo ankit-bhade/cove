@@ -115,6 +115,11 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
     /// Desired state accepted by the widget but not yet confirmed in
     /// Markdown. It is deliberately separate from authoritative completion.
     let pendingCompletion: Bool?
+    /// The `##` section the line sits under, for a dated list item. It has to
+    /// cross the App Group: a task's line is re-found by matching its text,
+    /// its schedule, *and* its list, so a toggle sent back with no list would
+    /// fail to match the very line the widget was drawing.
+    let listName: String?
 
     private var notificationRawTaskID: String { "\(filePath)#\(lineNumber)" }
     private var semanticRawTaskID: String {
@@ -127,6 +132,7 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             recurrenceTag,
             recurrenceAnchorDateString,
             isSectionedDocument ? "sectioned" : "unsectioned",
+            listName.map(TaskListDocument.canonicalName),
         ]
         return fields.map { value in
             guard let value else { return "nil" }
@@ -155,7 +161,7 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             dueDateString: dueDateString,
             dueTimeString: dueTimeString,
             recurrenceTag: recurrenceTag,
-            listName: nil,
+            listName: listName,
             recurrenceAnchorDateString: recurrenceAnchorDateString,
             isSectionedDocument: isSectionedDocument)
     }
@@ -170,7 +176,8 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
         isCompleted: Bool,
         pendingCompletion: Bool? = nil,
         recurrenceAnchorDateString: String? = nil,
-        isSectionedDocument: Bool = false
+        isSectionedDocument: Bool = false,
+        listName: String? = nil
     ) {
         self.filePath = filePath
         self.lineNumber = lineNumber
@@ -182,6 +189,7 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
         self.isSectionedDocument = isSectionedDocument
         self.isCompleted = isCompleted
         self.pendingCompletion = pendingCompletion
+        self.listName = listName
     }
 
     init(_ task: TaskItem) {
@@ -195,7 +203,8 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             isCompleted: task.isCompleted,
             pendingCompletion: nil,
             recurrenceAnchorDateString: task.recurrenceAnchorDateString,
-            isSectionedDocument: task.isSectionedDocument)
+            isSectionedDocument: task.isSectionedDocument,
+            listName: task.listName)
     }
 
     var taskItem: TaskItem {
@@ -208,7 +217,7 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             dueTimeString: dueTimeString,
             recurrence: recurrence,
             isCompleted: isCompleted,
-            listName: nil,
+            listName: listName,
             recurrenceAnchorDateString: recurrenceAnchorDateString,
             isSectionedDocument: isSectionedDocument)
     }
@@ -224,7 +233,8 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             isCompleted: isCompleted,
             pendingCompletion: nil,
             recurrenceAnchorDateString: recurrenceAnchorDateString,
-            isSectionedDocument: isSectionedDocument)
+            isSectionedDocument: isSectionedDocument,
+            listName: listName)
     }
 
     func settingPendingCompletion(_ desiredCompletion: Bool) -> SnapshotTask {
@@ -238,7 +248,8 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
             isCompleted: isCompleted,
             pendingCompletion: desiredCompletion,
             recurrenceAnchorDateString: recurrenceAnchorDateString,
-            isSectionedDocument: isSectionedDocument)
+            isSectionedDocument: isSectionedDocument,
+            listName: listName)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -252,6 +263,7 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
         case isSectionedDocument
         case isCompleted
         case pendingCompletion
+        case listName
     }
 
     init(from decoder: Decoder) throws {
@@ -273,7 +285,11 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
                 String.self, forKey: .recurrenceAnchorDateString),
             isSectionedDocument:
                 try values.decodeIfPresent(
-                    Bool.self, forKey: .isSectionedDocument) ?? false)
+                    Bool.self, forKey: .isSectionedDocument) ?? false,
+            // Absent in snapshots written before dated list items reached
+            // the widget; those carried unlisted tasks only, so nil is the
+            // right reading rather than a missing value.
+            listName: try values.decodeIfPresent(String.self, forKey: .listName))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -291,6 +307,7 @@ struct SnapshotTask: Codable, Hashable, Sendable, Identifiable {
         try values.encode(isCompleted, forKey: .isCompleted)
         try values.encodeIfPresent(
             pendingCompletion, forKey: .pendingCompletion)
+        try values.encodeIfPresent(listName, forKey: .listName)
     }
 }
 
@@ -412,10 +429,13 @@ struct TodaySnapshot: Codable, Sendable {
         tasks.first { $0.id == taskID }
     }
 
+    /// Today's rows, admitting exactly what the Tasks screen admits: every
+    /// unlisted task due today plus a list's dated items due today. An
+    /// undated list item has no day to be due on, so it never appears here.
     static func tasks(dueToday dayString: String, from allTasks: [TaskItem]) -> [SnapshotTask] {
         let today =
             allTasks
-            .filter { $0.listName == nil && $0.dueDateString == dayString }
+            .filter { $0.belongsOnTasksScreen && $0.dueDateString == dayString }
             .sorted(by: VaultIndex.byDueDate)
         return (today.filter { !$0.isCompleted } + today.filter(\.isCompleted))
             .map(SnapshotTask.init)
@@ -657,7 +677,8 @@ struct PendingTaskOperation: Codable, Hashable, Sendable, Identifiable {
             recurrenceTag: taskIdentity.recurrenceTag,
             isCompleted: false,
             recurrenceAnchorDateString: taskIdentity.recurrenceAnchorDateString,
-            isSectionedDocument: taskIdentity.isSectionedDocument)
+            isSectionedDocument: taskIdentity.isSectionedDocument,
+            listName: taskIdentity.listName)
         return task.id
     }
 }

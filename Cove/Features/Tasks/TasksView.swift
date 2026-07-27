@@ -48,7 +48,7 @@ struct TasksView: View {
                         }
                     }
                 } message: {
-                    Text("This removes every completed task line from its Markdown note. You can undo the clear.")
+                    Text("This removes every completed task line shown here from its Markdown note, including dated items from your lists. You can undo the clear.")
                 }
                 // Editor autosaves don't rescan the vault, so returning to
                 // this tab rebuilds the index to pick up freshly typed tasks.
@@ -72,7 +72,9 @@ struct TasksView: View {
             ForEach(TaskGroup.grouping(incomplete, now: now)) { group in
                 Section {
                     if isShowing(group) {
-                        TaskRows(tasks: group.tasks, now: now, actions: actions)
+                        TaskRows(
+                            tasks: group.tasks, now: now, actions: actions,
+                            showsListNames: true)
                     }
                 } header: {
                     header(for: group)
@@ -81,7 +83,9 @@ struct TasksView: View {
             if !completed.isEmpty {
                 Section {
                     if isCompletedExpanded {
-                        TaskRows(tasks: completed, now: now, actions: actions)
+                        TaskRows(
+                            tasks: completed, now: now, actions: actions,
+                            showsListNames: true)
                         ClearCompletedTasksRow(
                             isClearing: actions.isClearingCompleted
                         ) {

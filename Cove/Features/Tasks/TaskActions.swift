@@ -131,6 +131,9 @@ struct TaskRows: View {
     let tasks: [TaskItem]
     let now: Date
     let actions: TaskActions
+    /// Passed through to every row: the Tasks screen names a task's list,
+    /// a list's own detail view does not.
+    var showsListNames = false
 
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.undoManager) private var undoManager
@@ -141,7 +144,8 @@ struct TaskRows: View {
                 task: task, now: now,
                 onToggle: { actions.toggle(task, in: vaultManager, undoManager: undoManager) },
                 onDelete: { actions.delete(task, in: vaultManager, undoManager: undoManager) },
-                isProcessing: actions.isProcessing(task))
+                isProcessing: actions.isProcessing(task),
+                showsListName: showsListNames)
         }
     }
 }

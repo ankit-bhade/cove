@@ -22,6 +22,11 @@ struct TaskRow: View {
     let onToggle: () -> Void
     let onDelete: () -> Void
     var isProcessing = false
+    /// Whether a list item names its list under its title. True on the Tasks
+    /// screen, where a dated list item sits among unlisted ones and would
+    /// otherwise be indistinguishable from them; false inside a list, where
+    /// the navigation title already says which list this is.
+    var showsListName = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The same column `CoveIconTile` occupies, scaled the same way, so the
@@ -78,7 +83,7 @@ struct TaskRow: View {
                 // puts the date the same distance under the title that
                 // Reminders puts it. Zero when an undated item's row is
                 // nothing but its title.
-                VStack(alignment: .leading, spacing: task.hasDueDate ? 4 : 0) {
+                VStack(alignment: .leading, spacing: showsMetadata ? 4 : 0) {
                     // Regular, where every other row title in the app is
                     // medium. A task row is the one row that is a sentence
                     // with a second line under it rather than a label with a
@@ -114,29 +119,50 @@ struct TaskRow: View {
         }
     }
 
+    /// The list to name under the title, or nil when there is nothing to
+    /// name or the screen is already naming it.
+    private var shownListName: String? {
+        showsListName ? task.listName : nil
+    }
+
+    private var showsMetadata: Bool {
+        task.hasDueDate || shownListName != nil
+    }
+
     @ViewBuilder
     private func metadata(overdue: Bool) -> some View {
-        if !task.hasDueDate {
+        if !showsMetadata {
             // Nothing to say: an undated item's row is just its text.
             EmptyView()
-        } else if let rule = task.recurrence, !dynamicTypeSize.isAccessibilitySize {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: CoveTheme.Space.tight) {
-                    dueLabel(overdue: overdue)
-                    recurrenceLabel(rule)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    dueLabel(overdue: overdue)
-                    recurrenceLabel(rule)
-                }
-            }
-        } else if let rule = task.recurrence {
+        } else if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 2) {
-                dueLabel(overdue: overdue)
-                recurrenceLabel(rule)
+                metadataParts(overdue: overdue)
             }
         } else {
+            // One line while it fits, stacked when it doesn't — a date, how
+            // often it comes back, and where it was filed are one statement
+            // about the task, not three captions.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: CoveTheme.Space.tight) {
+                    metadataParts(overdue: overdue)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    metadataParts(overdue: overdue)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func metadataParts(overdue: Bool) -> some View {
+        if task.hasDueDate {
             dueLabel(overdue: overdue)
+            if let rule = task.recurrence {
+                recurrenceLabel(rule)
+            }
+        }
+        if let listName = shownListName {
+            CoveListLabel(listName)
         }
     }
 

@@ -103,6 +103,7 @@ struct SubscriptionsView: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
+                chartSections
                 upcomingSection
                 ForEach(categoryGroups, id: \.name) { group in
                     Section {
@@ -178,6 +179,48 @@ struct SubscriptionsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+        }
+    }
+
+    // MARK: - Charts
+
+    /// Charted in the leading currency only. Nothing is ever converted, so
+    /// bars from two currencies on one axis would be a comparison that isn't
+    /// one — the totals panel above already reports each currency separately.
+    @ViewBuilder
+    private var chartSections: some View {
+        if let leading = SubscriptionMath.totals(for: active).first {
+            let bars = SubscriptionMath.spendBars(
+                for: active, currencyCode: leading.currencyCode)
+            // One bar is not a comparison.
+            if bars.count > 1 {
+                Section {
+                    SubscriptionSpendChart(
+                        bars: bars, currencyCode: leading.currencyCode)
+                        .padding(.vertical, CoveTheme.Space.tight)
+                } header: {
+                    CoveSectionHeader("Cost Per Month")
+                }
+            }
+            let buckets = SubscriptionMath.monthlyProjection(
+                for: active,
+                currencyCode: leading.currencyCode,
+                months: 12,
+                from: now)
+            // A vault of nothing but monthly charges draws twelve identical
+            // bars, which is a chart that has nothing to say.
+            if Set(buckets.map(\.total)).count > 1 {
+                Section {
+                    SubscriptionProjectionChart(
+                        buckets: buckets,
+                        currencyCode: leading.currencyCode,
+                        timeZone: .autoupdatingCurrent
+                    )
+                    .padding(.vertical, CoveTheme.Space.tight)
+                } header: {
+                    CoveSectionHeader("Next 12 Months")
                 }
             }
         }

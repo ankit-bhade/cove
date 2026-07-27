@@ -201,6 +201,69 @@ final class SubscriptionMathTests: XCTestCase {
         XCTAssertEqual(totals[2].monthly, Decimal(1))
     }
 
+    // MARK: - Spend bars
+
+    func testSpendBarsAreRankedByMonthlyCost() {
+        let bars = SubscriptionMath.spendBars(
+            for: [
+                subscription("Small", "1.00", since: "2024-01-01"),
+                subscription("Big", "120.00", .yearly, since: "2024-01-01", line: 1),
+                subscription("Medium", "5.00", since: "2024-01-01", line: 2),
+            ],
+            currencyCode: "USD")
+        XCTAssertEqual(bars.map(\.label), ["Big", "Medium", "Small"])
+        XCTAssertEqual(bars.first?.monthly, Decimal(10))
+    }
+
+    func testSpendBarsExcludePausedAndOtherCurrencies() {
+        let bars = SubscriptionMath.spendBars(
+            for: [
+                subscription("Active", "5.00", since: "2024-01-01"),
+                subscription(
+                    "Paused", "50.00", since: "2024-01-01", status: .paused,
+                    line: 1),
+                subscription(
+                    "Pounds", "99.00", since: "2024-01-01", currency: "GBP",
+                    line: 2),
+            ],
+            currencyCode: "USD")
+        XCTAssertEqual(bars.map(\.label), ["Active"])
+    }
+
+    /// The bars sit under a total, so a dropped tail would make them visibly
+    /// fail to add up to it. Past the limit the rest is pooled, not discarded.
+    func testSpendBarsPoolTheTailRatherThanDroppingIt() {
+        let many = (1...10).map { index in
+            subscription(
+                "Sub \(index)",
+                "\(index).00",
+                since: "2024-01-01",
+                line: index)
+        }
+        let bars = SubscriptionMath.spendBars(
+            for: many, currencyCode: "USD", limit: 4)
+        XCTAssertEqual(bars.count, 4)
+        XCTAssertEqual(bars.map(\.label), ["Sub 10", "Sub 9", "Sub 8", "7 more"])
+        XCTAssertTrue(bars.last?.isRemainder == true)
+        // 1 through 7 pooled.
+        XCTAssertEqual(bars.last?.monthly, Decimal(28))
+        XCTAssertEqual(
+            bars.reduce(0) { $0 + $1.monthly },
+            Decimal(55))
+    }
+
+    func testSpendBarsBelowTheLimitCarryNoRemainder() {
+        let bars = SubscriptionMath.spendBars(
+            for: [
+                subscription("A", "1.00", since: "2024-01-01"),
+                subscription("B", "2.00", since: "2024-01-01", line: 1),
+            ],
+            currencyCode: "USD",
+            limit: 8)
+        XCTAssertEqual(bars.count, 2)
+        XCTAssertFalse(bars.contains { $0.isRemainder })
+    }
+
     // MARK: - Upcoming
 
     func testUpcomingChargesAreWithinTheWindowAndSortedSoonestFirst() {

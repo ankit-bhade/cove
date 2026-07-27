@@ -160,6 +160,72 @@ enum SubscriptionMath {
             }
     }
 
+    // MARK: - Spend breakdown
+
+    struct SpendBar: Identifiable, Hashable, Sendable {
+        let label: String
+        let monthly: Decimal
+        /// The pooled tail, when there were more charges than the chart shows.
+        let isRemainder: Bool
+
+        var id: String { isRemainder ? "\u{0}remainder" : label }
+    }
+
+    /// The largest monthly charges in one currency, biggest first, with
+    /// everything past `limit` pooled into a single remainder bar.
+    ///
+    /// This is broken down by *subscription* rather than by category on
+    /// purpose. A category breakdown says nothing at all for a vault that
+    /// hasn't used categories — and the list already groups by category, so a
+    /// chart repeating that grouping would be the second time the screen said
+    /// it. "What is costing me the most" is the question a breakdown is for,
+    /// and it has an answer either way.
+    static func spendBars(
+        for subscriptions: [Subscription],
+        currencyCode: String,
+        limit: Int = 8
+    ) -> [SpendBar] {
+        guard limit > 0 else { return [] }
+        let counted =
+            subscriptions
+            .filter {
+                $0.countsTowardSpending && $0.cost.currencyCode == currencyCode
+            }
+            .sorted {
+                let left = monthlyEquivalent($0)
+                let right = monthlyEquivalent($1)
+                return left == right
+                    ? $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                    : left > right
+            }
+        guard counted.count > limit else {
+            return counted.map {
+                SpendBar(
+                    label: $0.name,
+                    monthly: monthlyEquivalent($0),
+                    isRemainder: false)
+            }
+        }
+
+        // Keep one slot for the remainder rather than showing `limit` bars and
+        // silently dropping the tail, which would make the bars stop adding up
+        // to the total printed directly above them.
+        let shown = counted.prefix(limit - 1)
+        let rest = counted.dropFirst(limit - 1)
+        var bars = shown.map {
+            SpendBar(
+                label: $0.name,
+                monthly: monthlyEquivalent($0),
+                isRemainder: false)
+        }
+        bars.append(
+            SpendBar(
+                label: "\(rest.count) more",
+                monthly: rest.reduce(0) { $0 + monthlyEquivalent($1) },
+                isRemainder: true))
+        return bars
+    }
+
     // MARK: - Upcoming
 
     struct UpcomingCharge: Identifiable, Hashable, Sendable {

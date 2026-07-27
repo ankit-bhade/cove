@@ -47,8 +47,9 @@ task: **subscriptions**, recorded as one line per recurring charge in
 derived and the file is never rewritten by the passage of time. It arrived
 under a fifth tab, **Trackers** — a hub holding one row today, so a later
 tracker is a row rather than a navigation rework — with monthly and yearly
-totals, the charges landing in the next thirty days, and the charges
-themselves grouped by `##` category. Charts are the piece still outstanding.
+totals, the charges landing in the next thirty days, the charges themselves
+grouped by `##` category, and two single-hue charts: cost per month ranked by
+subscription, and what each of the next twelve months actually costs.
 See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
@@ -655,6 +656,35 @@ that cost `CoveMasthead` its place everywhere else. A tracker's numbers belong
 inside that tracker; the hub says which trackers exist and each row carries
 its own summary. The **Lists** overview is not the same case and keeps its
 panel: every list is the same kind of thing, so summing them means something.
+
+**Both charts are single-hue ember bars, and neither is a pie.** The palette
+allows one accent, moss for containers, and rust for lateness — nothing else
+gets a colour, and the deliberate absence is a second bright hue. A pie needs
+one hue per slice, so at eight subscriptions it needs eight, which would mean
+inventing exactly the categorical ramp this system does without. A bar chart
+ranked by value says what a pie says and says it better: length is the
+encoding people read accurately and slice angle is the one they read worst.
+Depth comes from opacity against each bar's own share, which is the same
+single-hue trick `coveTintedSurface` uses everywhere else.
+
+**The breakdown is by subscription, not by category.** A category breakdown
+says nothing at all for a vault that never used categories, and the list
+directly under the chart *already* groups by category — so a chart repeating
+that grouping would be the second time the screen said it. "What is costing me
+the most" has an answer either way. Past the eighth bar the tail is **pooled
+into a remainder rather than dropped**, because the bars sit under a total and
+a dropped tail would make them visibly fail to add up to it.
+
+**A chart with nothing to say is not drawn.** One bar is not a comparison, so
+the breakdown appears only with two or more; and a vault of nothing but
+monthly charges projects twelve identical bars, so the projection appears only
+when the months actually differ. Both are the same call as the widget's count
+badge disappearing at zero.
+
+**Axis amounts carry no fraction digits and are not compact-formatted.**
+`.notation(.compactName)` — the "$1.5K" form — is macOS 15 and up, and Cove's
+floor is macOS 14. Whole units in the reader's locale work on every supported
+target and are short enough at four axis marks anyway.
 
 **The diagnostic path is wired end to end or it is not worth having.** The
 parser's rejections reach `NoteIndexEntry.subscriptionDiagnostics`,
@@ -1355,7 +1385,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **517 tests** (macOS host), plus clean macOS and
+Current verified suite: **521 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1598,9 +1628,19 @@ Rough edges and surprises, not restatements of the design above.
 
 ### Subscriptions
 
-* No charts yet. The screen carries the totals, the next thirty days, and the
-  charges by category; spend by category and a twelve-month projection are the
-  outstanding piece.
+* Charts are drawn in the **leading currency only** — nothing is converted, so
+  bars from two currencies on one axis would be a comparison that isn't one.
+  The totals panel above still reports every currency; the charts quietly show
+  one.
+* One dominant charge flattens both charts. Put rent in beside a $15 streaming
+  service and every other bar is a sliver, and the twelve-month projection's
+  lumps compress to almost nothing. That is the data being reported honestly —
+  a log scale would misstate the magnitudes — but it does mean the charts earn
+  their keep on subscription-shaped numbers rather than on a mortgage.
+* The projection walks occurrences per subscription on every redraw rather
+  than memoizing, so a daily charge over twelve months is ~365 `Calendar` steps
+  recomputed each pass. Cheap at real counts, and the minute tick is what
+  triggers it.
 * **A price change is not history, deliberately.** The line holds one cost, so
   editing it rewrites the only record and every figure recomputes at the new
   price. Keeping history would need a second place to put it, and Cove was

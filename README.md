@@ -130,7 +130,10 @@ recurring charge — `- Netflix @cost(15.49 USD) @every(month)
 can edit by hand. The screen shows what everything costs per month and per
 year, the charges landing in the next thirty days, and the rest grouped by
 category and ranked by monthly cost, which is what lets a yearly charge and a
-monthly one be compared in one list. `@since` is the *first* charge, never the
+monthly one be compared in one list. Two charts sit above them: what each
+subscription costs per month, ranked, and what each of the next twelve months
+actually costs — the second being the one a monthly average can't tell you,
+since a yearly renewal lands entirely in one month. `@since` is the *first* charge, never the
 next, so the file is never rewritten as time passes and a charge on the 31st
 doesn't drift to the 28th after February. A subscription can be paused or
 cancelled — it then counts toward nothing and folds away at the bottom — and

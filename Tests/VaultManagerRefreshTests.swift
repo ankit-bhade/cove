@@ -324,6 +324,57 @@ final class VaultManagerRefreshTests: XCTestCase {
             firstLine)
     }
 
+    /// The Tasks screen shows a list's dated items, so its Clear All sweeps
+    /// them — and leaves the undated ones, which it never showed, in place.
+    func testClearCompletedTakesDatedListItemsButNotUndatedOnes() async throws {
+        let note = root.appendingPathComponent("Tasks.md")
+        try """
+        - [x] Ordinary @due(2026-07-20)
+
+        ## Groceries
+        - [x] Bread
+        - [x] Butter @due(2026-07-21)
+        """
+        .write(to: note, atomically: true, encoding: .utf8)
+        let manager = makeManager(recorder: ScanRecorder())
+        await manager.openVault(at: root)
+        XCTAssertEqual(
+            manager.index.completedTasks.map(\.text).sorted(),
+            ["Butter", "Ordinary"])
+
+        _ = try await manager.clearCompletedTasks()
+
+        let cleared = try String(contentsOf: note, encoding: .utf8)
+        XCTAssertFalse(cleared.contains("Ordinary"))
+        XCTAssertFalse(cleared.contains("Butter"))
+        XCTAssertTrue(cleared.contains("- [x] Bread"))
+        XCTAssertTrue(cleared.contains("## Groceries"))
+    }
+
+    /// Checking a dated list item off from the Tasks screen has to re-find a
+    /// line that lives under a `##` heading, which only works when the
+    /// identity carries the list.
+    func testTogglingADatedListItemRewritesItsLineInPlace() async throws {
+        let note = root.appendingPathComponent("Tasks.md")
+        try """
+        ## Chores
+        - [ ] Laundry @due(2026-07-21)
+        - [ ] Milk
+        """
+        .write(to: note, atomically: true, encoding: .utf8)
+        let manager = makeManager(recorder: ScanRecorder())
+        await manager.openVault(at: root)
+        let laundry = try XCTUnwrap(
+            manager.index.incompleteTasks.first { $0.text == "Laundry" })
+        XCTAssertEqual(laundry.listName, "Chores")
+
+        _ = try await manager.toggleTask(laundry)
+
+        let toggled = try String(contentsOf: note, encoding: .utf8)
+        XCTAssertTrue(toggled.contains("- [x] Laundry @due(2026-07-21)"))
+        XCTAssertTrue(toggled.contains("- [ ] Milk"))
+    }
+
     func testListClearUndoRestoresOnlyRemovedItems() async throws {
         let note = root.appendingPathComponent("Tasks.md")
         try """

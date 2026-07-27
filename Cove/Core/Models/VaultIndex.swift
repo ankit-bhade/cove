@@ -418,6 +418,16 @@ struct TaskItem: Identifiable, Hashable, Sendable {
 
     var hasDueDate: Bool { dueDateString != nil }
 
+    /// Whether the Tasks screen shows this task. An unlisted task always
+    /// belongs there; a list item belongs there once it carries a `@due`
+    /// date, because a scheduled item is due whether or not it was captured
+    /// under a heading — laundry on Thursday and a weekly recurring chore are
+    /// the same kind of thing as any other dated task, and a list is where
+    /// they were filed rather than a reason to hide them. An undated list
+    /// item — the groceries case — stays in its list alone, since there is no
+    /// day for it to appear under.
+    var belongsOnTasksScreen: Bool { listName == nil || hasDueDate }
+
     /// Start of the due day in Cove's Gregorian task calendar.
     var dueDate: Date? {
         dueDate(in: .autoupdatingCurrent)
@@ -549,15 +559,20 @@ struct VaultIndex: Sendable {
     }
 
     /// Incomplete tasks sorted by due date, then time (date-only tasks
-    /// first within a day), then note title and line. List tasks are
-    /// excluded: the Lists screen keeps them visually separate.
+    /// first within a day), then note title and line. A list's *dated* items
+    /// are included and its undated ones are not — see
+    /// `TaskItem.belongsOnTasksScreen`.
     var incompleteTasks: [TaskItem] {
-        allTasks.filter { !$0.isCompleted && $0.listName == nil }.sorted(by: Self.byDueDate)
+        allTasks.filter { !$0.isCompleted && $0.belongsOnTasksScreen }
+            .sorted(by: Self.byDueDate)
     }
 
     /// Completed tasks in the same order, for display below the open ones.
+    /// It admits the same tasks the open section does, which is what keeps
+    /// the screen's Clear All clearing exactly what it showed.
     var completedTasks: [TaskItem] {
-        allTasks.filter { $0.isCompleted && $0.listName == nil }.sorted(by: Self.byDueDate)
+        allTasks.filter { $0.isCompleted && $0.belongsOnTasksScreen }
+            .sorted(by: Self.byDueDate)
     }
 
     /// Every list in the capture note, heading order preserved.

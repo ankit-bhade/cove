@@ -93,7 +93,8 @@ recurring task rolls it to the next occurrence, whose notification is
 scheduled in turn; tasks with only a date get none (the app asks for
 notification permission only from Settings, never during a background
 refresh). Reminder details use the user’s localized compact date and time.
-A Lists tab keeps grouped tasks visually separate from what's actually due.
+A Lists tab groups related tasks — the undated ones stay there, while a list
+item that carries a due date also shows up on the Tasks screen.
 On iPhone and iPad, a Today widget can be added to the Home Screen in small
 or medium size: it heads with the day and date, lists the tasks due today with
 a checkbox to tick one off without opening the app, shows overdue ones in red
@@ -109,10 +110,15 @@ captured with the same one-sentence field ("order cake fri 3pm"), and they
 can carry due dates, times, and repeats — but here a due date is optional,
 so "milk" simply stays an item to buy. Dated items sort first within a list,
 undated ones follow in the order you added them, and timed ones notify like
-any other task. List items never appear on the Tasks screen, and the Tasks
-screen's Clear All never touches them; each list has its own Clear All, in
-its Done header, that removes that list's completed items and leaves its open
-ones; that clear is undoable too. Lists can be renamed, and deleting a list — from its own Options menu,
+any other task. A list item with a due date also appears on the Tasks screen,
+grouped by day among everything else and naming its list under the title — a
+dated chore is due whether or not it was filed somewhere, so laundry on
+Thursday and a weekly recurring item show up where you look for what's due.
+An undated item like "milk" has no day to appear under and stays in its list
+alone. The Tasks screen's Clear All takes the completed items it showed,
+lists included, and leaves undated list items alone; each list has its own
+Clear All, in its Done header, that removes that list's completed items and
+leaves its open ones; both clears are undoable. Lists can be renamed, and deleting a list — from its own Options menu,
 or by swiping or right-clicking its row in the overview — removes it and its
 items from `Tasks.md` after confirmation. Undo reinserts only the removed
 section into the latest file and refuses if a new list has reused the name.

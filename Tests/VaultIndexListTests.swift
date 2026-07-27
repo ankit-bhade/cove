@@ -38,7 +38,7 @@ final class VaultIndexListTests: XCTestCase {
 
     // MARK: - Separation
 
-    func testListTasksAreExcludedFromTheTasksScreen() {
+    func testUndatedListTasksAreExcludedFromTheTasksScreen() {
         let subject = index(
             [
                 task("Ordinary", due: "2026-07-20"),
@@ -48,7 +48,27 @@ final class VaultIndexListTests: XCTestCase {
         XCTAssertEqual(subject.incompleteTasks.map(\.text), ["Ordinary"])
     }
 
-    func testCompletedListTasksAreExcludedToo() {
+    /// A dated list item is scheduled work, so it appears among the other
+    /// scheduled work rather than only inside its list.
+    func testDatedListTasksAppearOnTheTasksScreen() {
+        let subject = index(
+            [
+                task("Ordinary", due: "2026-07-22"),
+                task("Milk", list: "Groceries", line: 1),
+                task("Laundry", due: "2026-07-20", list: "Chores", line: 2),
+            ],
+            lists: ["Groceries", "Chores"])
+        XCTAssertEqual(subject.incompleteTasks.map(\.text), ["Laundry", "Ordinary"])
+    }
+
+    func testDatedListTasksStayInTheirListToo() {
+        let subject = index(
+            [task("Laundry", due: "2026-07-20", list: "Chores")],
+            lists: ["Chores"])
+        XCTAssertEqual(subject.lists.first?.openTasks.map(\.text), ["Laundry"])
+    }
+
+    func testUndatedCompletedListTasksAreExcludedToo() {
         let subject = index(
             [
                 task("Done", due: "2026-07-20", completed: true),
@@ -56,6 +76,19 @@ final class VaultIndexListTests: XCTestCase {
             ],
             lists: ["Groceries"])
         XCTAssertEqual(subject.completedTasks.map(\.text), ["Done"])
+    }
+
+    /// The completed section admits exactly what the open sections do, which
+    /// is what keeps the screen's Clear All clearing only what it showed.
+    func testCompletedDatedListTasksAppearOnTheTasksScreen() {
+        let subject = index(
+            [
+                task("Done", due: "2026-07-20", completed: true),
+                task("Bread", list: "Groceries", line: 1, completed: true),
+                task("Laundry", due: "2026-07-21", list: "Chores", line: 2, completed: true),
+            ],
+            lists: ["Groceries", "Chores"])
+        XCTAssertEqual(subject.completedTasks.map(\.text), ["Done", "Laundry"])
     }
 
     // MARK: - Lists

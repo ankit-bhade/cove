@@ -37,6 +37,10 @@ those arcs in turn became a coastline, a bay cut into the land's edge with its
 shoreline traced in ember. The arcs fixed the lean and were centred by
 construction, but they said nothing about what the app is; the coastline does,
 and it makes the tile itself the mark rather than a ground the mark sits on.
+Most recently the wall between Lists and Tasks was moved from the heading to
+the date: a list item that carries a `@due` date now appears on the Tasks
+screen too, naming its list under its title, while an undated one stays in
+its list alone — which is the distinction the feature was always about.
 See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
@@ -187,8 +191,10 @@ them visually separate from the Tasks screen.
   `@repeat` rule — but `@due` is optional, and an undated item gets no
   notification
 * Dated items sort before undated ones; undated items keep insertion order
-* List items never appear on the Tasks screen, and its Clear All never removes
-  them
+* A list item with a `@due` date also appears on the Tasks screen, grouped by
+  day with everything else and naming its list under the title; an undated one
+  never does. The Tasks screen's Clear All takes what it showed — dated list
+  items included — and never the undated ones
 * Lists can be created, renamed, and deleted; deleting one removes its heading
   and every task under it
 
@@ -539,7 +545,10 @@ the two genuinely disagree about, and registers the returned deletion records
 as one Undo group.
 
 **A task row omits its source note** — tasks nearly all live in the capture
-note, so the caption repeated "Tasks" under every row.
+note, so the caption repeated "Tasks" under every row. It does name its
+*list*, which is the opposite call for the opposite reason: a dated list item
+on the Tasks screen sits among unlisted rows, so without the label nothing
+distinguishes it from a task in no list at all.
 
 Display logic is pure and tested against a fixed `now` (`TaskPresentation`).
 Grouping into Overdue/Today/Tomorrow/Upcoming only *partitions* the sorted
@@ -606,13 +615,33 @@ strict rules and no stray checkbox anywhere in the vault becomes a task.
 Undated items therefore exist: they sort after dated ones, are never overdue,
 render no due line at all, and can't be scheduled a notification.
 
+**Whether a list item reaches the Tasks screen is the date, not the
+heading** (`TaskItem.belongsOnTasksScreen`). A dated list item is scheduled
+work that happens to be filed somewhere — a Thursday laundry run and a weekly
+recurring chore are the same kind of thing as any other dated task, and
+hiding them one tab away meant the screen that answers "what is due" was
+answering it incompletely. Notifications had already made this call: the
+planner runs off `allTasks`, so a timed list item has always fired a
+reminder for a task the Tasks screen refused to show. An undated item has no
+day to be grouped under, so the groceries case is untouched — which is the
+whole distinction the Lists feature was for.
+
+The row that results names its list (`CoveListLabel`, beside the due date),
+which is the one exception to a task row saying nothing about where its line
+lives: among unlisted rows a list item would otherwise be indistinguishable
+from a task in no list at all. Inside a list's own detail view the label is
+off, since the navigation title already says it.
+
 **Lists build from the note's headings, not from its tasks**, so a list
 created but not yet filled still exists.
 
-**Each screen clears exactly what it shows.** `clearingCompletedTasks` takes
-the same `sectioned` flag plus an optional list name: the Tasks screen's Clear
-All must not delete completed items out of lists it never showed, and a list's
-own Clear All touches only that heading's items.
+**Each screen clears exactly what it shows.** The Tasks screen's Clear All
+sweeps `index.completedTasks`, so it follows that section's own membership:
+completed *dated* list items go with it, and an undated one — which the
+screen never showed — is left to its list's own Clear All, which touches only
+that heading's items. This is the one place the rule reversed when dated list
+items joined the screen: the sweep is defined by what was on screen, not by
+whether a line sits under a heading.
 
 Clear All and list deletion both register semantic Undo. A deleted list keeps
 its exact source section plus neighboring list anchors; restoration inserts
@@ -1112,6 +1141,15 @@ cannot apply to replacement content while replaying the same desired state
 stays idempotent. Everything else is looked up in the snapshot the widget was
 drawing.
 
+**`SnapshotTask` carries the `##` section its line sits under.** The widget
+shows the same rows the Tasks screen does, which now includes a list's dated
+items, and a task's line is re-found by matching its text, its schedule, *and*
+its list — so a toggle sent back with the list dropped would fail to match the
+very line the widget drew. The field is additive: it is written and read with
+`encodeIfPresent`/`decodeIfPresent`, so a snapshot from a build that predates
+it decodes as unlisted, which is exactly what those snapshots held. No schema
+bump, because bumping would make the *older* build reject the file.
+
 **A recorded path is validated against the vault, never trusted.** A
 `TaskIdentity` is persisted state that crosses the App Group and can outlive
 the vault it was written for — a queued toggle survives the user picking a
@@ -1171,7 +1209,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **433 tests** (macOS host), plus clean macOS and
+Current verified suite: **440 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1401,8 +1439,14 @@ Rough edges and surprises, not restatements of the design above.
 * An undated list item can never gain a time or repeat rule, since both live
   inside or after the `@due` tag. The draft sheet's date toggle drops all three
   together, so turning the date back on starts from today with no time.
-* Completed list items stay under a Done header until that list's own Clear
-  All sweeps them.
+* An undated completed list item stays under its Done header until that
+  list's own Clear All sweeps them. A dated one is also on the Tasks screen,
+  so the Tasks screen's Clear All takes it out of the list — which is the
+  point, but it does mean a sweep on one tab empties rows on another.
+* A dated list item is reachable from two screens, so it can be deleted from
+  the Tasks screen without ever opening the list it belongs to. The swipe is
+  undoable, but nothing on that row warns that the line lives in a list
+  beyond the list name under its title.
 * An item captured into a list deleted meanwhile recreates the heading at the
   end of the note rather than failing.
 

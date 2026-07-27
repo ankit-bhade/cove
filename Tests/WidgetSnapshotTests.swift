@@ -42,15 +42,42 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.map(\.text), ["Today"])
     }
 
-    func testExcludesListItems() {
-        // List items never appear on the Tasks screen, so they have no place
-        // on a widget that mirrors it.
+    func testIncludesDatedListItems() {
+        // The widget mirrors the Tasks screen, which shows a list's dated
+        // items alongside ordinary ones.
         let tasks = [
             task("Ordinary", due: "2026-07-19", line: 0),
             task("Milk", due: "2026-07-19", list: "Groceries", line: 1),
         ]
         let snapshot = TodaySnapshot.tasks(dueToday: "2026-07-19", from: tasks)
-        XCTAssertEqual(snapshot.map(\.text), ["Ordinary"])
+        XCTAssertEqual(snapshot.map(\.text), ["Ordinary", "Milk"])
+    }
+
+    /// A toggle sent back from the widget re-finds its line by matching the
+    /// task's text, schedule, *and* list, so the list has to survive the
+    /// crossing into the App Group.
+    func testDatedListItemsCarryTheirListThroughTheSnapshot() throws {
+        let tasks = [task("Milk", due: "2026-07-19", list: "Groceries", line: 1)]
+        let snapshot = TodaySnapshot.tasks(dueToday: "2026-07-19", from: tasks)
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode([SnapshotTask].self, from: encoded)
+        XCTAssertEqual(decoded.first?.listName, "Groceries")
+        XCTAssertEqual(decoded.first?.identity.listName, "Groceries")
+        XCTAssertTrue(decoded.first?.identity.requiresSectionedParsing == true)
+    }
+
+    /// A snapshot written before dated list items reached the widget carries
+    /// no `listName` key at all; it must decode as an unlisted task rather
+    /// than fail.
+    func testSnapshotTaskDecodesWithoutAListName() throws {
+        let json = """
+            {"filePath":"/vault/Tasks.md","lineNumber":1,"text":"Ordinary",\
+            "dueDateString":"2026-07-19","isSectionedDocument":true,\
+            "isCompleted":false}
+            """
+        let decoded = try JSONDecoder().decode(
+            SnapshotTask.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.listName)
     }
 
     func testExcludesUndatedTasks() {

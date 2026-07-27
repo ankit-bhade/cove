@@ -9,6 +9,12 @@
         @Binding var text: String
         let sectionedTaskDocument: Bool
         @Binding var checkboxError: String?
+        /// A line to put the insertion point on and scroll into view,
+        /// consumed once. Set by whoever opened the note at a line — a search
+        /// hit, a task row, a format warning — and cleared here so a later
+        /// redraw can't yank the reader back to it after they have scrolled
+        /// away.
+        @Binding var focusLine: Int?
 
         func makeNSView(context: Context) -> NSScrollView {
             // Called on the subclass so the returned document view is a
@@ -55,6 +61,26 @@
                 if let storage = textView.textStorage {
                     MarkdownStyler.applyLiveStyles(to: storage)
                 }
+            }
+            guard let focusLine else { return }
+            // Deferred for two reasons: scrolling to a range the text view
+            // has not laid out yet does nothing, and clearing the binding
+            // inside `updateNSView` is a state mutation during a view update.
+            DispatchQueue.main.async {
+                self.focusLine = nil
+                guard
+                    let range = MarkdownParser.range(
+                        ofLine: focusLine, in: textView.string)
+                else { return }
+                textView.setSelectedRange(
+                    NSRange(location: range.location, length: 0))
+                // Centred rather than merely visible: `scrollRangeToVisible`
+                // scrolls the least it can and leaves the line hard against
+                // whichever edge it entered from, with none of the note
+                // around it. AppKit has the responder method for this; iOS
+                // has to compute the offset by hand.
+                textView.scrollRangeToVisible(range)
+                textView.centerSelectionInVisibleArea(nil)
             }
         }
 

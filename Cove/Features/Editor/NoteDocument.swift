@@ -298,6 +298,11 @@ final class NoteDocument {
     private(set) var loadState: LoadState = .loading
     private(set) var saveErrorDescription: String?
     private(set) var conflictDescription: String?
+    /// The sibling note the banner is talking about — a preserved conflict
+    /// copy, or a recovery copy of edits that could not be saved in place.
+    /// Naming a file in a banner and then giving the reader no way to open it
+    /// is the same fault as printing a line number and opening at the top.
+    private(set) var preservedCopyURL: URL?
     private(set) var recoveredDraftDescription: String?
     private(set) var isSaving = false
 
@@ -535,6 +540,7 @@ final class NoteDocument {
             lastErrorWasExternalReload = false
             conflictDescription =
                 "Saved the recovered edits as \(copyURL.lastPathComponent)."
+            preservedCopyURL = copyURL
             onPersisted?(copyURL)
         } catch {
             saveErrorDescription =
@@ -678,6 +684,7 @@ final class NoteDocument {
         if let conflictURL = persisted.conflictCopyURL {
             CoveLog.document.notice("Preserved external edit as \(conflictURL.lastPathComponent, privacy: .private)")
             conflictDescription = "External edits were preserved in \(conflictURL.lastPathComponent)."
+            preservedCopyURL = conflictURL
         }
         if text == lastSavedText {
             do {

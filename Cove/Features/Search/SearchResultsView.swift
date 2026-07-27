@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Results list for the browser's search field. Debounces the query while
 /// typing, runs one on-demand search over every Markdown file, and navigates
-/// to the editor by pushing the note's URL onto the browser's `[URL]` path.
+/// to the editor by pushing the match onto the browser's `[NoteDestination]`
+/// path — note and line together, so the result opens where it matched.
 struct SearchResultsView: View {
     let query: String
 
@@ -21,7 +22,10 @@ struct SearchResultsView: View {
             if hasSearched, !results.isEmpty {
                 Section {
                     ForEach(results) { result in
-                        NavigationLink(value: result.node.url) {
+                        // Carries the matched line, so the editor opens on the
+                        // snippet the row is showing rather than at the top of
+                        // a note the reader then has to search again by eye.
+                        NavigationLink(value: result.destination) {
                             // A snippet wraps, so the tile pins to the top —
                             // and the row is the same note row the browser
                             // draws, since it opens the same note.

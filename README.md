@@ -5,170 +5,234 @@ point it at a folder of Markdown files — typically in iCloud Drive — and tha
 folder is the single source of truth. There is no backend, no account, no
 database, and no custom sync.
 
-Current state (Phase 12 — trackers, on top of the eleven complete build
-phases): select a vault folder,
-browse its nested folders, and open any note in a live-styled
-Markdown editor that saves automatically as you type. Opening a folder pushes
-it onto the Notes screen, so the system back button and the iOS swipe-back
-gesture return you to its parent; each level opens with a compact count of
-direct folders, deeper subfolders, and notes. Headers and
-`**bold**` spans are styled in place
-(the text stays plain Markdown), and `- [ ]` checkboxes toggle with a tap or
-click. Editor checkboxes can also be toggled at the cursor with an accessibility
-action or Command-Shift-Space. Notes and folders can be created, renamed,
-moved, and deleted from the browser (long-press or right-click a row, or use
-the + toolbar menu). Deletion moves content into a hidden Cove Recovery area
-and registers immediate Undo; if the original name has since been reused,
-Cove asks for a replacement name instead of overwriting it. Recovered items
-are kept for a week and then swept the next time the vault opens, so a
-deleted note eventually frees its space instead of sitting in the folder
-forever. For a
-vault in iCloud Drive, changes made outside the app — edits syncing in from
-another device, or files added or removed in Finder or the Files app — are
-detected while the app runs: the folder tree refreshes itself, and an open
-note reloads the new contents as long as you have no unsaved edits. Your
-typing survives whatever happens to the file underneath it: a simultaneous
-local/external edit preserves the external version as a named sibling
-conflict copy, unsaved text is journaled locally as you type so a crash or a
-forced quit doesn't take it, and if the note is renamed or deleted out from
-under the editor the recovered text is offered back with a Save Copy action
-rather than dropped. Recovered edits are held for review before they
-overwrite anything, and Settings → Cove Recovery lists both deleted items and
-unsaved drafts. Vaults outside iCloud Drive refresh whenever the
-app returns to the foreground. The search field in the browser searches every
-note's title and contents as you type (case-insensitively, with no persisted
-index), and selecting a result opens that note in
-the editor. A note Cove can't read — text that isn't UTF-8, or a file iCloud
-hasn't finished downloading — is passed over rather than blocking the vault,
-and is picked up again on the next refresh once it can be read; Settings
-lists any note whose tasks couldn't be read, and any checkbox line whose
-`@due` or `@repeat` tag didn't parse, with a link straight to the line. A
-Tasks tab collects every line of the form
-`- [ ] Task text @due(YYYY-MM-DD)` from across the vault — indented and
-`*`/`+` bullets count, so nested checklists aren't skipped, while task-like
-text inside fenced code, HTML comments, or YAML front matter is left
-alone. Open tasks are
-sorted by due date and grouped into Overdue, Today, Tomorrow, and Upcoming
-sections, with due dates written the way you'd say them ("Today, 3:00 PM",
-"Tomorrow", "Friday", "Jul 24") and overdue ones shown in red. Upcoming can
-be folded away with the chevron on its header when it gets long, and the
-completed section below it starts folded — a closed header still shows how
-many are waiting behind it.
+## Current state
+
+Phase 12 — trackers — on top of the eleven complete build phases. What
+follows is everything the app does today, by area.
+
+### The vault
+
+You select a folder with the system picker and Cove remembers it per device
+via a security-scoped bookmark; if the folder is later moved or deleted, a
+recovery screen offers to reselect one. The Notes screen browses nested
+folders one level at a time — opening a folder pushes it, so the system back
+button and the iOS swipe-back gesture return you to its parent — and each
+level opens with a compact count of direct folders, deeper subfolders, and
+notes.
+
+Notes and folders can be created, renamed, moved, and deleted: swipe a row on
+iPhone or iPad, right-click it on any platform, or use the **+** toolbar
+menu. Creating a note opens it straight away. Deletion moves content into a
+hidden Cove Recovery area and registers immediate Undo; if the original name
+has since been reused, Cove asks for a replacement rather than overwriting
+it. Recovered items are kept for a week and swept the next time the vault
+opens, so a deleted note eventually frees its space instead of sitting in the
+folder forever.
+
+### The editor
+
+Any note opens in a live-styled Markdown editor that saves automatically as
+you type. Headers and `**bold**` spans are styled in place — the text stays
+plain Markdown — and `- [ ]` checkboxes toggle with a tap or click, at the
+cursor with an accessibility action, or with Command-Shift-Space.
+
+Your typing survives whatever happens to the file underneath it. A
+simultaneous local and external edit preserves the external version as a
+named sibling conflict copy, which the banner offers to open. Unsaved text is
+journaled locally as you type, so a crash or a forced quit doesn't take it.
+If the note is renamed or deleted out from under the editor, the recovered
+text is offered back with a Save Copy action rather than dropped. Recovered
+edits are held for review before they overwrite anything, and Settings → Cove
+Recovery lists both deleted items and unsaved drafts.
+
+### Search
+
+The search field in the browser searches every note's title and contents as
+you type — case-insensitively, with no persisted index — and selecting a
+result opens that note **at the matching line**.
+
+### Tasks
+
+The Tasks tab collects every line of the form
+`- [ ] Task text @due(YYYY-MM-DD)` from across the vault. Indented and `*`/`+`
+bullets count, so nested checklists aren't skipped, while task-like text
+inside fenced code, HTML comments, or YAML front matter is left alone.
+
+Open tasks sort by due date and group into Overdue, Today, Tomorrow, and
+Upcoming, with dates written the way you'd say them ("Today, 3:00 PM",
+"Tomorrow", "Friday", "Jul 24") and overdue ones in red. Upcoming folds away
+with the chevron on its header when it gets long; the completed section below
+starts folded. A closed header still shows how many are behind it. Tapping a
+task opens its note at that task's own line.
+
 Checking a task off rewrites that line in its original Markdown file.
-Opening the completed section reveals a Clear All Completed row at the end of
-it that, after confirmation, removes every completed Cove task line from its
-original note. Clear All preflights every affected note before its first
-write and registers one semantic Undo, so a stale target aborts the sweep and
-later unrelated edits survive restoration. A single task
-can be deleted by swiping its row (or right-clicking it), which removes that
-line from its note. Task completion and deletion register semantic Undo, so
-later edits to the same note are preserved — including for a recurring task,
-where undoing a completion rolls its date back rather than failing to find
-the line it just advanced. If two task lines are identical in every respect,
-Cove refuses to act on either rather than guess which one you meant, and
-points at them from Settings. Tapping a task opens its note. New tasks can be typed as one sentence in
-the field at the top of the Tasks tab — "get bread 3p tmr", "gym every mon
-wed 6a", "rent 2/3", "meeting next fri 2pm". The interpreter (a port of
-the grove-app capture parser) understands relative dates ("tdy", "tmr",
-"day after tomorrow", "tonight", "next week", "next fri", "in 3 days"),
-explicit dates ("sep 12", "feb 3rd", "2/3", "4/15/27"), times ("3p",
-"6pm", "3:30pm", "940p", "noon", "midnight", "15:00", ranges like
-"7-9pm"), and repeats ("daily", "every 2 weeks", "every weekday", "every
-mon wed fri", "monthly") anywhere in the sentence; what's left over is the
-title. The interpretation appears under the field as you type — the
-cleaned-up title, the due date and time, the repeat rule — so pressing
-return adds the task immediately, with no confirmation step. When Cove
-reads a sentence wrong, the sliders button beside the preview opens a
-details sheet where the title, date, time, and repeat can be set by hand
-before adding. Competing time or repeat expressions remain visible in the
-title and block capture until reviewed; a local clock time that does not
-exist during a daylight-saving transition is also rejected instead of being
-silently shifted. Capture controls show progress while the Markdown write is
-finishing, reject accidental duplicate taps, and keep the typed sentence in
-place if saving fails so it can be retried. Added tasks go into a `Tasks.md`
-note at the vault root
-(created on demand), above any lists kept there, and a line like `- [ ] Get bread @due(2026-07-19 15:00)
-@repeat(every 2 weeks)` can equally be typed by hand in any note. Tasks
-with a time get one local notification at that moment, and completing a
-recurring task rolls it to the next occurrence, whose notification is
-scheduled in turn; tasks with only a date get none (the app asks for
-notification permission only from Settings, never during a background
-refresh). Reminder details use the user’s localized compact date and time.
-A Lists tab groups related tasks — the undated ones stay there, while a list
-item that carries a due date also shows up on the Tasks screen.
-On iPhone and iPad, a Today widget can be added to the Home Screen in small
-or medium size: it heads with the day and date, lists the tasks due today with
-a checkbox to tick one off without opening the app, shows overdue ones in red
-and a count of what's left, and reads "All clear" once nothing is due. Tapping
-it opens the Tasks tab.
-A widget checkbox is first recorded as a durable desired-state operation, so
-an unavailable vault can be retried the next time Cove opens and replaying an
-already-applied operation cannot toggle the task back.
-A list — Groceries, Subscriptions, Packing — is a `##` heading inside the
-same `Tasks.md`, and its items are ordinary task lines beneath it, so you can
-create and edit lists either in the app or by typing Markdown. Items are
-captured with the same one-sentence field ("order cake fri 3pm"), and they
-can carry due dates, times, and repeats — but here a due date is optional,
-so "milk" simply stays an item to buy. Dated items sort first within a list,
-undated ones follow in the order you added them, and timed ones notify like
-any other task. A list item with a due date also appears on the Tasks screen,
+Opening the completed section reveals a Clear All Completed row that, after
+confirmation, removes every completed Cove task line from its note — it
+preflights every affected note before the first write and registers one
+semantic Undo, so a stale target aborts the sweep and later unrelated edits
+survive restoration. A single task can be deleted by swiping its row or
+right-clicking it. Adding, completing, and deleting all register semantic
+Undo, so later edits to the same note are preserved — including for a
+recurring task, where undoing a completion rolls its date back rather than
+failing to find the line it just advanced. If two task lines are identical in
+every respect, Cove refuses to act on either rather than guess which one you
+meant, and points at them from Settings.
+
+### Quick capture
+
+New tasks are typed as one sentence in the field at the top of the Tasks tab
+— "get bread 3p tmr", "gym every mon wed 6a", "rent 2/3", "meeting next fri
+2pm". The interpreter, a port of the grove-app capture parser, understands:
+
+- **relative dates** — "tdy", "tmr", "day after tomorrow", "tonight", "next
+  week", "next fri", "in 3 days"
+- **explicit dates** — "sep 12", "feb 3rd", "2/3", "4/15/27"
+- **times** — "3p", "6pm", "3:30pm", "940p", "noon", "midnight", "15:00",
+  ranges like "7-9pm"
+- **repeats** — "daily", "every 2 weeks", "every weekday", "every mon wed
+  fri", "monthly"
+
+Tokens are recognized anywhere in the sentence; what's left over is the
+title. The interpretation appears under the field as you type, so pressing
+return adds the task immediately with no confirmation step. When Cove reads a
+sentence wrong, the sliders button beside the preview opens a details sheet
+where the title, date, time, and repeat can be set by hand.
+
+Competing time or repeat expressions stay visible in the title and block
+capture until reviewed; a local clock time that does not exist during a
+daylight-saving transition is rejected rather than silently shifted. Capture
+controls show progress while the Markdown write finishes, reject duplicate
+taps, and keep the typed sentence in place if saving fails.
+
+Added tasks go into a `Tasks.md` note at the vault root, created on demand,
+above any lists kept there. A line like
+`- [ ] Get bread @due(2026-07-19 15:00) @repeat(every 2 weeks)` can equally be
+typed by hand in any note.
+
+### Lists
+
+A list — Groceries, Packing — is a `##` heading inside that same `Tasks.md`,
+and its items are ordinary task lines beneath it, so lists can be built in
+the app or by typing Markdown. Items use the same one-sentence field ("order
+cake fri 3pm") and may carry dates, times, and repeats — but here a due date
+is optional, so "milk" simply stays an item to buy.
+
+Dated items sort first within a list and undated ones follow in the order you
+added them. A list item with a due date also appears on the Tasks screen,
 grouped by day among everything else and naming its list under the title — a
-dated chore is due whether or not it was filed somewhere, so laundry on
-Thursday and a weekly recurring item show up where you look for what's due.
-An undated item like "milk" has no day to appear under and stays in its list
-alone. The Tasks screen's Clear All takes the completed items it showed,
-lists included, and leaves undated list items alone; each list has its own
-Clear All, in its Done header, that removes that list's completed items and
-leaves its open ones; both clears are undoable. Lists can be renamed, and deleting a list — from its own Options menu,
-or by swiping or right-clicking its row in the overview — removes it and its
-items from `Tasks.md` after confirmation. Undo reinserts only the removed
+dated chore is due whether or not it was filed somewhere. An undated item has
+no day to appear under and stays in its list alone.
+
+The Tasks screen's Clear All takes the completed items it showed, lists
+included, and leaves undated list items alone; each list has its own Clear
+All in its Done header. Both are undoable. Lists can be renamed, and deleting
+one — from its Options menu, or by swiping or right-clicking its row —
+removes it and its items after confirmation; Undo reinserts only the removed
 section into the latest file and refuses if a new list has reused the name.
-A Trackers tab holds the things Cove keeps that aren't tasks. Today that is
-Subscriptions, kept in `Trackers/Subscriptions.md` as one line per
+
+### Trackers
+
+The Trackers tab holds what Cove keeps that isn't a task. Today that is
+**Subscriptions**, kept in `Trackers/Subscriptions.md` as one line per
 recurring charge — `- Netflix @cost(15.49 USD) @every(month)
 @since(2024-03-04)` — with `##` headings as categories, so it stays a note you
-can edit by hand. The screen shows what everything costs per month and per
-year, the charges landing in the next thirty days, and the rest grouped by
-category and ranked by monthly cost, which is what lets a yearly charge and a
-monthly one be compared in one list, with a chart above them ranking the same
-figures. It is meant for software and service subscriptions — streaming,
-games, tools, a gym — rather than large recurring bills. `@since` is the *first* charge, never the
-next, so the file is never rewritten as time passes and a charge on the 31st
-doesn't drift to the 28th after February. A subscription can be paused or
-cancelled — it then counts toward nothing and folds away at the bottom — and
-adding or editing one uses a form that shows what the note will say before
-anything is written. Categories can be created, renamed, and deleted from the
-screen itself; deleting one takes the charges filed under it, so the
-confirmation says how many and how to keep them, and the deletion is undoable. Currencies are never converted: totals are kept per
-currency, and weekly or daily charges are averaged over a year, which the
-screen says rather than implying otherwise.
-The vault selection persists across launches, and the app
-recovers gracefully when the saved folder access goes stale. A Settings tab
-shows the current vault (and can point Cove at a different folder — the same
-flow that recovers a stale selection), switches between system, light, and
-dark appearance, and shows
-whether notification permission is granted, with a shortcut to enable it. The app has its own icon and launch screen — the
-`CoveMark` stamp, a bay cut into the land's edge with its shoreline traced in
-ember, warm paper over ink in light and night over paper in dark. Inside, the interface is set in ink on warm paper: a warm
-off-white canvas, screen titles and headlines in the system serif, tracked
-capitals for labels, monospaced digits for every count, and a single burnt-ember
-accent that carries interaction — with moss for folders and lists and a warm
-rust for anything overdue. Every screen opens with the same compact panel — a
-short accent rule, a label, an optional count, and the screen's own content
-right under it — so the quick-capture field, the folder you opened, and the
-first task are all near the top rather than below a headline. Every list row
-shares one icon-and-text grid — a task's checkbox sits in the same column a
-folder's tile does, so the text lines up wherever you are in the app — and
-setup, loading, empty, and search states are all drawn from that one system. On Mac, Tasks,
-Notes, Lists, and Settings live in a native branded sidebar; iPhone and iPad
-keep the familiar tab bar. Tasks leads both and is where Cove opens
-everywhere — including the Today widget's deep link, so both ways in land on
-the same screen. Wide screens use
-comfortable readable content widths, the editor keeps long lines under
-control, refresh actions show their progress, and compact layouts adapt for
-large text and short windows without hiding primary controls. Command-R
-refreshes the current screen, and Command-N creates a note from the Notes
-screen.
+can edit by hand.
+
+The screen shows what everything costs per month and per year, the charges
+landing in the next thirty days, and the rest grouped by category, with a
+chart above them ranking each subscription by monthly cost. It is meant for
+software and service subscriptions — streaming, games, tools, a gym — rather
+than large recurring bills.
+
+`@since` is the *first* charge, never the next, so the file is never
+rewritten as time passes and a charge on the 31st doesn't drift to the 28th
+after February. A subscription can be paused or cancelled, after which it
+counts toward nothing and folds away at the bottom. Categories can be
+created, renamed, and deleted from the screen; deleting one takes the charges
+filed under it, so the confirmation says how many and how to keep them, and
+the deletion is undoable.
+
+Currencies are never converted. Totals are kept per currency, the chart names
+which currency it is drawn in when there is more than one, and weekly or
+daily charges are averaged over a year — all of which the screen says rather
+than implying otherwise.
+
+### Notifications and the Today widget
+
+Tasks with a time get one local notification at that moment; tasks with only
+a date get none. Completing a recurring task rolls it to the next occurrence,
+whose notification is scheduled in turn. Reminder details use your localized
+compact date and time, and the app asks for notification permission only from
+Settings, never during a background refresh.
+
+On iPhone and iPad, a Today widget can be added to the Home Screen in small
+or medium size. It heads with the day and date, lists the tasks due today with
+a checkbox to tick one off without opening the app, shows overdue ones in red
+and a count of what's left, and reads "All clear" once nothing is due.
+Tapping it opens the Tasks tab. A widget checkbox is first recorded as a
+durable desired-state operation, so an unavailable vault can be retried the
+next time Cove opens, and replaying an already-applied operation cannot
+toggle the task back.
+
+### Keeping up with changes outside the app
+
+For a vault in iCloud Drive, changes made elsewhere — edits syncing in from
+another device, files added or removed in Finder or the Files app — are
+detected while the app runs: the folder tree refreshes and an open note
+reloads the new contents as long as you have no unsaved edits. Vaults outside
+iCloud Drive refresh whenever the app returns to the foreground, or from the
+refresh button on any screen.
+
+A note Cove can't read — text that isn't UTF-8, or a file iCloud hasn't
+finished downloading — is passed over rather than blocking the vault, and is
+picked up again on the next refresh. Settings lists any note whose tasks
+couldn't be read, and any checkbox or subscription line whose tags didn't
+parse, each opening the editor at the exact line. Long lists of warnings are
+capped with the hidden count shown and a way to see the rest.
+
+### Settings
+
+Settings shows the current vault and can point Cove at a different folder —
+the same flow that recovers a stale selection — switches between system,
+light, and dark appearance, and reports whether notification permission is
+granted with a shortcut to enable it. A Vault Safety row summarizes the
+vault's state as Ready, Recovery, or Attention; when something needs review,
+a banner on every screen says so and leads here. Folder-access and bookmark
+internals sit behind a Diagnostics disclosure, which opens itself when the
+bookmark is the thing that's wrong.
+
+### The look of it
+
+The app has its own icon and launch screen — the `CoveMark` stamp, a bay cut
+into the land's edge with its shoreline traced in ember, warm paper over ink
+in light and night over paper in dark.
+
+Inside, the interface is set in ink on warm paper: a warm off-white canvas,
+screen titles and headlines in the system serif, tracked capitals for labels,
+monospaced digits for every count, and a single burnt-ember accent that
+carries interaction — with moss for folders and lists and a warm rust for
+anything overdue. Every screen opens with the same compact panel — a short
+accent rule, a label, an optional count, and the screen's own content right
+under it. Every list row shares one icon-and-text grid, so a task's checkbox
+sits in the same column a folder's tile does and the text lines up wherever
+you are. Setup, loading, empty, and search states all come from that one
+system.
+
+On Mac, Tasks, Notes, Lists, Trackers, and Settings live in a native branded
+sidebar; iPhone and iPad keep the familiar tab bar. Tasks leads both and is
+where Cove opens everywhere — including the Today widget's deep link, so both
+ways in land on the same screen. Wide screens use comfortable readable
+content widths, the editor keeps long lines under control, and compact
+layouts adapt for large text and short windows without hiding primary
+controls.
+
+### Keyboard
+
+- **⌘1**–**⌘5** — switch to Tasks, Notes, Lists, Trackers, Settings
+- **⌘L** — focus the quick-capture field on the Tasks screen
+- **⌘N** — new note, from the Notes screen
+- **⌘R** — refresh the current screen
+- **⌘⇧Space** — toggle the checkbox at the cursor, in the editor
 
 ## Supported platforms
 

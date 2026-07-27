@@ -137,7 +137,7 @@ struct SubscriptionDraftSheet: View {
                     if let message = firstIssueMessage {
                         Label(message, systemImage: "exclamationmark.triangle.fill")
                             .font(.callout)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(CoveTheme.alert)
                     }
                 } header: {
                     CoveSectionHeader("Subscription")

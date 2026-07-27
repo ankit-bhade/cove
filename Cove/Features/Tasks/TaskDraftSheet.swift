@@ -64,7 +64,7 @@ struct TaskDraftSheet: View {
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .font(.callout)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CoveTheme.alert)
                     }
                     if let issue = draft.validationIssues.first {
                         Label(
@@ -72,7 +72,7 @@ struct TaskDraftSheet: View {
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .font(.callout)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CoveTheme.alert)
                     }
                 } header: {
                     CoveSectionHeader("Task")

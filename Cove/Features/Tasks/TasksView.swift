@@ -23,8 +23,8 @@ struct TasksView: View {
         NavigationStack {
             list
                 .navigationTitle("Tasks")
-                .navigationDestination(for: URL.self) { url in
-                    EditorView(fileURL: url)
+                .navigationDestination(for: NoteDestination.self) { destination in
+                    EditorView(destination)
                 }
                 .toolbar {
                     ToolbarItem {
@@ -50,11 +50,14 @@ struct TasksView: View {
                 } message: {
                     Text("This removes every completed task line shown here from its Markdown note, including dated items from your lists. You can undo the clear.")
                 }
-                // Editor autosaves don't rescan the vault, so returning to
-                // this tab rebuilds the index to pick up freshly typed tasks.
-                .task {
-                    await vaultManager.refresh()
-                }
+                // No refresh on appearance. It was here because editor
+                // autosaves did not reach the index — they do now, through
+                // `noteDidPersist`, which re-reads the one note that changed
+                // instead of re-enumerating the vault. Between that, the
+                // iCloud observer, and the rescan when the scene activates,
+                // a full scan on every visit to this tab was the same answer
+                // arrived at the expensive way. The toolbar's refresh is the
+                // manual path for a vault the observer cannot see.
                 .coveMinuteTick($now)
         }
     }
@@ -144,9 +147,14 @@ struct TasksView: View {
         } content: {
             QuickCaptureField(
                 placeholder: "e.g. Get bread tomorrow at 3pm",
-                accessibilityHint: "Enter a task with an optional date, time, or repeat rule"
+                accessibilityHint: "Enter a task with an optional date, time, or repeat rule",
+                bindsFocusShortcut: true
             ) { draft in
-                try await vaultManager.captureTask(draft)
+                try await actions.capture(
+                    in: vaultManager, undoManager: undoManager
+                ) {
+                    try await vaultManager.captureTask(draft)
+                }
             }
         }
     }

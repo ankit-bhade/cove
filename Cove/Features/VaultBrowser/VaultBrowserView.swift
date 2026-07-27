@@ -18,13 +18,19 @@ struct VaultBrowserView: View {
     /// Drives the navigation stack directly: each folder is a real push, so
     /// the system back button, its parent-folder title, and the iOS
     /// swipe-back gesture all work the way they do everywhere else.
-    @State private var folderPath: [URL] = []
+    ///
+    /// The element is `NoteDestination` rather than `URL` because the path is
+    /// typed and a stack ignores any value that isn't its element type — the
+    /// trap that once left note rows dead. A folder is a destination with no
+    /// line; a search hit is the same destination carrying the line it matched
+    /// on. One type on the path is what lets both push.
+    @State private var folderPath: [NoteDestination] = []
 
     var body: some View {
         NavigationStack(path: $folderPath) {
             browserLevel(folderURL: nil)
-                .navigationDestination(for: URL.self) { url in
-                    destination(for: url)
+                .navigationDestination(for: NoteDestination.self) { destination in
+                    self.destination(for: destination)
                 }
         }
         .onChange(of: vaultManager.vaultURL) { _, _ in
@@ -37,10 +43,10 @@ struct VaultBrowserView: View {
             // this path too. A dirty editor is kept open even when its file
             // moved or disappeared, so its recovery draft and Save As/error
             // affordances remain reachable instead of being popped unseen.
-            while let currentURL = folderPath.last,
-                node(at: currentURL) == nil
+            while let current = folderPath.last,
+                node(at: current.url) == nil
             {
-                if vaultManager.isEditorProtected(currentURL) { break }
+                if vaultManager.isEditorProtected(current.url) { break }
                 folderPath.removeLast()
             }
         }
@@ -141,16 +147,16 @@ struct VaultBrowserView: View {
 
     // MARK: - Folder levels
 
-    /// Folders and notes share one `[URL]` navigation path. The stack's path
-    /// is typed, so a link carrying any other value type would silently do
-    /// nothing — pushing URLs for both and branching here is what keeps note
-    /// rows (and search results) working.
+    /// Folders and notes share one `[NoteDestination]` navigation path. The
+    /// stack's path is typed, so a link carrying any other value type would
+    /// silently do nothing — pushing the same type for both and branching here
+    /// is what keeps note rows (and search results) working.
     @ViewBuilder
-    private func destination(for url: URL) -> some View {
-        if isNote(at: url) {
-            EditorView(fileURL: url)
+    private func destination(for destination: NoteDestination) -> some View {
+        if isNote(at: destination.url) {
+            EditorView(destination)
         } else {
-            browserLevel(folderURL: url)
+            browserLevel(folderURL: destination.url)
         }
     }
 
@@ -280,13 +286,36 @@ struct VaultBrowserView: View {
 
     @ViewBuilder
     private func row(for node: VaultNode) -> some View {
-        // Folders and notes both push their URL; `destination(for:)` decides
-        // which screen that URL opens.
-        NavigationLink(value: node.url) {
+        // Folders and notes both push a destination; `destination(for:)`
+        // decides which screen it opens.
+        NavigationLink(value: NoteDestination(node.url)) {
             nodeLabel(node)
         }
         .contextMenu {
             contextMenu(for: node)
+        }
+        // The context menu holds the same three actions, but a long press is
+        // something a reader has to already know is there. Every other list in
+        // the app is swipeable, and rename and delete are what a swipe is for.
+        // macOS has no swipe, which is why the context menu stays.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                nodeToDelete = node
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                present(NamePrompt(kind: .rename(node)))
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(CoveTheme.accent)
+            Button {
+                nodeToMove = node
+            } label: {
+                Label("Move", systemImage: "arrow.turn.down.right")
+            }
+            .tint(CoveTheme.moss)
         }
     }
 
@@ -387,7 +416,12 @@ struct VaultBrowserView: View {
         run {
             switch prompt.kind {
             case .newNote(let folder):
-                try await vaultManager.createNote(named: name, in: folder)
+                // A new note is empty, so the only thing to do with it is
+                // write in it. Creating it and leaving the reader in the
+                // browser to find the row and tap it is a step the app can
+                // take itself.
+                let url = try await vaultManager.createNote(named: name, in: folder)
+                folderPath.append(NoteDestination(url))
             case .newFolder(let folder):
                 try await vaultManager.createFolder(named: name, in: folder)
             case .rename(let node):

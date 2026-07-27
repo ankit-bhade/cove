@@ -29,7 +29,7 @@ everywhere by a compact `CovePanel`, so every screen opens on its own content
 rather than on a sentence about itself. Then the one row that had
 stayed off the shared grid — the task row, with its own insets, its own
 padding, and its own separator inset — was put on it, so the text column and
-the row rhythm are the same on all four screens. Most recently the mark
+the row rhythm are the same on every screen. Most recently the mark
 itself was redrawn twice: the serif `c` and its ember dot — the last piece of
 the identity still set in type, and the one that leaned right because a serif
 face has a diagonal stress — became two concentric arcs on a single axis, and
@@ -50,6 +50,19 @@ tracker is a row rather than a navigation rework — with monthly and yearly
 totals, the charges landing in the next thirty days, the charges themselves
 grouped by `##` category, and one single-hue chart ranking what each
 subscription costs per month.
+Most recently a review pass closed the gaps between what the app said and what
+it did. Every push into the editor now carries a **line** as well as a note,
+so a search hit, a task row, and a format warning that prints "line 42" all
+land where they point — the Settings link had been promising that in prose for
+some time. **Quick capture became undoable**, which was the last mutating task
+action that wasn't. Derived state stopped being rebuilt for changes that
+cannot affect it: the widget snapshot and the notification schedule are
+reconciled off a fingerprint of the tasks and the day, the recovery counts are
+off the checkbox path, and no screen rescans the vault merely because it was
+opened. And the things a reader could not see are visible — recovered drafts
+raise their own non-alarming state rather than reading as "Ready", a capped
+diagnostic list says how much it is hiding, and a chart drawn in one currency
+says which one.
 See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
@@ -253,6 +266,30 @@ system/light/dark appearance, notification permission. Task *and* subscription
 format warnings are listed here with note and line number, each opening the
 editor at that line.
 
+A **Vault Safety** row reports one of three states rather than two.
+`CoveStorageHealth.attention` is `ready`, `recovery`, or `needsAttention`:
+recovery is work Cove *saved* rather than a fault, so reporting it in alert
+red would overstate it and reporting it not at all — which "Ready" did — left
+recovered drafts sitting in Application Support with nothing on screen saying
+so. Only *drafts* raise it. `recoveryItemCount` deliberately cannot: deleted
+items live in the recovery area for a week by design, so any vault where
+something was recently deleted would sit permanently in a non-ready state, and
+a signal that is always on is not a signal.
+
+Folder access and bookmark state sit behind a **Diagnostics** disclosure. They
+are how Cove reaches the vault rather than anything a reader chose, so when
+healthy they were two rows of implementation detail above the warnings that
+matter — but the group opens itself when the bookmark is *not* persisted,
+since that is the whole explanation for a vault that keeps asking to be
+reselected.
+
+**A capped diagnostic list says what it is hiding.** The cap keeps a vault
+with a thousand bad lines from building a thousand rows into a `Form`; what it
+used to do was truncate silently, so a header reading "20 task format
+warnings" sat over exactly 20 rows out of 200 and told the reader they had
+seen everything. `DiagnosticDisclosure` is the one component behind all four
+lists, and it carries the omitted count and a Show All.
+
 ### In-memory index
 
 One entry per note: file path, file title, due tasks. Rebuilt on launch, after
@@ -372,6 +409,40 @@ refresh cancels whatever load is in flight, so without the flag it could
 cancel a pending scan and then commit the very tree that scan was about to
 replace. Everything structural — create, rename, move, delete, and the write
 that *creates* the capture note — stays on the full rescan.
+
+**The widget and the notifications are reconciled off a fingerprint, not off
+every rebuild.** Both are derived from the *tasks*, and a rebuild happens for
+any content change at all — so typing a sentence into an unrelated note
+rewrote the widget snapshot and re-diffed every pending notification for a
+task set that had not moved. `reconcileDerivedState` hashes `index.allTasks`
+plus the current day and returns early when it matches the last one. The day
+is in the hash because a snapshot is built *for* a day and one built for
+another reads as empty, so a task set that never changes still has to be
+republished across midnight.
+
+**The fingerprint therefore needs a way to be forced, and forgetting that is
+how it breaks.** Newly granted notification permission changes nothing about
+the tasks and is exactly the moment the rebuild matters, so Settings calls
+`rescheduleDerivedState()` rather than `refresh()` — as does the retry after a
+failed schedule. A vault switch and an unavailable vault both clear it, since
+a fingerprint taken against one vault's tasks says nothing about another's.
+
+**Recovery counts are a filesystem walk, so they are off the tap path.**
+`refreshStorageCounts` walks the recovery area and the draft store, and only a
+delete, a restore, or a draft can move either number — none of which a
+targeted refresh can be. It runs on every full scan (`force`), and a targeted
+one reuses the last count for 30 seconds. The cost is that a draft written
+moments ago may not be counted until the next full scan, which the
+scene-activation rescan guarantees.
+
+**No screen rescans on appearance any more.** Tasks, Lists, Trackers, and
+Subscriptions each opened with `await vaultManager.refresh()`, justified by a
+comment saying editor autosaves don't reach the index. They do —
+`noteDidPersist` has re-read the one changed note for some time — so between
+that, the metadata observer, and `RootView`'s scene-activation rescan, a full
+scan per tab visit was the same answer arrived at the expensive way. Each
+screen keeps its toolbar refresh, which is the manual path for a vault the
+observer cannot see.
 
 ### Files and coordination
 
@@ -793,6 +864,20 @@ friction. `QuickCaptureField` is shared by the Tasks screen and every list
 detail so the two entry points can't drift, and both await the write before
 clearing so a failure keeps the sentence.
 
+**Capture registers Undo, and its record is read back out of the parser.**
+It was the one mutating task action without one: return put a line in the note
+with nothing but the preview between a mis-parsed sentence and the file, while
+a checkbox, a swipe, a bulk clear, and a list deletion were all undoable.
+`captureTask` returns a `CapturedTaskRecord` whose identity comes from parsing
+the line Cove just generated — the round trip every generated line already
+makes — so Undo can only target a line the parser agrees exists, and it
+removes it through `TaskParser.removingTaskResult`, which re-finds it
+semantically and refuses on ambiguity exactly as a swipe-delete does. A list
+item is parsed under a synthetic `##` heading, because the list is part of
+what re-finds the line and a record without it would miss the very line the
+capture wrote. It goes through `TaskActions` like the rest, so the two capture
+screens cannot word or handle it differently.
+
 Competing time or recurrence expressions are blocking rather than guesses:
 the first interpretation stays in the editable fields and later tokens remain
 visible in the title. A date/time pair is resolved in the selected time zone
@@ -887,9 +972,51 @@ external changes, and scene activation.
 
 ### Navigation and presentation
 
-`RootView` keeps a four-section tab bar on iOS and the same destinations in a
+`RootView` keeps a five-section tab bar on iOS and the same destinations in a
 branded `NavigationSplitView` sidebar on macOS, sharing one selection model so
-no behavior diverges.
+no behavior diverges. Five is the ceiling: iOS collapses a sixth tab into
+"More", so a later section has to displace one rather than join them.
+
+**Every editor push carries a `NoteDestination`, not a `URL`.** A search hit
+knows the line it matched, a task row knows its own line, and a format warning
+prints the line it is about — and all three used to open the top of the file
+and leave the reader to find it, which made the Settings link a promise the
+code did not keep. The value is note-plus-optional-line and its `Hashable`
+conformance includes the line, so the same note at two lines is two distinct
+navigation values rather than one the stack treats as already shown.
+
+**The browser's path element had to change type for that, not gain a
+sibling.** `NavigationStack(path:)` is typed and silently ignores any other
+value, which is exactly how note rows were once dead — so `folderPath` is
+`[NoteDestination]` and a folder is simply a destination with no line. The
+screens with implicit paths (Tasks, Lists, Trackers) only had to swap which
+type they register.
+
+**The editor applies the line after the load, and once.** There is no text to
+count lines in until the file is read, and the text view does not exist
+outside the `.loaded` state; the binding is then cleared by the representable
+so a later redraw cannot yank the reader back after they have scrolled away.
+`MarkdownParser.range(ofLine:in:)` is the one line-to-range conversion, and it
+counts lines the way `MarkdownContextScanner` does — a caret that landed one
+line off from what a diagnostic said would be worse than not moving it.
+
+**The attention banner is stacked above the navigation, not inset into it.**
+As a `.safeAreaInset(edge: .top)` on the `TabView` it was laid out *over* each
+tab's navigation bar — and because the banner is itself a full-width button,
+it won the hit test, so while any warning was showing the toolbar's + and
+refresh could not be pressed on any screen. The large title cleared it and the
+toolbar row did not, which is why it read as a cosmetic overlap rather than a
+dead control. A `VStack` gives the banner its own height and hands the rest to
+the tabs, which is the one arrangement that cannot overlap. It was found by
+driving the simulator, not by a build or a test, and nothing automated would
+have caught it.
+
+**⌘1–⌘5 are hidden buttons rather than a `.commands` block.** The selection
+lives in `RootView`, and a command group would have to reach it through a
+second piece of shared state existing only to carry it. ⌘L focuses quick
+capture, and only the Tasks screen claims it: on iOS every tab stays alive, so
+a list's field carrying the same key would put two claims on it and let the
+system pick.
 
 **Tasks is the landing section, and it leads the bar.** It is the one screen
 that is about *right now*, and it is where the Today widget's `cove://tasks`
@@ -1444,7 +1571,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **529 tests** (macOS host), plus clean macOS and
+Current verified suite: **554 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1539,6 +1666,14 @@ Rough edges and surprises, not restatements of the design above.
   banner offers Save Copy — but the editor does not follow the file to its
   new name, and the copy lands at the vault root rather than where the note
   went.
+* A new note is pushed onto whatever level the browser is currently showing,
+  so one created into a *different* folder from a row's context menu leaves
+  back-navigation pointing at the level you were on rather than at the folder
+  it was created in.
+* The recovery banner and Vault Safety only count drafts belonging to the open
+  vault, and drafts are per-device — so a draft from another device, or from a
+  folder that is no longer the vault, is invisible here and is only swept when
+  its note is next opened clean.
 * A dirty editor blocks switching vaults. Settings refuses with "Finish
   saving or export the open note's recovery copy" until the editor is clean
   or closed, which is surprising if the editor is on another tab and out of
@@ -1573,8 +1708,9 @@ Rough edges and surprises, not restatements of the design above.
   Review", and only Save Recovered Edits or Discard Draft releases it. A user
   who ignores the banner and keeps working is editing a file that is not
   being saved.
-* Discard Draft replaces the recovered text with what is on disk immediately
-  and without confirmation. The journal entry is gone at that point.
+* Discard Draft is confirmed, but the confirmation is the only guard: once
+  taken it replaces the recovered text with what is on disk and the journal
+  entry is gone. There is no undo past that point.
 
 ### Change detection
 
@@ -1592,6 +1728,9 @@ Rough edges and surprises, not restatements of the design above.
 * Results don't live-update while showing — edit the query to re-run it.
 * Matches are line-based: the snippet is the first matching line, and a query
   spanning a line break won't match.
+* A result opens at its *first* matching line, and there is no way to step
+  through the rest. A title-only hit reads no content at all, so it has no
+  line and opens the note at the top.
 * On iOS 26 a pushed folder level collapses the `.searchable` field into the
   toolbar rather than showing it under the title. That's the system's behavior
   for pushed levels, not a Cove layout bug.
@@ -1601,6 +1740,10 @@ Rough edges and surprises, not restatements of the design above.
 * Tasks kept outside `Tasks.md` are indistinguishable in the list until
   opened, since a row doesn't name its note. Fine for the intended
   single-capture-note workflow.
+* Opening a task lands on the line the index last saw. An external edit that
+  shifted the note since the last rebuild puts the caret on whatever now sits
+  there, and a line number past the end of the file simply opens the top —
+  the caret is a convenience, not a second re-find.
 * Two task lines identical in text, schedule, recurrence, and list cannot be
   checked off, deleted, or undone from the Tasks screen at all — the mutation
   refuses rather than guess which line was meant, because after an external
@@ -1631,10 +1774,11 @@ Rough edges and surprises, not restatements of the design above.
   still leaves the title.
 * Hashtags stay in the title (no tag feature), and ISO dates ("2026-07-21")
   aren't in grove's grammar — use slash or month-name dates, or the picker.
-* Capture writes on return with no confirmation and no undo. A mis-parsed task
-  is just a line in `Tasks.md`: swipe the row away and retype. The live
-  preview is the only thing between a typo and the note, which is why it isn't
-  optional chrome.
+* Capture writes on return with no confirmation. It is undoable now, but the
+  live preview is still the only thing between a typo and the note *before*
+  the write, which is why it isn't optional chrome — and Undo reaches only the
+  most recent capture, so a mis-parsed task noticed three captures later is
+  still a swipe-and-retype.
 * A sentence Cove cannot write down is refused: an impossible date ("feb
   30"), a token that is not a time ("25:00"), a nonexistent daylight-saving
   wall time, or competing time/repeat expressions disables the add button.
@@ -1669,8 +1813,8 @@ Rough edges and surprises, not restatements of the design above.
 * A list's identity is its heading text, so renaming one by hand in the editor
   is indistinguishable from deleting one list and creating another. Nothing is
   lost, but the Lists tab has no memory of the old name.
-* Deleting a list deletes its tasks with it — confirmed by dialog, but with no
-  undo beyond the editor's.
+* Deleting a list deletes its tasks with it. It is confirmed by dialog and
+  undoable, but Undo refuses if a new list has since reused the name.
 * An undated list item can never gain a time or repeat rule, since both live
   inside or after the `@due` tag. The draft sheet's date toggle drops all three
   together, so turning the date back on starts from today with no time.
@@ -1689,8 +1833,10 @@ Rough edges and surprises, not restatements of the design above.
 
 * The chart is drawn in the **leading currency only** — nothing is converted,
   so bars from two currencies on one axis would be a comparison that isn't
-  one. The totals panel above still reports every currency; the chart quietly
-  shows one.
+  one. It no longer does that quietly: the header names the currency and a
+  caption says so, both only when there is more than one. The Trackers hub row
+  drops its monthly figure entirely in that case, since one line has no room
+  for a total per currency.
 * Nothing shows what a given *month* will cost. A yearly charge is spread
   evenly across twelve months in every figure on the screen, so the month its
   renewal actually lands in is not called out anywhere. That is a deliberate
@@ -1784,6 +1930,9 @@ Rough edges and surprises, not restatements of the design above.
   rather than `CoveTheme.alert`, so a swipe action's red fill sits a shade off
   the rust an overdue task uses. Deliberate — the role also carries VoiceOver
   and confirmation semantics that a tinted plain button would drop.
+* ⌘1–⌘5 and ⌘L are hidden buttons in the view tree rather than menu commands,
+  so they work but appear in no menu — on macOS there is nothing in the menu
+  bar that discovers them.
 * The eyebrow is uppercased by `textCase`, so a vault or list name that is
   already an acronym or deliberately lowercase is restyled in the panel.
 

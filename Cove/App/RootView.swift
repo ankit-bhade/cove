@@ -20,10 +20,19 @@ struct RootView: View {
             case .recoveryNeeded:
                 VaultRecoveryView()
             case .open:
-                appNavigation
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        storageAttentionBanner
-                    }
+                // Stacked above the navigation rather than inset into it. As
+                // a `safeAreaInset` on the `TabView` the banner was laid out
+                // over each tab's navigation bar: it covered the toolbar
+                // buttons and — because it is itself a button spanning the
+                // full width — swallowed their taps, so while any warning was
+                // showing, + and refresh could not be pressed on any screen.
+                // A `VStack` gives the banner its own height and hands the
+                // rest to the tabs, which is the one arrangement that cannot
+                // overlap.
+                VStack(spacing: 0) {
+                    storageAttentionBanner
+                    appNavigation
+                }
             }
         }
         // Below `preferredColorScheme` in the view tree, so the scheme it
@@ -32,6 +41,7 @@ struct RootView: View {
         #if os(macOS)
             .coveDockIcon()
         #endif
+        .background(sectionShortcuts)
         .preferredColorScheme(appearance.colorScheme)
         .task {
             await vaultManager.restore()
@@ -54,15 +64,33 @@ struct RootView: View {
         }
     }
 
+    /// ⌘1 through ⌘5, in the order the sections are declared — which is the
+    /// order they appear in the tab bar and the sidebar, so the number a
+    /// reader presses is the position they see.
+    ///
+    /// Hidden buttons rather than a `.commands` scene block: the selection
+    /// lives here, and a command group would have to reach it through a
+    /// second piece of shared state that exists only to carry it. They are
+    /// invisible and take no hits — a keyboard shortcut is all they are.
+    private var sectionShortcuts: some View {
+        ForEach(AppSection.allCases) { section in
+            Button(section.title) { selectedSection = section }
+                .keyboardShortcut(section.shortcut, modifiers: .command)
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
     @ViewBuilder
     private var storageAttentionBanner: some View {
-        if let summary = storageAttentionSummary {
+        if let notice = storageNotice {
             Button {
                 selectedSection = .settings
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                    Text(summary)
+                    Image(systemName: notice.symbol)
+                    Text(notice.summary)
                         .lineLimit(2)
                     Spacer(minLength: 8)
                     Text("Review")
@@ -73,13 +101,46 @@ struct RootView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
-                .coveTintedSurface(
-                    CoveTheme.alert,
-                    in: Rectangle())
+                .coveTintedSurface(notice.tint, in: Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityHint("Opens Storage Health in Settings")
         }
+    }
+
+    private struct StorageNotice {
+        let summary: String
+        let symbol: String
+        let tint: Color
+    }
+
+    /// A fault, or — failing that — something waiting to be recovered.
+    ///
+    /// The recovery case is a separate, quieter notice rather than a silent
+    /// one: a recovered draft is edits Cove *saved* from a crash, and until
+    /// they are accepted or discarded the note they belong to is not being
+    /// written at all. Reporting nothing left that state reachable only by a
+    /// reader who happened to open Settings. Reporting it in alert red would
+    /// have overstated it, so it takes the accent and its own wording.
+    ///
+    /// Deleted items are deliberately not here — see
+    /// `CoveStorageHealth.attention` for why a week-long recovery area cannot
+    /// drive a banner.
+    private var storageNotice: StorageNotice? {
+        let health = vaultManager.storageHealth
+        if let summary = storageAttentionSummary {
+            return StorageNotice(
+                summary: summary,
+                symbol: "exclamationmark.triangle.fill",
+                tint: CoveTheme.alert)
+        }
+        guard health.recoveryDraftCount > 0 else { return nil }
+        let count = health.recoveryDraftCount
+        return StorageNotice(
+            summary:
+                "\(count) recovered draft\(count == 1 ? " is" : "s are") waiting for review.",
+            symbol: "clock.arrow.circlepath",
+            tint: CoveTheme.accent)
     }
 
     private var storageAttentionSummary: String? {
@@ -219,6 +280,18 @@ private enum AppSection: String, CaseIterable, Identifiable {
         case .lists: "list.bullet.rectangle"
         case .trackers: "chart.bar"
         case .settings: "gearshape"
+        }
+    }
+
+    /// Position in the bar, which is declaration order — so the key and the
+    /// place a reader counts to are the same number.
+    var shortcut: KeyEquivalent {
+        switch self {
+        case .tasks: "1"
+        case .notes: "2"
+        case .lists: "3"
+        case .trackers: "4"
+        case .settings: "5"
         }
     }
 }

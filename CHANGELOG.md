@@ -2,13 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+**There are no version numbers, deliberately.** Cove is a personal app that is
+not distributed — no App Store, no TestFlight, no tagged builds — so there is
+nothing for a version to name. Everything therefore lives under `Unreleased`,
+which is the honest heading for work that ships by being built and run. If Cove
+is ever distributed, that is the point at which semantic versioning starts
+meaning something and this history gets cut into releases.
 
 ## [Unreleased]
 
 ### Added
 
+- Notes open at the line you came for. A search result opens on the line it
+  matched, a task row opens on its own line, and a format warning in Settings
+  opens on the line it names — which is what the warning already said it did.
+  Every screen that pushes the editor now carries a `NoteDestination` (a note
+  plus an optional line) rather than a bare URL, and the editor puts the caret
+  there and scrolls it into view once the note has loaded.
+- Quick capture can be undone. Pressing return wrote a line into `Tasks.md`
+  with nothing between a mis-parsed sentence and the file but the live
+  preview; it was the one mutating task action with no way back. Undo removes
+  the captured line, re-finding it semantically and refusing when two lines
+  are identical — exactly as a swipe-delete does. It works from both the Tasks
+  screen and a list.
+- Creating a note opens it. **New Note** created the file and left you in the
+  browser to find the row and tap it.
+- Swipe actions on note and folder rows: rename, move, and delete were
+  reachable mainly through a long press, which is something you have to
+  already know is there.
+- Keyboard shortcuts: **⌘1**–**⌘5** switch sections in the order they appear
+  in the tab bar and sidebar, and **⌘L** focuses the quick-capture field on
+  the Tasks screen.
+- The editor's preserved-conflict banner has an **Open Copy** action. It named
+  a file and then left you to go and find it.
+- Recovered drafts are visible from anywhere. Vault Safety now reads Ready,
+  **Recovery**, or Attention, and a quiet accent-tinted banner says how many
+  drafts are waiting. Recovery is not a fault, so it does not borrow the alert
+  red; deleted items deliberately do not raise it, since the recovery area
+  holds them for a week by design and a signal that is always on is not a
+  signal.
+- Capped diagnostic lists say what they are hiding. "20 task format warnings"
+  over exactly 20 rows out of 200 told you that you had seen everything; the
+  list now shows the omitted count and a **Show All** action.
 - Subscriptions are read from a Markdown note. `Trackers/Subscriptions.md`
   records one recurring charge per line —
   `- Netflix @cost(15.49 USD) @every(month) @since(2024-03-04)` — with `##`
@@ -116,8 +153,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local `Logger` categories cover vault, document, widget, notification, and
   index failures without logging note contents or task titles.
 
+### Fixed
+
+- The storage attention banner no longer covers the toolbar. It was laid out
+  over each screen's navigation bar and, being a full-width button, swallowed
+  the taps — so while any warning was showing, the + and refresh buttons could
+  not be pressed anywhere in the app.
+
 ### Changed
 
+- The widget snapshot and the notification schedule are only rebuilt when the
+  tasks (or the day) actually change. Every index rebuild used to republish
+  and re-diff both, so typing in an ordinary note did the work of a task
+  edit. Granting notification permission and retrying a failed schedule force
+  the rebuild, since in those cases nothing about the tasks has changed and
+  that is the point.
+- The recovery area and draft store are counted on full scans rather than
+  behind every checkbox tap, which cannot have changed either number.
+- The Tasks, Lists, and Trackers screens no longer run a full vault rescan
+  each time they are opened. Editor saves have reached the index directly for
+  some time, so the scan was the same answer arrived at the expensive way; the
+  toolbar's refresh button remains the manual path.
+- Folder access and bookmark state moved behind a **Diagnostics** disclosure
+  in Settings — implementation detail above the warnings that matter — which
+  opens itself when the bookmark is the thing that is wrong.
+- The Trackers row shows a monthly total only when every charge is in one
+  currency, and the subscriptions chart names the currency it is drawn in when
+  there is more than one. A count of everything beside a total covering only
+  some of it reads as one figure describing the other, and nothing is ever
+  converted.
+- Validation warnings in the capture preview, the task sheet, and the
+  subscription sheet take the palette's alert colour instead of a stray
+  `.orange`, which was the one hue in the app belonging to no token.
+- The category options menu on the subscriptions screen presents a 44-point
+  target instead of a caption-sized glyph, with the extra size given back to
+  the layout so the header does not grow.
 - The index types moved out of the file the widget extension compiles.
   `TaskCalendar`, `TaskIdentity`, and `TaskItem` are now `TaskItem.swift`,
   which is what the widget shares; `NoteIndexEntry`, `TaskList`, and

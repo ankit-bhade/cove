@@ -20,8 +20,8 @@ struct ListsView: View {
                 .navigationDestination(for: String.self) { name in
                     TaskListDetailView(listName: name)
                 }
-                .navigationDestination(for: URL.self) { url in
-                    EditorView(fileURL: url)
+                .navigationDestination(for: NoteDestination.self) { destination in
+                    EditorView(destination)
                 }
                 .toolbar {
                     ToolbarItem {
@@ -47,11 +47,6 @@ struct ListsView: View {
                     Text("Lists are sections of Tasks.md, so you can edit them as Markdown too.")
                 }
                 .coveErrorAlert($errorMessage)
-                // Editor autosaves don't rescan the vault, so returning to
-                // this tab picks up lists edited by hand.
-                .task {
-                    await vaultManager.refresh()
-                }
         }
     }
 

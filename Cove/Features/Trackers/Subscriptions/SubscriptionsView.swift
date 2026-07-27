@@ -127,9 +127,6 @@ struct SubscriptionsView: View {
                 Text(deletionMessage(for: pendingCategoryDeletion ?? ""))
             }
             .coveErrorAlert($errorMessage)
-            // Editor autosaves don't rescan the vault, so arriving here picks
-            // up charges typed by hand.
-            .task { await vaultManager.refresh() }
             .coveMinuteTick($now)
     }
 
@@ -149,7 +146,7 @@ struct SubscriptionsView: View {
                             description:
                                 "Cove reads subscriptions from Trackers/Subscriptions.md. Move this note into a “Trackers” folder at the top of your vault and it will be picked up."
                         ) {
-                            NavigationLink(value: misplaced) {
+                            NavigationLink(value: NoteDestination(misplaced)) {
                                 Text("Open the Note")
                             }
                             .buttonStyle(.borderedProminent)
@@ -295,9 +292,22 @@ struct SubscriptionsView: View {
                 Label("Delete Category", systemImage: "trash")
             }
         } label: {
+            // The glyph stays caption-sized so it sits in a section header
+            // without shouting, but the target it presents is a real one: a
+            // caption-sized control is about 13 points across, a third of
+            // what a control is meant to offer.
+            //
+            // The 44pt frame is then given back to the layout with negative
+            // padding, the same trick the task checkbox and the collapsible
+            // section header use — the target overflows into the space around
+            // the header rather than making this one header 44 points tall.
             Image(systemName: "ellipsis.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .padding(.vertical, -15)
+                .padding(.trailing, -12)
         }
         .accessibilityLabel("\(name) category options")
     }
@@ -370,9 +380,15 @@ struct SubscriptionsView: View {
     /// Charted in the leading currency only. Nothing is ever converted, so
     /// bars from two currencies on one axis would be a comparison that isn't
     /// one — the totals panel above already reports each currency separately.
+    ///
+    /// When there is more than one currency the header names the one being
+    /// charted. A chart that silently shows a subset of the rows beneath it is
+    /// the same fault as a total that covers only some of them: the reader has
+    /// no way to tell which subscriptions are missing bars.
     @ViewBuilder
     private var spendChartSection: some View {
-        if let leading = SubscriptionMath.totals(for: active).first {
+        let totals = SubscriptionMath.totals(for: active)
+        if let leading = totals.first {
             let bars = SubscriptionMath.spendBars(
                 for: active, currencyCode: leading.currencyCode)
             // One bar is not a comparison.
@@ -381,8 +397,18 @@ struct SubscriptionsView: View {
                     SubscriptionSpendChart(
                         bars: bars, currencyCode: leading.currencyCode)
                         .padding(.vertical, CoveTheme.Space.tight)
+                    if totals.count > 1 {
+                        Text(
+                            "Charted in \(leading.currencyCode) only. Amounts are never converted."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                 } header: {
-                    CoveSectionHeader("Cost Per Month")
+                    CoveSectionHeader(
+                        totals.count > 1
+                            ? "Cost Per Month · \(leading.currencyCode)"
+                            : "Cost Per Month")
                 }
             }
         }

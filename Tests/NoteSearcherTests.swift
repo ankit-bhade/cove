@@ -59,6 +59,43 @@ final class NoteSearcherTests: XCTestCase {
         XCTAssertNil(NoteSearcher.firstMatchingLine(for: "bread", in: "- [ ] Milk\n"))
     }
 
+    /// The line number is what opens a result *at* its match, so it has to be
+    /// the line the snippet came from and it has to count blank lines.
+    func testFirstMatchReportsTheLineTheSnippetCameFrom() throws {
+        let text = "# Plan\n\n\n   Ship the ROADMAP by June\nroadmap again\n"
+        let match = try XCTUnwrap(NoteSearcher.firstMatch(for: "roadmap", in: text))
+
+        XCTAssertEqual(match.snippet, "Ship the ROADMAP by June")
+        XCTAssertEqual(match.lineNumber, 3)
+        XCTAssertEqual(
+            (text as NSString).substring(
+                with: try XCTUnwrap(
+                    MarkdownParser.range(ofLine: match.lineNumber, in: text))),
+            "   Ship the ROADMAP by June")
+    }
+
+    func testFirstMatchIsNilWithoutAMatch() {
+        XCTAssertNil(NoteSearcher.firstMatch(for: "bread", in: "- [ ] Milk\n"))
+    }
+
+    /// A title-only hit reads no content, so it has no line to land on and
+    /// must open the note at the top rather than guessing at zero.
+    func testTitleOnlyResultCarriesNoLine() async throws {
+        let results = try await NoteSearcher().search(
+            for: "groceries", in: scannedTree())
+        XCTAssertNil(results.first?.lineNumber)
+        XCTAssertNil(results.first?.destination.line)
+    }
+
+    func testContentResultCarriesItsLine() async throws {
+        let results = try await NoteSearcher().search(
+            for: "roadmap", in: scannedTree())
+        let result = try XCTUnwrap(results.first)
+        XCTAssertNotNil(result.lineNumber)
+        XCTAssertEqual(result.destination.line, result.lineNumber)
+        XCTAssertEqual(result.destination.url, result.node.url)
+    }
+
     func testFirstMatchingLineCapsAnEnormousLine() {
         let line = "match " + String(repeating: "x", count: 1_000)
         let snippet = NoteSearcher.firstMatchingLine(

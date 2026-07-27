@@ -55,6 +55,40 @@ struct CoveStorageHealth: Equatable, Sendable {
     let accessState: AccessState
     let recoveryItemCount: Int
     let recoveryDraftCount: Int
+
+    /// What the vault is asking of the reader, if anything.
+    ///
+    /// Three states rather than two because recovery is not a fault. A
+    /// recovered draft is work Cove *saved*; reporting it in the same alert
+    /// red as an unreadable note would misstate it, and reporting it not at
+    /// all — which is what "Ready" did — leaves edits sitting in Application
+    /// Support with nothing on screen saying so.
+    enum Attention: Equatable, Sendable {
+        case ready
+        /// Something is waiting to be recovered, and nothing is wrong.
+        case recovery
+        case needsAttention
+    }
+
+    /// Only *drafts* raise the recovery state, never `recoveryItemCount`.
+    /// Deleted items live under `.cove-recovery` for a week by design, so any
+    /// vault where something has been deleted recently would sit permanently
+    /// in a non-ready state — a signal that is always on is not a signal.
+    /// A draft is a crash-recovered editor buffer, which is genuinely
+    /// unfinished business.
+    var attention: Attention {
+        if lastIssue != nil
+            || unavailableNoteCount > 0
+            || taskDiagnosticCount > 0
+            || subscriptionDiagnosticCount > 0
+            || !unresolvedConflictURLs.isEmpty
+            || !conflictReviewURLs.isEmpty
+            || !bookmarkIsPersisted
+        {
+            return .needsAttention
+        }
+        return recoveryDraftCount > 0 ? .recovery : .ready
+    }
 }
 
 /// Owns the vault lifecycle: restoring the saved bookmark on launch, opening
@@ -163,6 +197,13 @@ final class VaultManager {
     /// whatever load is in flight, so reusing the tree across a requested
     /// scan would commit the very tree that scan was going to correct.
     @ObservationIgnored private var treeIsCurrent = false
+    /// The task set (and day) the widget and notifications were last
+    /// reconciled against. Nil forces the next reconcile to run.
+    @ObservationIgnored private var lastDerivedStateFingerprint: Int?
+    /// When the recovery area and draft store were last counted. Walking them
+    /// is a filesystem trip that only a delete or a draft can change, so it
+    /// does not belong on the path a checkbox tap takes.
+    @ObservationIgnored private var lastStorageCountAt: Date?
 
     init(
         bookmarkStore: VaultBookmarkStore = VaultBookmarkStore(),
@@ -321,13 +362,17 @@ final class VaultManager {
         // previous vault and its queue completely untouched.
         let widgetChanges = await applyPendingWidgetOperations(
             vaultRoot: candidateURL)
+        // A different vault's derived state was never reconciled against this
+        // one's task set, so the fingerprint from before the switch says
+        // nothing about what has to be republished now.
+        lastDerivedStateFingerprint = nil
         if widgetChanges.isEmpty {
             await reconcileDerivedState(for: index)
         } else {
             await refreshIndex(changedURLs: widgetChanges)
         }
         await purgeRecoveryArea(at: candidateURL)
-        await refreshStorageCounts(at: candidateURL)
+        await refreshStorageCounts(at: candidateURL, force: true)
     }
 
     /// Sweeps the recovery area's expired entries once per vault open, rather
@@ -399,8 +444,12 @@ final class VaultManager {
 
     // MARK: - File operations
 
-    func createNote(named name: String, in folder: URL) async throws {
-        try await perform { try $0.createNote(named: name, in: folder) }
+    /// Returns the note it created, so the caller can open it. Creating a
+    /// note and leaving the reader in the browser to find and tap it is a
+    /// step the app already knows the answer to.
+    @discardableResult
+    func createNote(named name: String, in folder: URL) async throws -> URL {
+        try await performReturning { try $0.createNote(named: name, in: folder) }
     }
 
     func createFolder(named name: String, in folder: URL) async throws {
@@ -524,6 +573,9 @@ final class VaultManager {
 
     /// The note at the vault root that quick-added tasks are appended to.
     /// Created on demand; any existing note with this name is appended to.
+    /// How long a targeted refresh will reuse the last recovery counts.
+    nonisolated private static let storageCountInterval: TimeInterval = 30
+
     nonisolated static let quickTaskNoteName = "Tasks.md"
 
     /// The capture note is the one note whose `##` headings mean lists and
@@ -1133,10 +1185,28 @@ final class VaultManager {
     /// missing. Without one, it goes into the note's unlisted region rather
     /// than the end of the file, which would otherwise put it inside the last
     /// list and hide it from the Tasks screen.
-    func captureTask(_ draft: TaskDraft, into list: String? = nil) async throws {
+    /// What one capture wrote, and enough to take it back.
+    ///
+    /// The identity is built by parsing the line Cove just generated, which is
+    /// the same round trip every generated line already makes — so Undo can
+    /// only ever target a line the parser agrees exists, and it re-finds that
+    /// line semantically rather than by remembering where it was put.
+    struct CapturedTaskRecord: Sendable {
+        let identity: TaskIdentity
+        let noteURL: URL
+        let listName: String?
+    }
+
+    @discardableResult
+    func captureTask(
+        _ draft: TaskDraft,
+        into list: String? = nil
+    ) async throws -> CapturedTaskRecord? {
         let vaultURL = try requireOpenVaultURL()
         let line = try draft.validatedMarkdownLine()
-        try await mutateNote(named: Self.quickTaskNoteName, in: vaultURL) { text in
+        let noteURL = try await mutateNote(
+            named: Self.quickTaskNoteName, in: vaultURL
+        ) { text in
             guard let list else {
                 return try TaskListDocument.insertingUnlistedLineResult(
                     line,
@@ -1152,6 +1222,57 @@ final class VaultManager {
                 in: text
             ).get()
         }
+        guard
+            let identity = Self.capturedIdentity(
+                forLine: line, in: noteURL, list: list)
+        else { return nil }
+        return CapturedTaskRecord(
+            identity: identity, noteURL: noteURL, listName: list)
+    }
+
+    /// The identity of a line Cove is about to write, read back out of the
+    /// parser rather than assembled by hand.
+    ///
+    /// A list item is parsed under a synthetic heading, because a line's list
+    /// is context the line itself does not carry — and the list is part of
+    /// what re-finds it, so dropping it here would make Undo miss the very
+    /// line the capture wrote.
+    nonisolated private static func capturedIdentity(
+        forLine line: String,
+        in noteURL: URL,
+        list: String?
+    ) -> TaskIdentity? {
+        let text = list.map { "## \($0)\n\(line)\n" } ?? "\(line)\n"
+        guard let task = TaskParser.tasks(in: text, sectioned: true).first
+        else { return nil }
+        return TaskIdentity(
+            filePath: noteURL.path,
+            lineNumber: task.lineNumber,
+            text: task.text,
+            dueDateString: task.dueDateString,
+            dueTimeString: task.dueTimeString,
+            recurrenceTag: task.recurrence?.tagText,
+            listName: task.listName,
+            recurrenceAnchorDateString: task.recurrenceAnchorDateString,
+            isSectionedDocument: true)
+    }
+
+    /// Takes back one capture. Every other mutating task action registers
+    /// Undo; return in the quick-entry field wrote straight to the note with
+    /// nothing between a mis-parsed sentence and the file but the live
+    /// preview. Removal re-finds the line semantically and refuses on
+    /// ambiguity, exactly as a swipe-delete does.
+    func undoCapturedTask(_ record: CapturedTaskRecord) async throws {
+        var removeError: Error?
+        do {
+            _ = try await repository.updateNote(at: record.noteURL) { text in
+                try TaskParser.removingTaskResult(record.identity, in: text).get()
+            }
+        } catch {
+            removeError = error
+        }
+        await refreshIndex(changedURLs: [record.noteURL])
+        if let removeError { throw removeError }
     }
 
     // MARK: - Lists
@@ -1334,21 +1455,33 @@ final class VaultManager {
     /// Runs one coordinated mutation off the main actor, then rescans so the
     /// tree reflects the app-created change.
     private func perform(_ operation: @escaping @Sendable (VaultFileOperations) throws -> Void) async throws {
+        try await performReturning(operation)
+    }
+
+    /// `perform` for an operation whose result the caller needs — the URL a
+    /// create produced, say. The rescan still happens before the value comes
+    /// back, so a caller that navigates to it finds it in the tree.
+    @discardableResult
+    private func performReturning<T: Sendable>(
+        _ operation: @escaping @Sendable (VaultFileOperations) throws -> T
+    ) async throws -> T {
         let ops = fileOperations
-        try await Task.detached(priority: .userInitiated) {
+        let result = try await Task.detached(priority: .userInitiated) {
             try operation(ops)
         }.value
         await refresh()
+        return result
     }
 
     /// The capture note is created on demand, so a mutation that lands in a
     /// note the tree has never seen is a structural change and takes the full
     /// rescan; every later write to it only changes contents.
+    @discardableResult
     private func mutateNote(
         named name: String,
         in folder: URL,
         transform: @escaping @Sendable (String) throws -> String?
-    ) async throws {
+    ) async throws -> URL {
         let url = try await repository.updateNote(
             named: name, in: folder,
             transform: transform)
@@ -1357,6 +1490,7 @@ final class VaultManager {
         } else {
             await refresh()
         }
+        return url
     }
 
     private func isInTree(_ url: URL) -> Bool {
@@ -1467,7 +1601,11 @@ final class VaultManager {
                 guard isCurrentLoad(generation: generation, url: url) else {
                     return
                 }
-                await refreshStorageCounts(at: url)
+                // A full scan is the load that follows a delete, a restore, or
+                // an app return, so it always recounts; a targeted one cannot
+                // have moved either number.
+                await refreshStorageCounts(
+                    at: url, force: effectiveChanges == nil)
             }
             CoveLog.index.info(
                 "Vault indexing completed in \(Date().timeIntervalSince(startedAt), privacy: .private) seconds."
@@ -1505,11 +1643,20 @@ final class VaultManager {
             && requestedVaultURL?.standardizedFileURL == url.standardizedFileURL
     }
 
+    /// Reconciles the task notifications and the widget from one index
+    /// snapshot — but only when that snapshot could actually change either.
+    ///
+    /// Both are derived from the *tasks*, and a rebuild happens for any
+    /// content change at all: typing a sentence into an ordinary note used to
+    /// rewrite the widget snapshot and diff every pending notification for a
+    /// task set that had not moved. The fingerprint is the task set plus the
+    /// day, because a widget snapshot is built for a particular day and a
+    /// snapshot built for another one reads as empty.
     private func reconcileDerivedState(for index: VaultIndex) async {
-        // Every committed index rebuild — launch, mutations, external
-        // changes, foreground refreshes — reconciles the task notifications
-        // and widget from the same snapshot.
         let tasks = index.allTasks
+        let fingerprint = Self.derivedStateFingerprint(for: tasks)
+        guard fingerprint != lastDerivedStateFingerprint else { return }
+        lastDerivedStateFingerprint = fingerprint
         publishWidgetState(tasks: tasks)
         let health = await rebuildNotifications(tasks)
         if health.state != .superseded {
@@ -1517,7 +1664,49 @@ final class VaultManager {
         }
     }
 
-    private func refreshStorageCounts(at vaultRoot: URL) async {
+    /// Reconciles even when the task set has not moved.
+    ///
+    /// Newly granted notification permission is exactly that case: nothing
+    /// about the tasks changed, and nothing is scheduled either — so the
+    /// fingerprint would skip the one rebuild that matters. The same is true
+    /// of a retry after a scheduling failure.
+    func rescheduleDerivedState() async {
+        lastDerivedStateFingerprint = nil
+        guard state == .open else { return }
+        await reconcileDerivedState(for: index)
+    }
+
+    nonisolated private static func derivedStateFingerprint(
+        for tasks: [TaskItem]
+    ) -> Int {
+        var hasher = Hasher()
+        hasher.combine(tasks)
+        // The day, so a snapshot published yesterday is rebuilt today even
+        // when not one task line has changed.
+        hasher.combine(
+            TaskCalendar.gregorian().startOfDay(for: Date()))
+        return hasher.finalize()
+    }
+
+    /// Counts what is sitting in the recovery area and the draft store.
+    ///
+    /// `force` is every full scan — vault open, a structural change, a
+    /// foreground rescan — because those are the moments a delete or a
+    /// restore has just happened. A targeted refresh (a checkbox, a capture)
+    /// cannot have changed either count, so it is throttled rather than
+    /// walking two directories behind every tap. The cost of the throttle is
+    /// that a draft written moments ago may not be counted until the next
+    /// full scan, which the scene-activation rescan guarantees.
+    private func refreshStorageCounts(
+        at vaultRoot: URL,
+        force: Bool = false
+    ) async {
+        if !force, let last = lastStorageCountAt,
+            Date().timeIntervalSince(last) < Self.storageCountInterval
+        {
+            return
+        }
+        lastStorageCountAt = Date()
         let operations = fileOperations
         let draftStore = EditorRecoveryDraftStore()
         do {
@@ -1576,6 +1765,10 @@ final class VaultManager {
     /// while the widget receives an explicit reconnect state rather than a
     /// misleading successful “All clear.”
     private func publishUnavailableDerivedState() async {
+        // Whatever was reconciled belonged to a vault that is no longer open,
+        // so the next reconcile must run rather than compare against it.
+        lastDerivedStateFingerprint = nil
+        lastStorageCountAt = nil
         notificationHealth = await cancelNotifications()
         if case .failure(let error) =
             widgetStore.writeUnavailableSnapshot(.vaultUnavailable)

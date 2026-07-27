@@ -132,6 +132,97 @@ final class VaultManagerRefreshTests: XCTestCase {
         XCTAssertEqual(manager.index.allTasks.count, 1)
     }
 
+    // MARK: - Capture undo
+
+    /// Capture was the one mutating task action with no way back. Undo takes
+    /// the line out again and leaves the rest of the note alone.
+    func testUndoingACaptureRemovesOnlyThatLine() async throws {
+        let manager = makeManager(recorder: ScanRecorder())
+        await manager.openVault(at: root)
+
+        var draft = TaskDraft(title: "Order cake")
+        draft.dueDateString = "2026-07-21"
+        let captured = try await manager.captureTask(draft)
+        let record = try XCTUnwrap(captured)
+        XCTAssertEqual(manager.index.allTasks.count, 2)
+
+        try await manager.undoCapturedTask(record)
+
+        XCTAssertEqual(manager.index.allTasks.count, 1)
+        XCTAssertEqual(manager.index.allTasks.first?.text, "Buy milk")
+        XCTAssertEqual(
+            try String(
+                contentsOf: root.appendingPathComponent("Tasks.md"),
+                encoding: .utf8),
+            "- [ ] Buy milk @due(2026-07-20)\n")
+    }
+
+    /// A list item's identity includes its list, so Undo has to find the line
+    /// under the heading it was written to rather than missing it entirely.
+    func testUndoingACaptureIntoAList() async throws {
+        let manager = makeManager(recorder: ScanRecorder())
+        await manager.openVault(at: root)
+        try await manager.createList(named: "Groceries")
+
+        let captured = try await manager.captureTask(
+            TaskDraft(title: "Milk"), into: "Groceries")
+        let record = try XCTUnwrap(captured)
+        XCTAssertEqual(record.identity.listName, "Groceries")
+        XCTAssertTrue(manager.index.allTasks.contains { $0.text == "Milk" })
+
+        try await manager.undoCapturedTask(record)
+
+        XCTAssertFalse(manager.index.allTasks.contains { $0.text == "Milk" })
+        // The heading survives; only the line goes.
+        XCTAssertTrue(manager.index.listNames.contains("Groceries"))
+    }
+
+    /// Undo re-finds its line semantically, so it targets the capture even
+    /// after the note is edited around it.
+    func testUndoingACaptureAfterTheNoteMovesOn() async throws {
+        let manager = makeManager(recorder: ScanRecorder())
+        await manager.openVault(at: root)
+
+        var draft = TaskDraft(title: "Order cake")
+        draft.dueDateString = "2026-07-21"
+        let captured = try await manager.captureTask(draft)
+        let record = try XCTUnwrap(captured)
+
+        var later = TaskDraft(title: "Call plumber")
+        later.dueDateString = "2026-07-22"
+        try await manager.captureTask(later)
+        XCTAssertEqual(manager.index.allTasks.count, 3)
+
+        try await manager.undoCapturedTask(record)
+
+        XCTAssertEqual(
+            manager.index.allTasks.map(\.text).sorted(),
+            ["Buy milk", "Call plumber"])
+    }
+
+    /// The whole point of matching semantically is refusing to guess. Two
+    /// identical lines cannot be told apart, so Undo declines rather than
+    /// removing whichever one it happened to find first.
+    func testUndoingACaptureRefusesWhenTheLineIsAmbiguous() async throws {
+        let manager = makeManager(recorder: ScanRecorder())
+        await manager.openVault(at: root)
+
+        var draft = TaskDraft(title: "Order cake")
+        draft.dueDateString = "2026-07-21"
+        let captured = try await manager.captureTask(draft)
+        let record = try XCTUnwrap(captured)
+        try await manager.captureTask(draft)
+        XCTAssertEqual(manager.index.allTasks.count, 3)
+
+        do {
+            try await manager.undoCapturedTask(record)
+            XCTFail("Expected an ambiguous-task refusal")
+        } catch TaskParser.MutationError.ambiguousTask {
+            // Expected: both lines stay.
+        }
+        XCTAssertEqual(manager.index.allTasks.count, 3)
+    }
+
     func testCaptureWithoutAnOpenVaultReportsAnError() async throws {
         let manager = makeManager(recorder: ScanRecorder())
 

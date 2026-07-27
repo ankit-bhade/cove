@@ -75,7 +75,10 @@ struct TaskRow: View {
                             ? "Mark complete"
                             : "Complete and reschedule")
 
-            NavigationLink(value: task.fileURL) {
+            // The line travels with the note, so tapping a task opens its own
+            // line rather than the top of a capture note that may hold a
+            // hundred of them.
+            NavigationLink(value: NoteDestination(task.fileURL, line: task.lineNumber)) {
                 // The source note is deliberately not shown: tasks nearly
                 // always live in the capture note, so the row read as a
                 // repeated "Tasks" caption under every task.

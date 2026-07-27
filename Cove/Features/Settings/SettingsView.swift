@@ -23,6 +23,7 @@ struct SettingsView: View {
         vaultManager.notificationHealth
     }
     @State private var pendingReminderCount = 0
+    @State private var showsStorageDiagnostics = false
     @State private var notificationErrorMessage: String?
     @State private var notificationPlanInventory = TaskNotificationPlanInventory(
         plans: [],
@@ -61,32 +62,16 @@ struct SettingsView: View {
 
     private var storageHealthSection: some View {
         let health = vaultManager.storageHealth
+        let attention = health.attention
         return Section {
             CoveRow(
-                systemName: storageNeedsAttention
-                    ? "exclamationmark.triangle.fill"
-                    : "checkmark.shield.fill",
-                tint: storageNeedsAttention
-                    ? CoveTheme.alert : CoveTheme.moss
+                systemName: attention.symbol,
+                tint: attention.tint
             ) {
                 Text("Vault Safety")
                     .font(.body.weight(.medium))
                 Spacer(minLength: 0)
-                CoveCountBadge(
-                    storageNeedsAttention ? "Attention" : "Ready",
-                    tint: storageNeedsAttention
-                        ? CoveTheme.alert : CoveTheme.moss)
-            }
-
-            LabeledContent("Folder Access") {
-                Text(storageAccessLabel(health.accessState))
-                    .foregroundStyle(.secondary)
-            }
-            LabeledContent("Bookmark") {
-                Text(health.bookmarkIsPersisted ? "Saved" : "Not Saved")
-                    .foregroundStyle(
-                        health.bookmarkIsPersisted
-                            ? .secondary : CoveTheme.alert)
+                CoveCountBadge(attention.label, tint: attention.tint)
             }
 
             if let issue = health.lastIssue {
@@ -105,105 +90,74 @@ struct SettingsView: View {
             }
 
             if health.unavailableNoteCount > 0 {
-                DisclosureGroup(
-                    "\(health.unavailableNoteCount) note\(health.unavailableNoteCount == 1 ? "" : "s") could not be read"
-                ) {
-                    ForEach(
-                        Array(vaultManager.index.indexingFailures.prefix(12).enumerated()),
-                        id: \.offset
-                    ) { _, failure in
-                        NavigationLink {
-                            EditorView(fileURL: failure.fileURL)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(failure.fileURL.lastPathComponent)
-                                Text(failure.description)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                        }
-                    }
+                DiagnosticDisclosure(
+                    title:
+                        "\(health.unavailableNoteCount) note\(health.unavailableNoteCount == 1 ? "" : "s") could not be read",
+                    noun: "note",
+                    items: vaultManager.index.indexingFailures,
+                    destination: { NoteDestination($0.fileURL) }
+                ) { failure in
+                    Text(failure.fileURL.lastPathComponent)
+                    Text(failure.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
-                .foregroundStyle(CoveTheme.alert)
             }
 
             if health.taskDiagnosticCount > 0 {
-                DisclosureGroup(
-                    "\(health.taskDiagnosticCount) task format warning\(health.taskDiagnosticCount == 1 ? "" : "s")"
-                ) {
-                    ForEach(
-                        Array(vaultManager.index.taskDiagnostics.prefix(20).enumerated()),
-                        id: \.offset
-                    ) { _, item in
-                        NavigationLink {
-                            EditorView(fileURL: item.fileURL)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(
-                                    "\(item.fileURL.lastPathComponent), line \(item.diagnostic.lineNumber + 1)"
-                                )
-                                Text(item.diagnostic.message)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
-                            }
-                        }
+                DiagnosticDisclosure(
+                    title:
+                        "\(health.taskDiagnosticCount) task format warning\(health.taskDiagnosticCount == 1 ? "" : "s")",
+                    noun: "warning",
+                    items: vaultManager.index.taskDiagnostics,
+                    // The row prints a line number, so the editor opens at it.
+                    // Naming a line and then landing at the top of the file is
+                    // the reader doing the app's arithmetic by hand.
+                    destination: {
+                        NoteDestination($0.fileURL, line: $0.diagnostic.lineNumber)
                     }
+                ) { item in
+                    Text(
+                        "\(item.fileURL.lastPathComponent), line \(item.diagnostic.lineNumber + 1)"
+                    )
+                    Text(item.diagnostic.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
                 }
-                .foregroundStyle(CoveTheme.alert)
             }
 
             if health.subscriptionDiagnosticCount > 0 {
-                DisclosureGroup(
-                    "\(health.subscriptionDiagnosticCount) subscription format warning\(health.subscriptionDiagnosticCount == 1 ? "" : "s")"
-                ) {
-                    ForEach(
-                        Array(
-                            vaultManager.index.subscriptionDiagnostics
-                                .prefix(20).enumerated()),
-                        id: \.offset
-                    ) { _, item in
-                        NavigationLink {
-                            EditorView(fileURL: item.fileURL)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(
-                                    "\(item.fileURL.lastPathComponent), line \(item.diagnostic.lineNumber + 1)"
-                                )
-                                Text(item.diagnostic.message)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
-                            }
-                        }
+                DiagnosticDisclosure(
+                    title:
+                        "\(health.subscriptionDiagnosticCount) subscription format warning\(health.subscriptionDiagnosticCount == 1 ? "" : "s")",
+                    noun: "warning",
+                    items: vaultManager.index.subscriptionDiagnostics,
+                    destination: {
+                        NoteDestination($0.fileURL, line: $0.diagnostic.lineNumber)
                     }
+                ) { item in
+                    Text(
+                        "\(item.fileURL.lastPathComponent), line \(item.diagnostic.lineNumber + 1)"
+                    )
+                    Text(item.diagnostic.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
                 }
-                .foregroundStyle(CoveTheme.alert)
             }
 
-            if !health.unresolvedConflictURLs.isEmpty
-                || !health.conflictReviewURLs.isEmpty
-            {
-                DisclosureGroup(
-                    "\(health.unresolvedConflictURLs.count + health.conflictReviewURLs.count) conflict item\(health.unresolvedConflictURLs.count + health.conflictReviewURLs.count == 1 ? "" : "s") to review"
-                ) {
-                    ForEach(
-                        Array(
-                            Set(
-                                health.unresolvedConflictURLs
-                                    + health.conflictReviewURLs)
-                        ).sorted { $0.path < $1.path },
-                        id: \.self
-                    ) { url in
-                        NavigationLink {
-                            EditorView(fileURL: url)
-                        } label: {
-                            Text(url.lastPathComponent)
-                        }
-                    }
+            if !conflictURLs.isEmpty {
+                DiagnosticDisclosure(
+                    title:
+                        "\(conflictURLs.count) conflict item\(conflictURLs.count == 1 ? "" : "s") to review",
+                    noun: "item",
+                    items: conflictURLs,
+                    destination: { NoteDestination($0) }
+                ) { url in
+                    Text(url.lastPathComponent)
                 }
-                .foregroundStyle(CoveTheme.alert)
             }
 
             NavigationLink {
@@ -215,14 +169,18 @@ struct SettingsView: View {
                         health.recoveryItemCount + health.recoveryDraftCount > 0
                         ? CoveTheme.accent : .secondary
                 ) {
-                    Text("Cove Recovery")
-                        .font(.body.weight(.medium))
+                    CoveRowTitle(
+                        title: "Cove Recovery",
+                        caption: recoveryCaption(health),
+                        captionIsLabel: false)
                     Spacer(minLength: 0)
                     CoveCountBadge(
                         "\(health.recoveryItemCount + health.recoveryDraftCount)",
                         tint: CoveTheme.accent)
                 }
             }
+
+            advancedDisclosure(health)
         } header: {
             CoveSectionHeader("Storage Health")
         } footer: {
@@ -232,15 +190,52 @@ struct SettingsView: View {
         }
     }
 
-    private var storageNeedsAttention: Bool {
+    private var conflictURLs: [URL] {
         let health = vaultManager.storageHealth
-        return health.lastIssue != nil
-            || health.unavailableNoteCount > 0
-            || health.taskDiagnosticCount > 0
-            || health.subscriptionDiagnosticCount > 0
-            || !health.unresolvedConflictURLs.isEmpty
-            || !health.conflictReviewURLs.isEmpty
-            || !health.bookmarkIsPersisted
+        return Array(
+            Set(health.unresolvedConflictURLs + health.conflictReviewURLs)
+        ).sorted { $0.path < $1.path }
+    }
+
+    private func recoveryCaption(_ health: CoveStorageHealth) -> String? {
+        var parts: [String] = []
+        if health.recoveryDraftCount > 0 {
+            parts.append(
+                "\(health.recoveryDraftCount) recovered draft\(health.recoveryDraftCount == 1 ? "" : "s")"
+            )
+        }
+        if health.recoveryItemCount > 0 {
+            parts.append(
+                "\(health.recoveryItemCount) deleted item\(health.recoveryItemCount == 1 ? "" : "s")"
+            )
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Folder access and bookmark state are how Cove reaches the vault, not
+    /// anything the reader chose or can act on — when they are healthy they
+    /// are two rows of implementation detail above the warnings that matter.
+    /// They stay one tap away rather than gone: when a bookmark *isn't*
+    /// saved, that is the whole explanation for a vault that keeps asking to
+    /// be reselected, so the group opens itself in that case.
+    private func advancedDisclosure(_ health: CoveStorageHealth) -> some View {
+        DisclosureGroup(
+            "Diagnostics",
+            isExpanded: Binding(
+                get: { showsStorageDiagnostics || !health.bookmarkIsPersisted },
+                set: { showsStorageDiagnostics = $0 })
+        ) {
+            LabeledContent("Folder Access") {
+                Text(storageAccessLabel(health.accessState))
+                    .foregroundStyle(.secondary)
+            }
+            LabeledContent("Bookmark") {
+                Text(health.bookmarkIsPersisted ? "Saved" : "Not Saved")
+                    .foregroundStyle(
+                        health.bookmarkIsPersisted
+                            ? .secondary : CoveTheme.alert)
+            }
+        }
     }
 
     private func storageAccessLabel(
@@ -366,7 +361,7 @@ struct SettingsView: View {
                     .foregroundStyle(CoveTheme.alert)
                 actionRow("Retry Reminder Scheduling", systemName: "arrow.clockwise") {
                     Task {
-                        await vaultManager.refresh()
+                        await vaultManager.rescheduleDerivedState()
                         await refreshRuntimeHealth()
                     }
                 }
@@ -463,8 +458,10 @@ struct SettingsView: View {
                 "Cove could not request notification permission. Try again or open System Settings."
         }
         await refreshNotificationStatus()
-        // Newly granted permission takes effect on the next rebuild.
-        await vaultManager.refresh()
+        // Newly granted permission takes effect on the next reconcile — and
+        // it has to be forced, since the task set has not changed and the
+        // fingerprint would otherwise skip the one rebuild that matters.
+        await vaultManager.rescheduleDerivedState()
         await refreshNotificationStatus()
     }
 
@@ -611,4 +608,89 @@ struct SettingsView: View {
         }
     #endif
 
+}
+
+/// The Vault Safety row's three states, worded and tinted in one place so the
+/// row and anything else reporting them cannot disagree.
+private extension CoveStorageHealth.Attention {
+    var label: String {
+        switch self {
+        case .ready: "Ready"
+        case .recovery: "Recovery"
+        case .needsAttention: "Attention"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .ready: "checkmark.shield.fill"
+        case .recovery: "clock.arrow.circlepath"
+        case .needsAttention: "exclamationmark.triangle.fill"
+        }
+    }
+
+    /// Recovery takes the accent, not the alert: nothing is wrong, there is
+    /// simply something waiting. Alert is reserved for a fault.
+    var tint: Color {
+        switch self {
+        case .ready: CoveTheme.moss
+        case .recovery: CoveTheme.accent
+        case .needsAttention: CoveTheme.alert
+        }
+    }
+}
+
+/// One capped, expandable list of things that are wrong, each row opening the
+/// note it is about — at the line, when the diagnostic named one.
+///
+/// The cap exists so a vault with a thousand bad lines doesn't build a
+/// thousand rows into a Settings form. What it used to do was truncate
+/// silently, which told the reader they had seen everything when the header
+/// directly above said otherwise: "20 task format warnings" over exactly 20
+/// rows out of 200. The count of what is hidden, and a way to see it, is the
+/// difference between a cap and a lie.
+private struct DiagnosticDisclosure<Item, Row: View>: View {
+    let title: String
+    /// What one item is, for the "Show All N <noun>s" button.
+    let noun: String
+    let items: [Item]
+    let destination: (Item) -> NoteDestination
+    @ViewBuilder let row: (Item) -> Row
+
+    @State private var showsAll = false
+
+    private static var limit: Int { 20 }
+
+    private var visible: [Item] {
+        showsAll ? items : Array(items.prefix(Self.limit))
+    }
+
+    var body: some View {
+        DisclosureGroup(title) {
+            ForEach(Array(visible.enumerated()), id: \.offset) { _, item in
+                NavigationLink {
+                    EditorView(destination(item))
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        row(item)
+                    }
+                }
+            }
+            if items.count > Self.limit {
+                let hidden = items.count - visible.count
+                Button {
+                    showsAll.toggle()
+                } label: {
+                    Text(
+                        showsAll
+                            ? "Show Fewer"
+                            : "Show All \(items.count) \(noun)s (\(hidden) more)"
+                    )
+                    .font(.footnote.weight(.medium))
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .foregroundStyle(CoveTheme.alert)
+    }
 }

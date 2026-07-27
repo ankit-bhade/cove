@@ -151,6 +151,21 @@ final class SubscriptionPresentationTests: XCTestCase {
             "1 subscription · $15.49/mo")
     }
 
+    /// The caption used to count every charge and then print the *leading*
+    /// currency's monthly total beside it, which reads as one figure covering
+    /// the other. Nothing is ever converted, so it never was. A mixed vault
+    /// gets the count alone.
+    func testHubCaptionOmitsTheAmountWhenCurrenciesAreMixed() {
+        XCTAssertEqual(
+            SubscriptionPresentation.hubCaption(
+                for: [
+                    subscription(),
+                    subscription("Fastmail", "5.00", currency: "EUR"),
+                ],
+                locale: locale),
+            "2 subscriptions")
+    }
+
     func testHubCaptionWithNothingActive() {
         XCTAssertEqual(
             SubscriptionPresentation.hubCaption(

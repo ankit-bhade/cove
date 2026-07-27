@@ -59,10 +59,9 @@ struct TrackersView: View {
                 case .subscriptions: SubscriptionsView()
                 }
             }
-            .navigationDestination(for: URL.self) { url in
-                EditorView(fileURL: url)
+            .navigationDestination(for: NoteDestination.self) { destination in
+                EditorView(destination)
             }
-            .task { await vaultManager.refresh() }
         }
     }
 

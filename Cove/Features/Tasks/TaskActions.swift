@@ -77,6 +77,38 @@ final class TaskActions {
         }
     }
 
+    /// Writes one captured task and registers taking it back.
+    ///
+    /// Capture was the one mutating task action with no Undo: return in the
+    /// quick-entry field put a line in the note with nothing but the live
+    /// preview between a mis-parsed sentence and the file. Every other action
+    /// on these screens is undoable, so this one is too — and it goes through
+    /// `TaskActions` for the same reason the rest do, so the Tasks screen and
+    /// a list cannot word or handle it differently.
+    ///
+    /// The capture itself is the caller's closure, because *where* a task
+    /// lands is the one thing the two screens genuinely disagree about.
+    func capture(
+        in vaultManager: VaultManager,
+        undoManager: UndoManager?,
+        _ operation: @escaping () async throws -> VaultManager.CapturedTaskRecord?
+    ) async throws {
+        guard let record = try await operation() else { return }
+        undoManager?.registerUndo(withTarget: vaultManager) { [weak self] manager in
+            Task {
+                do {
+                    try await manager.undoCapturedTask(record)
+                } catch {
+                    self?.errorMessage = error.localizedDescription
+                    CoveLog.vault.error(
+                        "Capture undo failed: \(error.localizedDescription, privacy: .private)"
+                    )
+                }
+            }
+        }
+        undoManager?.setActionName("Add Task")
+    }
+
     /// Each screen clears exactly what it shows. The manager returns the
     /// semantic deletion records as one Undo group; restoring them later
     /// inserts only those lines into the newest note contents.

@@ -5,8 +5,22 @@ import Foundation
 struct SearchResult: Identifiable, Hashable, Sendable {
     let node: VaultNode
     let snippet: String?
+    /// Zero-based line the snippet came from, so opening the result lands on
+    /// the match rather than at the top of the note. Nil for a title-only hit,
+    /// which has no line to land on.
+    let lineNumber: Int?
+
+    init(node: VaultNode, snippet: String?, lineNumber: Int? = nil) {
+        self.node = node
+        self.snippet = snippet
+        self.lineNumber = lineNumber
+    }
 
     var id: String { node.id }
+
+    var destination: NoteDestination {
+        NoteDestination(node.url, line: lineNumber)
+    }
 }
 
 /// Bounded search output plus the diagnostics needed to avoid presenting a
@@ -94,12 +108,17 @@ struct NoteSearcher: Sendable {
                 continue
             }
             try Task.checkCancellation()
-            let snippet = Self.firstMatchingLine(
+            let match = Self.firstMatch(
                 for: query,
                 in: text,
                 maximumCharacters: limits.maximumSnippetCharacters)
+            let snippet = match?.snippet
             if titleMatches || snippet != nil {
-                results.append(SearchResult(node: node, snippet: snippet))
+                results.append(
+                    SearchResult(
+                        node: node,
+                        snippet: snippet,
+                        lineNumber: match?.lineNumber))
                 if results.count >= limits.maximumResults {
                     reachedLimit = true
                     break
@@ -118,19 +137,33 @@ struct NoteSearcher: Sendable {
         in text: String,
         maximumCharacters: Int = Limits.standard.maximumSnippetCharacters
     ) -> String? {
-        var snippet: String?
+        firstMatch(for: query, in: text, maximumCharacters: maximumCharacters)?
+            .snippet
+    }
+
+    /// The first matching line and where it sits. The line number is what
+    /// lets a result open the note *at* the match; it is counted the way
+    /// every other line number in the app is, so it agrees with the editor.
+    static func firstMatch(
+        for query: String,
+        in text: String,
+        maximumCharacters: Int = Limits.standard.maximumSnippetCharacters
+    ) -> (snippet: String, lineNumber: Int)? {
+        var match: (snippet: String, lineNumber: Int)?
+        var lineNumber = 0
         text.enumerateLines { line, stop in
             if matches(query, in: line) {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.count > maximumCharacters {
-                    snippet = String(trimmed.prefix(maximumCharacters)) + "…"
-                } else {
-                    snippet = trimmed
-                }
+                let snippet =
+                    trimmed.count > maximumCharacters
+                    ? String(trimmed.prefix(maximumCharacters)) + "…"
+                    : trimmed
+                match = (snippet, lineNumber)
                 stop = true
             }
+            lineNumber += 1
         }
-        return snippet
+        return match
     }
 
     static func matches(_ query: String, in text: String) -> Bool {

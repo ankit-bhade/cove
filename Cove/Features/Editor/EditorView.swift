@@ -8,11 +8,23 @@ struct EditorView: View {
     @State private var document: NoteDocument
     @State private var checkboxErrorMessage: String?
     @State private var isConfirmingRecoveredDraftDiscard = false
+    /// Handed to the text view once the note has loaded, and cleared there.
+    /// It cannot be applied before the load: there is no text to find a line
+    /// in until then, and the text view does not exist until `.loaded`.
+    @State private var focusLine: Int?
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
 
-    init(fileURL: URL) {
+    /// The line this note was opened at, if the caller knew one. Zero-based.
+    private let requestedLine: Int?
+
+    init(fileURL: URL, line: Int? = nil) {
         _document = State(initialValue: NoteDocument(fileURL: fileURL))
+        requestedLine = line
+    }
+
+    init(_ destination: NoteDestination) {
+        self.init(fileURL: destination.url, line: destination.line)
     }
 
     var body: some View {
@@ -38,7 +50,8 @@ struct EditorView: View {
                                 document.fileURL,
                                 vaultRoot: $0)
                         } ?? false,
-                    checkboxError: $checkboxErrorMessage
+                    checkboxError: $checkboxErrorMessage,
+                    focusLine: $focusLine
                 )
                 .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity)
@@ -114,9 +127,22 @@ struct EditorView: View {
                         .modifier(EditorBanner(tint: CoveTheme.alert))
                     }
                     if let message = document.conflictDescription {
-                        Label(message, systemImage: "doc.on.doc")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .modifier(EditorBanner(tint: CoveTheme.accent))
+                        HStack {
+                            Label(message, systemImage: "doc.on.doc")
+                            Spacer(minLength: 8)
+                            // A banner that names a file and offers no way to
+                            // reach it makes the reader go and find it in the
+                            // browser. It is a note like any other, so the
+                            // same push that opens one opens this.
+                            if let copyURL = document.preservedCopyURL {
+                                NavigationLink(value: NoteDestination(copyURL)) {
+                                    Text("Open Copy")
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .modifier(EditorBanner(tint: CoveTheme.accent))
                     }
                 }
                 .frame(maxWidth: 760)
@@ -163,6 +189,10 @@ struct EditorView: View {
             }
             await document.load()
             updateEditorProtection()
+            // After the load, not before: the text view only exists in the
+            // loaded state, and there is nothing to count lines in until the
+            // file has been read.
+            focusLine = requestedLine
         }
         .onDisappear {
             let document = document

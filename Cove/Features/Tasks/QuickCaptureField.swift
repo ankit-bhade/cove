@@ -17,9 +17,15 @@ struct QuickCaptureField: View {
     /// List items may stay undated; a task bound for the Tasks screen
     /// resolves to today, since `@due` is required outside a list.
     var listName: String?
+    /// Whether ⌘L focuses this field. Only the Tasks screen sets it: on iOS
+    /// every tab stays alive, so a list's own field carrying the same
+    /// shortcut would put two claims on one key and let the system decide
+    /// which one wins. One field owns it; the rest are a click away.
+    var bindsFocusShortcut = false
     let onCapture: (TaskDraft) async throws -> Void
 
     @State private var text = ""
+    @FocusState private var isFieldFocused: Bool
     @State private var pendingDraft: PendingDraft?
     @State private var isCapturing = false
     @State private var errorMessage: String?
@@ -55,6 +61,15 @@ struct QuickCaptureField: View {
                 .stroke(CoveTheme.hairline, lineWidth: 1)
         }
         .animation(.easeInOut(duration: 0.15), value: draft)
+        .background {
+            if bindsFocusShortcut {
+                Button("Capture Task") { isFieldFocused = true }
+                    .keyboardShortcut("l", modifiers: .command)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .sheet(item: $pendingDraft) { pending in
             TaskDraftSheet(
                 sentence: pending.sentence,
@@ -74,6 +89,7 @@ struct QuickCaptureField: View {
         HStack(spacing: 10) {
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
+                .focused($isFieldFocused)
                 .autocorrectionDisabled()
                 .onSubmit { startCapture(draft) }
                 .submitLabel(.done)
@@ -161,7 +177,7 @@ struct QuickCaptureField: View {
                 {
                     Label(warning, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(CoveTheme.alert)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 // The edit button takes the trailing edge, so a date and a

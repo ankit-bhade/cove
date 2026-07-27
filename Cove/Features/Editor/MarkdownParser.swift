@@ -59,6 +59,32 @@ enum MarkdownParser {
     private static let checkboxRegex = try! NSRegularExpression(
         pattern: #"^[ \t]*([-+*][ \t]+\[([ xX])\])(?=[ \t]|$)"#)
 
+    /// The UTF-16 range of one zero-based line, excluding its terminator, or
+    /// nil when the text has no such line.
+    ///
+    /// This is how a `NoteDestination`'s line becomes something a text view
+    /// can select and scroll to. It counts lines the way every diagnostic in
+    /// the app does — by `enumerateSubstrings(options: .byLines)` — so a
+    /// warning that says "line 42" and the caret that lands there cannot
+    /// disagree about which line that is.
+    static func range(ofLine lineNumber: Int, in text: String) -> NSRange? {
+        guard lineNumber >= 0 else { return nil }
+        let ns = text as NSString
+        var current = 0
+        var result: NSRange?
+        ns.enumerateSubstrings(
+            in: NSRange(location: 0, length: ns.length),
+            options: [.byLines, .substringNotRequired]
+        ) { _, lineRange, _, stop in
+            if current == lineNumber {
+                result = lineRange
+                stop.pointee = true
+            }
+            current += 1
+        }
+        return result
+    }
+
     static func parse(_ text: String) -> Result {
         let ns = text as NSString
         var result = Result()

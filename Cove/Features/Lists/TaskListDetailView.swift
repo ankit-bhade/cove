@@ -155,7 +155,11 @@ struct TaskListDetailView: View {
                 accessibilityHint: "Enter an item, optionally with a date, time, or repeat rule",
                 listName: listName
             ) { draft in
-                try await vaultManager.captureTask(draft, into: listName)
+                try await actions.capture(
+                    in: vaultManager, undoManager: undoManager
+                ) {
+                    try await vaultManager.captureTask(draft, into: listName)
+                }
             }
         }
     }

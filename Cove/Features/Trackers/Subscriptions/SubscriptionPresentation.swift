@@ -97,8 +97,14 @@ enum SubscriptionPresentation {
     }
 
     /// "3 subscriptions · $94.20/mo" — the caption under the tracker's name on
-    /// the Trackers hub. Only the leading currency is named, since a hub row
-    /// is one line and a vault mixing currencies has no single figure.
+    /// the Trackers hub.
+    ///
+    /// The amount appears only when every charge is in one currency. It used
+    /// to show the leading currency's monthly total beside a count of *all*
+    /// the subscriptions, which reads as one figure covering the other — and
+    /// nothing is ever converted, so it never was. A hub row is one line and
+    /// has no room for a total per currency, so a mixed vault gets the count
+    /// alone and the tracker's own screen reports the currencies separately.
     static func hubCaption(
         for subscriptions: [Subscription],
         locale: Locale = .autoupdatingCurrent
@@ -107,11 +113,12 @@ enum SubscriptionPresentation {
         guard !active.isEmpty else { return "Nothing tracked yet" }
         let count = active.count
         let noun = count == 1 ? "subscription" : "subscriptions"
-        guard let leading = SubscriptionMath.totals(for: active).first else {
+        let totals = SubscriptionMath.totals(for: active)
+        guard totals.count == 1, let only = totals.first else {
             return "\(count) \(noun)"
         }
         let monthly = money(
-            leading.monthly, currencyCode: leading.currencyCode, locale: locale)
+            only.monthly, currencyCode: only.currencyCode, locale: locale)
         return "\(count) \(noun) · \(monthly)/mo"
     }
 }

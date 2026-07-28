@@ -505,6 +505,21 @@ final class TaskParserTests: XCTestCase {
         XCTAssertEqual(removing(text, line: 1), "Intro\nOutro\n")
     }
 
+    /// The removal reports the line it actually took, completion and bullet
+    /// included — neither is part of the semantic key, so the line found is
+    /// not necessarily the one the index last saw, and Undo restores bytes.
+    func testRemovingTaskReportsTheLineItTook() throws {
+        let text = "Intro\n* [x] Buy milk @due(2026-07-20)\nOutro\n"
+        let removal = try TaskParser.removingTaskWithLineResult(
+            identity(
+                "Buy milk", due: "2026-07-20", time: nil,
+                recurrence: nil, list: nil, line: 1),
+            in: text
+        ).get()
+        XCTAssertEqual(removal.removedLine, "* [x] Buy milk @due(2026-07-20)\n")
+        XCTAssertEqual(removal.text, "Intro\nOutro\n")
+    }
+
     func testRemovingTaskKeepsSurroundingMarkdownVerbatim() {
         let text = """
             # Tasks

@@ -29,13 +29,19 @@ final class TaskActions {
     /// Toggling a recurring task rolls its due date forward instead of
     /// checking it off, which is `VaultManager`'s business; undo puts the line
     /// back in the completion state the index last saw.
+    ///
+    /// A tap on a row whose line is already in that state writes nothing, and
+    /// registers nothing: the state it would put back is another device's
+    /// change rather than this tap's.
     func toggle(
         _ task: TaskItem,
         in vaultManager: VaultManager,
         undoManager: UndoManager?
     ) {
         perform(task) {
-            let record = try await vaultManager.toggleTask(task)
+            guard let record = try await vaultManager.toggleTask(task) else {
+                return
+            }
             undoManager?.registerUndo(withTarget: vaultManager) { [weak self] manager in
                 Task {
                     do {

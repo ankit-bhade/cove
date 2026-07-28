@@ -73,6 +73,18 @@ tightened app-wide, overview panels are drawn only where summing more than one
 thing means something, tracked capitals were pulled back to headings alone,
 and the quick-capture field got a token of its own so that at night it lifts
 off the panel rather than sinking invisibly into it.
+Most recently a durability review found four places where a *second device*
+was quietly overruled. Completion and status are deliberately outside the
+semantic keys that re-find a line, which is what makes setting them
+idempotent — and it is also what let a stale write through: a tap on a
+checkbox another device had already ticked wrote nothing and still registered
+an Undo, a subscription sheet saved the status it opened with over a
+cancellation made meanwhile, and both delete Undos restored the index's copy
+of a line rather than the bytes the coordinated write took out. Each is now
+either refused or captured inside the coordination. The fourth was the
+opposite failure: an unreadable recovery draft read as *no draft*, so the
+clean-load path deleted the only copy of some unsaved text — it is quarantined
+now.
 See `CHANGELOG.md`
 for what has shipped and "The visual system" below for what the direction
 commits to.
@@ -518,6 +530,18 @@ changed file, the writer preserves the disk text in a deterministic sibling
 `cove-conflict` note and reports it. Local edits win the live buffer; the disk
 version survives on disk.
 
+**A recovery draft that cannot be decoded is quarantined, never cleared.** A
+damaged record, or one written by a future version, throws out of
+`draftStore.load` — and the load then treats the note as having *no* draft,
+which is the branch that clears the slot. So the one file holding text that
+reached no other storage was deleted by the code that could not read it. It is
+moved to `<hash>.unreadable` instead, which the editor's message names and
+which `summaries()` skips, since a record that cannot be decoded cannot be
+listed either. The slot holds one file per note and a later quarantine
+replaces an earlier one: the alternative is unbounded growth in a container
+with no UI. This is the widget snapshot's "preserve the unreadable bytes once"
+rule applied to data that is not derived and therefore cannot be rebuilt.
+
 **The save indicator derives from state rather than tracking it.**
 `saveStatus` compares live text against what reached disk, so the toolbar
 can't disagree with reality. It renders only while pending or saving — a
@@ -637,10 +661,34 @@ refreshes, so the list corrects itself rather than rewriting the wrong task.
 Completing a recurring task advances its due date in place and leaves the
 checkbox open, because the line is the task's single home.
 
+**What the semantic key leaves out is what a stale write gets through.**
+Completion is excluded on purpose — a semantic "set this to done" has to find
+a line another device already ticked, or a replay fails against content that
+is already correct. The cost is that such a tap is a *no-op* that still looked
+like a successful toggle: it registered an Undo whose only effect would be to
+reverse the other device's change. `setTaskCompleted` therefore reports
+`NoteMutationResult.changed` and `toggleTask` returns `nil` when nothing was
+written, so `TaskActions` registers nothing. The same exclusion is why a
+delete has to capture its own line (below).
+
 **Deleting one task is unconfirmed but undoable.** The swipe is already
 deliberate; the bulk Clear All is what warrants a dialog. Undo reinserts the
 line near stable neighboring task identities rather than restoring a whole old
 document, so unrelated later edits survive.
+
+**The line Undo puts back is captured inside the coordination, not read
+before it.** A caller-side read followed by a write is exactly what
+`VaultRepository` exists to prevent, and a delete record built from the index
+is that read at its stalest. Completion, the bullet, and interior spacing are
+all outside the semantic key, so a line edited elsewhere is still *found* —
+and restoring the index's copy would silently undo that edit too.
+`removingTaskWithLineResult` and `removingSubscriptionWithRecordResult` return
+the removed line alongside the new text, and `CoordinatedTransformOutput`
+carries it back out of the `@Sendable` transform. Last value wins, because the
+coordinated write re-runs its transform when the bytes change under it and the
+last run is the one that was committed. The bulk paths keep the index's copy:
+they preflight completion against the coordinated bytes before removing
+anything.
 
 **Bulk clear is a grouped semantic operation.** It targets only completed
 identities present in the current index, preflights every affected file before
@@ -715,6 +763,18 @@ produces no task diagnostic; a task line has no `@cost(`, so the subscription
 candidate detector ignores it. Both directions are covered in
 `VaultIndexSubscriptionTests`, because the failure mode is silent — a note of
 subscriptions quietly generating a wall of task warnings, or the reverse.
+
+**Status is outside the identity, so the edit sheet checks it by hand.** It is
+excluded for the reason completion is — "set this to paused" has to find a
+line already paused — and that leaves it the one field a whole-line rewrite
+can silently revert, since every other field failing to match aborts the write
+on its own. A sheet opened before another device cancelled a charge would
+reactivate it on save. `updateSubscription` therefore reads the matched line's
+status inside the coordinated transform and refuses
+(`MutationError.statusChangedOnDisk`) unless it is the status the sheet opened
+from *or* the one being written — the second case being the idempotent replay
+the exclusion exists for, which is what keeps `setSubscriptionStatus` working
+against a line another caller already moved.
 
 **`@since` is the anchor, and nothing rolls forward.** The obvious design
 stores the *next* charge and advances it as time passes, which is what tasks
@@ -1660,7 +1720,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **557 tests** (macOS host), plus clean macOS and
+Current verified suite: **567 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1772,6 +1832,11 @@ Rough edges and surprises, not restatements of the design above.
   draft for a note that is deleted before it is reopened sits in Application
   Support indefinitely. Settings → Cove Recovery is the only place it is
   visible.
+* A quarantined draft — one whose bytes could not be decoded — is kept but is
+  reachable only by hand. It is named once, in the editor's message the time
+  it is set aside, and after that nothing in the app lists it, counts it, or
+  offers to export it; Settings → Cove Recovery shows readable drafts only. It
+  is also never swept, since the sweep works on drafts it can read.
 * The sweep runs once per vault open, so a session left running for weeks
   keeps accumulating; reopening clears the backlog. Entries predating the
   sweep carry no timestamp and go on the first launch that includes it,
@@ -1846,6 +1911,10 @@ Rough edges and surprises, not restatements of the design above.
 * Recurrence-aware completion lives only in the Tasks tab. Tapping the same
   line's checkbox in the editor flips it to `[x]` like any checkbox, and the
   Tasks tab then shows it completed rather than rolled forward.
+* Tapping a checkbox whose line another device already put in that state does
+  nothing but correct the row — no write, and no Undo entry. That is right,
+  but it is also silent: the tap looks like it did something because the row
+  changes, and the reason it changed is the rescan rather than the tap.
 * The minute tick re-evaluates the whole list body. Cheap at typical counts; a
   very large list would want it narrowed to rows that can actually change.
 * Neither section remembers how it was left. Folding Upcoming away lasts as
@@ -1953,6 +2022,11 @@ Rough edges and surprises, not restatements of the design above.
   hand-edited line with `@since` before `@every` is reported as malformed
   rather than understood. Unlike the widened bullet, spacing, and case rules,
   order was not worth a second regex.
+* A subscription paused or cancelled elsewhere while its sheet was open cannot
+  be saved: the edit is refused and the sheet's other changes have to be
+  retyped after reopening it. Refusing is the point — the alternative reverted
+  the status silently — but nothing merges the two edits, and the sheet does
+  not reload itself.
 * Two lines identical in name, cost, cycle, start date, and category cannot be
   edited or deleted — the mutation refuses rather than guess, exactly as with
   duplicate tasks. Settings lists them; making one distinct is the only way

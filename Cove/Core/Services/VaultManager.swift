@@ -30,6 +30,25 @@ struct TaskToggleRecord: Sendable {
     let completedOnDateString: String
 }
 
+/// A value produced *inside* a coordinated transform and read after it.
+///
+/// Undo restores bytes, and the only bytes worth restoring are the ones the
+/// coordinated read actually saw — a caller-side read before the write is
+/// exactly the stale read `VaultRepository` exists to prevent. The transform
+/// is `@Sendable` and may run more than once, since the coordinated write
+/// retries when the file changes under it, so the last recorded value is the
+/// one belonging to the text that was committed.
+final class CoordinatedTransformOutput<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value?
+
+    var value: Value? { lock.withLock { storage } }
+
+    func record(_ value: Value) {
+        lock.withLock { storage = value }
+    }
+}
+
 typealias VaultLoadOperation =
     @Sendable (
         _ url: URL,
@@ -726,11 +745,32 @@ final class VaultManager {
     ) async throws {
         let line = try draft.validatedMarkdownLine()
         let identity = subscription.identity
+        let expectedStatus = subscription.status
+        let newStatus = draft.status
         let staysPut =
             TaskListDocument.canonicalName(category ?? "")
             == TaskListDocument.canonicalName(subscription.category ?? "")
 
         try await mutateSubscriptionNote { text in
+            // Every other field is inside the semantic key, so a change made
+            // elsewhere makes the match fail rather than being overwritten.
+            // Status is deliberately outside it — that is what lets "set this
+            // to paused" find a line already paused — which leaves it the one
+            // field a whole-line rewrite could silently revert. A sheet opened
+            // before another device cancelled a charge must not reactivate it
+            // on save.
+            //
+            // Writing the status the file already holds is not a revert, so it
+            // is allowed: that is the idempotent replay the exclusion exists
+            // for.
+            let currentStatus = try SubscriptionParser.matching(
+                identity, in: text
+            ).status
+            guard currentStatus == expectedStatus || currentStatus == newStatus
+            else {
+                throw SubscriptionParser.MutationError.statusChangedOnDisk(
+                    currentStatus)
+            }
             if staysPut {
                 return try SubscriptionParser.replacingSubscriptionResult(
                     identity, with: line, in: text)
@@ -767,14 +807,24 @@ final class VaultManager {
     ) async throws -> DeletedSubscriptionRecord {
         let url = Self.subscriptionNoteURL(in: try requireOpenVaultURL())
         let identity = subscription.identity
-        // Read once to capture the exact source line, then re-find it inside
-        // the coordinated write; the transform refuses if it changed meanwhile.
-        let preflight = try await repository.readNote(at: url)
-        let parsed = try SubscriptionParser.matching(identity, in: preflight)
+        // What Undo puts back is captured inside the coordinated write rather
+        // than by a read before it. Status, the bullet, and spacing are all
+        // outside the semantic key, so a line changed between the two reads is
+        // still removed — and a preflight copy of it would restore the version
+        // that no longer existed.
+        let removed = CoordinatedTransformOutput<
+            SubscriptionParser.ParsedSubscription
+        >()
         _ = try await repository.updateNote(at: url) { text in
-            try SubscriptionParser.removingSubscriptionResult(identity, in: text)
+            let removal = try SubscriptionParser
+                .removingSubscriptionWithRecordResult(identity, in: text)
+            removed.record(removal.removed)
+            return removal.text
         }
         await refreshIndex(changedURLs: [url])
+        guard let parsed = removed.value else {
+            throw SubscriptionParser.MutationError.subscriptionMissing
+        }
         return DeletedSubscriptionRecord(
             identity: identity,
             originalLine: parsed.sourceLine,
@@ -887,14 +937,21 @@ final class VaultManager {
     /// or advancing a recurring task's due date to its next occurrence), and
     /// rescans so the index reflects the change. The tree is refreshed even
     /// when the toggle fails, so a stale list corrects itself.
+    ///
+    /// Returns `nil` when the line was already in the state the tap asked for
+    /// and nothing was written. Completion is deliberately outside the
+    /// semantic key, so a checkbox another device already ticked is *found*
+    /// rather than missed — which means the tap is a no-op, and an Undo
+    /// registered for it would reverse a change this device never made.
     @discardableResult
-    func toggleTask(_ task: TaskItem) async throws -> TaskToggleRecord {
+    func toggleTask(_ task: TaskItem) async throws -> TaskToggleRecord? {
         let completedOn = QuickTaskParser.ymdString(from: Date())
         let desiredCompletion = !task.isCompleted
-        try await setTaskCompleted(
+        let changed = try await setTaskCompleted(
             task,
             to: desiredCompletion,
             completedOnDateString: completedOn)
+        guard changed else { return nil }
         return TaskToggleRecord(
             originalIdentity: task.identity,
             previousCompletion: task.isCompleted,
@@ -906,33 +963,37 @@ final class VaultManager {
     /// Idempotent semantic completion used by the app, Undo, and widget
     /// retries. The transform re-parses the newest coordinated file text.
     func setTaskCompleted(_ task: TaskItem, to desiredCompletion: Bool) async throws {
-        try await setTaskCompleted(
+        _ = try await setTaskCompleted(
             task,
             to: desiredCompletion,
             completedOnDateString: QuickTaskParser.ymdString(from: Date()))
     }
 
+    /// Whether the coordinated write actually changed the file.
+    @discardableResult
     private func setTaskCompleted(
         _ task: TaskItem,
         to desiredCompletion: Bool,
         completedOnDateString: String
-    ) async throws {
+    ) async throws -> Bool {
         let identity = task.identity
         var toggleError: Error?
+        var changed = false
         do {
-            _ = try await repository.updateNote(at: task.fileURL) { text in
+            changed = try await repository.updateNote(at: task.fileURL) { text in
                 try TaskParser.settingTaskCompletedResult(
                     identity,
                     to: desiredCompletion,
                     todayDateString: completedOnDateString,
                     in: text
                 ).get()
-            }
+            }.changed
         } catch {
             toggleError = error
         }
         await refreshIndex(changedURLs: [task.fileURL])
         if let toggleError { throw toggleError }
+        return changed
     }
 
     /// Semantic inverse of one completed toggle. Recurring completion moved
@@ -973,20 +1034,30 @@ final class VaultManager {
         let siblings = index.allTasks
             .filter { $0.fileURL.standardizedFileURL == task.fileURL.standardizedFileURL }
             .sorted { $0.lineNumber < $1.lineNumber }
-        let record = Self.deletedTaskRecord(
-            for: task,
-            among: siblings)
+        // The line Undo puts back is the one the coordinated write took out,
+        // not the one the index last saw: completion, the bullet, and interior
+        // spacing are all outside the semantic key, so a line edited elsewhere
+        // is still found — and restoring the index's copy of it would quietly
+        // undo that edit too.
+        let removedLine = CoordinatedTransformOutput<String>()
         var deleteError: Error?
         do {
             _ = try await repository.updateNote(at: task.fileURL) { text in
-                try TaskParser.removingTaskResult(identity, in: text).get()
+                let removal = try TaskParser.removingTaskWithLineResult(
+                    identity, in: text
+                ).get()
+                removedLine.record(removal.removedLine)
+                return removal.text
             }
         } catch {
             deleteError = error
         }
         await refreshIndex(changedURLs: [task.fileURL])
         if let deleteError { throw deleteError }
-        return record
+        return Self.deletedTaskRecord(
+            for: task,
+            among: siblings,
+            originalLine: removedLine.value)
     }
 
     func restoreDeletedTask(_ record: DeletedTaskRecord) async throws {
@@ -1067,9 +1138,14 @@ final class VaultManager {
             with: line)
     }
 
+    /// `originalLine` is the text the coordinated removal actually took out,
+    /// when the caller had one. The index's own copy is the fallback for the
+    /// bulk paths, which preflight completion against the coordinated bytes
+    /// before they remove anything.
     nonisolated private static func deletedTaskRecord(
         for task: TaskItem,
-        among siblings: [TaskItem]
+        among siblings: [TaskItem],
+        originalLine: String? = nil
     ) -> DeletedTaskRecord {
         let siblingIndex = siblings.firstIndex {
             $0.identity == task.identity
@@ -1082,7 +1158,8 @@ final class VaultManager {
         }
         return DeletedTaskRecord(
             identity: task.identity,
-            originalLine: task.sourceLine ?? markdownLine(for: task) + "\n",
+            originalLine: originalLine
+                ?? task.sourceLine ?? markdownLine(for: task) + "\n",
             previousIdentity: previous,
             nextIdentity: next,
             approximateLineNumber: task.lineNumber,

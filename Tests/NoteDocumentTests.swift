@@ -149,6 +149,48 @@ final class NoteDocumentTests: XCTestCase {
         XCTAssertFalse(document.isDirty)
     }
 
+    /// A draft is the only copy of whatever was unsaved, so bytes that cannot
+    /// be decoded are set aside rather than cleared by the load that failed to
+    /// read them — and the note itself still opens.
+    @MainActor func testUnreadableDraftIsQuarantinedRatherThanDeleted() async throws {
+        try fileManager.createDirectory(
+            at: draftStore.directory, withIntermediateDirectories: true)
+        let draftURL = draftStore.draftURL(for: noteURL)
+        try Data("{ not a draft".utf8).write(to: draftURL)
+
+        let document = await loadedDocument()
+
+        XCTAssertEqual(document.loadState, .loaded)
+        XCTAssertEqual(document.text, "original")
+        XCTAssertFalse(fileManager.fileExists(atPath: draftURL.path))
+        let quarantine = draftURL
+            .deletingPathExtension()
+            .appendingPathExtension("unreadable")
+        XCTAssertEqual(
+            try String(contentsOf: quarantine, encoding: .utf8), "{ not a draft")
+        XCTAssertEqual(
+            document.saveErrorDescription?.contains(quarantine.lastPathComponent),
+            true)
+        // A quarantined record is not a draft, so it is not listed or counted.
+        XCTAssertTrue(try draftStore.summaries().isEmpty)
+    }
+
+    /// One slot per note: a second unreadable record replaces the first rather
+    /// than growing a container the user has no view of.
+    func testQuarantineKeepsTheNewestUnreadableRecord() throws {
+        try fileManager.createDirectory(
+            at: draftStore.directory, withIntermediateDirectories: true)
+        let draftURL = draftStore.draftURL(for: noteURL)
+
+        try Data("first".utf8).write(to: draftURL)
+        let quarantine = try XCTUnwrap(draftStore.quarantineUnreadable(for: noteURL))
+        try Data("second".utf8).write(to: draftURL)
+        XCTAssertEqual(try draftStore.quarantineUnreadable(for: noteURL), quarantine)
+
+        XCTAssertEqual(try String(contentsOf: quarantine, encoding: .utf8), "second")
+        XCTAssertNil(try draftStore.quarantineUnreadable(for: noteURL))
+    }
+
     func testRecoveryDraftEnumerationIsNewestFirstAndCounted() throws {
         let older = EditorRecoveryDraft(
             originalURL: noteURL,

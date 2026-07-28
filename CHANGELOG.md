@@ -155,6 +155,28 @@ meaning something and this history gets cut into releases.
 
 ### Fixed
 
+- **A recovery draft Cove cannot read is kept, not deleted.** Damaged bytes —
+  or a record written by a future version — read as *no draft at all*, and the
+  clean-load path then cleared the slot, throwing away the only copy of
+  whatever was unsaved. The bytes are now set aside beside the drafts as an
+  `.unreadable` file and the editor's message names it. The note itself still
+  opens, as it did before.
+- **Editing a subscription no longer reverts a status set elsewhere.** Every
+  other field is part of what re-finds the line, so a change made in another
+  editor makes the edit fail rather than being overwritten; status is
+  deliberately outside that, which left a sheet opened before another device
+  cancelled a charge quietly reactivating it on save. The save is now refused
+  with a message naming the new status. Setting the status the file already
+  holds is still allowed — that is the replay the exclusion exists for.
+- **Tapping a checkbox that another device already ticked registers no Undo.**
+  The line was found, matched the state being asked for, and nothing was
+  written — but an Undo entry was recorded anyway, so pressing Undo reversed a
+  change this device never made.
+- **Undo after deleting a task or a subscription restores the line that was
+  actually removed.** The line to put back was read from the index before the
+  write rather than captured inside it, so a checkbox ticked or a charge paused
+  in between came back in its older state.
+
 - The storage attention banner no longer covers the toolbar. It was laid out
   over each screen's navigation bar and, being a full-width button, swallowed
   the taps — so while any warning was showing, the + and refresh buttons could

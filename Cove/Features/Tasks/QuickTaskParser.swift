@@ -113,20 +113,67 @@ struct TaskDraft: Equatable, Sendable {
     func validatedMarkdownLine(
         timeZone: TimeZone = .autoupdatingCurrent
     ) throws -> String {
+        "- [ ] " + (try validatedLineBody(timeZone: timeZone))
+    }
+
+    /// Everything a task line carries after its `- [ ] ` marker: the title and
+    /// the schedule tags, in the fixed order.
+    ///
+    /// It is split out from the whole line because an *edit* rewrites only
+    /// this part. The marker a line already has carries its indentation, its
+    /// bullet character, and its completion state — none of which an edit
+    /// asked to change, and all of which a canonical whole-line rewrite would
+    /// silently normalize away.
+    func validatedLineBody(
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) throws -> String {
         let issues = validationIssues(timeZone: timeZone)
         guard issues.isEmpty else { throw TaskDraftValidationError(issues: issues) }
-        guard let dueDateString else { return "- [ ] \(sanitizedTitle)" }
-        var line = "- [ ] \(sanitizedTitle) @due(\(dueDateString)"
-        if let dueTimeString { line += " \(dueTimeString)" }
-        line += ")"
-        if let recurrence { line += " @repeat(\(recurrence.tagText))" }
-        return line
+        guard let dueDateString else { return sanitizedTitle }
+        var body = "\(sanitizedTitle) @due(\(dueDateString)"
+        if let dueTimeString { body += " \(dueTimeString)" }
+        body += ")"
+        if let recurrence { body += " @repeat(\(recurrence.tagText))" }
+        return body
     }
 
     /// Compatibility for storage code that predates throwing validation.
     /// UI and storage boundaries should call `validatedMarkdownLine()`.
     var markdownLine: String {
         (try? validatedMarkdownLine()) ?? "- [ ] \(sanitizedTitle)"
+    }
+
+    /// Spelled out because the convenience initializer below would otherwise
+    /// suppress the memberwise one.
+    init(
+        title: String,
+        dueDateString: String? = nil,
+        dueTimeString: String? = nil,
+        recurrence: RecurrenceRule? = nil
+    ) {
+        self.title = title
+        self.dueDateString = dueDateString
+        self.dueTimeString = dueTimeString
+        self.recurrence = recurrence
+    }
+
+    /// An existing task as an editable draft. The recurrence anchor is
+    /// deliberately absent: it is written by Cove and never typed, so it is
+    /// not one of the fields an edit sheet offers.
+    init(_ task: TaskItem) {
+        self.init(
+            title: task.text,
+            dueDateString: task.dueDateString,
+            dueTimeString: task.dueTimeString,
+            recurrence: task.recurrence)
+    }
+
+    /// Whether this draft would leave the task's schedule exactly as it is —
+    /// which is what decides whether a recurrence anchor survives the edit.
+    func hasSameSchedule(as task: TaskItem) -> Bool {
+        dueDateString == task.dueDateString
+            && dueTimeString == task.dueTimeString
+            && recurrence == task.recurrence
     }
 }
 

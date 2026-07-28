@@ -65,8 +65,16 @@ Open tasks sort by due date and group into Overdue, Today, Tomorrow, and
 Upcoming, with dates written the way you'd say them ("Today, 3:00 PM",
 "Tomorrow", "Friday", "Jul 24") and overdue ones in red. Upcoming folds away
 with the chevron on its header when it gets long; the completed section below
-starts folded. A closed header still shows how many are behind it. Tapping a
-task opens its note at that task's own line.
+starts folded. A closed header still shows how many are behind it.
+
+Tapping a task opens its details — title, due date, time, and repeat rule —
+and saving rewrites just that line, keeping its indentation, bullet, checkbox,
+and line ending exactly as the file had them. A list item can be edited to
+have no date at all; a task outside a list can't, since `@due` is what makes
+it one. Changing the date of a recurring task re-anchors its cadence to the
+new date; changing only its title leaves the cadence alone. **Open in Note**
+— in the sheet, in the row's context menu, or on a leading swipe — opens the
+Markdown at that task's own line.
 
 Checking a task off rewrites that line in its original Markdown file.
 Opening the completed section reveals a Clear All Completed row that, after
@@ -82,6 +90,11 @@ every respect, Cove refuses to act on either rather than guess which one you
 meant, and points at them from Settings. A checkbox another device already
 ticked simply corrects itself: nothing is written, and nothing lands in Undo
 that would reverse that other change.
+
+Deleting a task or clearing the completed ones raises a short bar naming what
+happened with an Undo beside it, which stays for a few seconds. It is the
+same reversal ⌘Z performs on a Mac — the bar exists because a phone's only
+route to it is a shake gesture nothing on screen advertises.
 
 ### Quick capture
 
@@ -204,9 +217,14 @@ the same flow that recovers a stale selection — switches between system,
 light, and dark appearance, and reports whether notification permission is
 granted with a shortcut to enable it. A Vault Safety row summarizes the
 vault's state as Ready, Recovery, or Attention; when something needs review,
-a banner on every screen says so and leads here. Folder-access and bookmark
-internals sit behind a Diagnostics disclosure, which opens itself when the
-bookmark is the thing that's wrong.
+it is listed right there, a banner on every screen says so, and each warning
+opens the note at the line it names.
+
+Everything else — Cove Recovery, the Today widget's status, folder access,
+and bookmark state — sits behind one **Advanced** group. It opens itself when
+something in it needs attention: an unsaved bookmark (the whole explanation
+for a vault that keeps asking to be reselected), a recovered draft waiting for
+review, or a widget change that could not be applied.
 
 ### The look of it
 
@@ -225,8 +243,9 @@ sits in the same column a folder's tile does and the text lines up wherever
 you are. Setup, loading, empty, and search states all come from that one
 system.
 
-On Mac, Tasks, Notes, Lists, Trackers, and Settings live in a native branded
-sidebar; iPhone and iPad keep the familiar tab bar. Tasks leads both and is
+On Mac and on a regular-width iPad, Tasks, Notes, Lists, Trackers, and
+Settings live in a native branded sidebar; iPhone keeps the familiar tab bar
+in every orientation. Tasks leads both and is
 where Cove opens everywhere — including the Today widget's deep link, so both
 ways in land on the same screen. Wide screens use comfortable readable
 content widths, the editor keeps long lines under control, and compact
@@ -238,7 +257,7 @@ controls.
 - **⌘1**–**⌘5** — switch to Tasks, Notes, Lists, Trackers, Settings
 - **⌘L** — focus the quick-capture field on the Tasks screen
 - **⌘N** — new note, from the Notes screen
-- **⌘R** — refresh the current screen
+- **⌘R** — refresh the current screen (on iOS, pull down on the list instead)
 - **⌘⇧Space** — toggle the checkbox at the cursor, in the editor
 
 ## Supported platforms

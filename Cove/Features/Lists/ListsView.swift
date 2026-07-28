@@ -12,17 +12,22 @@ struct ListsView: View {
     @State private var newListName = ""
     @State private var showsNewListPrompt = false
     @State private var pendingDeletion: String?
+    /// Explicit and type-erased: a list name pushes a detail view and a task
+    /// row inside that view pushes a note, and the detail view can only ask
+    /// for the second because the stack lives here.
+    @State private var path = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             content
                 .navigationTitle("Lists")
                 .navigationDestination(for: String.self) { name in
-                    TaskListDetailView(listName: name)
+                    TaskListDetailView(listName: name) { path.append($0) }
                 }
                 .navigationDestination(for: NoteDestination.self) { destination in
                     EditorView(destination)
                 }
+                .coveRefreshable { await vaultManager.refresh() }
                 .toolbar {
                     ToolbarItem {
                         Button {
@@ -30,11 +35,6 @@ struct ListsView: View {
                             showsNewListPrompt = true
                         } label: {
                             Label("New List", systemImage: "plus")
-                        }
-                    }
-                    ToolbarItem {
-                        CoveRefreshButton {
-                            await vaultManager.refresh()
                         }
                     }
                 }

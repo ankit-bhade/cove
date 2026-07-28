@@ -73,7 +73,19 @@ tightened app-wide, overview panels are drawn only where summing more than one
 thing means something, tracked capitals were pulled back to headings alone,
 and the quick-capture field got a token of its own so that at night it lifts
 off the panel rather than sinking invisibly into it.
-Most recently a durability review found four places where a *second device*
+Most recently a UI review found the app coherent and asked for five things,
+all of which were about *reach* rather than about the look: a task could be
+rescheduled only by editing Markdown by hand, an Undo that existed was
+invisible on a phone, Settings answered four questions beside four nobody
+asked, a refresh button sat beside every title for an action that is
+automatic, and an iPad ran a phone's tab bar. So a task row now opens its own
+details with the note one item away, a destructive action raises a bar that
+says it can be taken back, Settings keeps four rows and puts the rest behind
+**Advanced**, iOS refreshes by pulling instead of by a button, and a
+regular-width iPad takes the Mac's sidebar. The quick-capture placeholder,
+which truncated to three useless words at accessibility sizes, became "Add a
+task…" with its example moved into wrapping text under the field.
+Before that, a durability review found four places where a *second device*
 was quietly overruled. Completion and status are deliberately outside the
 semantic keys that re-find a line, which is what makes setting them
 idempotent — and it is also what let a stale write through: a tap on a
@@ -298,12 +310,19 @@ items live in the recovery area for a week by design, so any vault where
 something was recently deleted would sit permanently in a non-ready state, and
 a signal that is always on is not a signal.
 
-Folder access and bookmark state sit behind a **Diagnostics** disclosure. They
-are how Cove reaches the vault rather than anything a reader chose, so when
-healthy they were two rows of implementation detail above the warnings that
-matter — but the group opens itself when the bookmark is *not* persisted,
-since that is the whole explanation for a vault that keeps asking to be
-reselected.
+**Everything a healthy vault never has to be told sits behind one
+`Advanced` disclosure**: Cove Recovery, the widget's status, folder access,
+and bookmark state. Settings is read for four things — which folder, which
+appearance, whether reminders are on, and whether anything is wrong — and it
+had grown to answer those beside four more that a reader neither chose nor can
+act on while they are healthy. They are behind a disclosure rather than gone
+because each is the whole explanation for something that *does* go wrong, so
+the group opens itself in exactly those cases: a bookmark that is not
+persisted (why a vault keeps asking to be reselected), a recovered draft
+waiting for a decision, or a widget change that could not be applied. A
+deleted item deliberately cannot open it, for the reason it cannot raise
+`CoveStorageHealth.attention` — the recovery area holds them for a week by
+design.
 
 **A capped diagnostic list says what it is hiding.** The cap keeps a vault
 with a thousand bad lines from building a thousand rows into a `Form`; what it
@@ -671,6 +690,41 @@ reverse the other device's change. `setTaskCompleted` therefore reports
 written, so `TaskActions` registers nothing. The same exclusion is why a
 delete has to capture its own line (below).
 
+**An edit rewrites the line's body and nothing else.**
+`TaskParser.replacingTaskResult` re-finds the line semantically like every
+other mutation, then replaces only the span between the `- [ ] ` marker and
+the line's trailing whitespace. The indentation, the bullet character, the
+checkbox, and the terminator stay as the file had them, because an edit
+changed the *task* and not how the file writes it down — a canonical
+whole-line rewrite would flatten a nested Obsidian checkbox and tick a box
+another device had just ticked, neither of which anyone asked for. `TaskDraft`
+gained `validatedLineBody()` for it, and `validatedMarkdownLine()` is now that
+plus the marker, so the capture path and the edit path cannot disagree about
+the tag order.
+
+**The recurrence anchor survives an edit only when the schedule does.** It
+records the occurrence a recurring task was last advanced from, and a new due
+date *is* a new anchor — carrying the old one forward would drag the cadence
+back to a date the user has just moved away from. `keepingRecurrenceAnchor` is
+therefore decided by `TaskDraft.hasSameSchedule(as:)` and passed in, since the
+draft has no field for a tag Cove writes and never reads from a person.
+
+**Undo restores a body captured inside the coordination**, exactly as the
+delete records its line: `TaskEditRecord` carries the *edited* line's identity
+— read back out of the parser, the round trip every generated line makes — and
+the previous body, which includes whatever anchor the line had.
+`VaultManager.identity(forLine:in:list:isSectionedDocument:)` is the one
+"parse back what we just wrote" helper, generalized from the capture-only
+version because an edit can touch a task in any note, where a `##` heading
+means nothing and the strict rules apply.
+
+**An unlisted task cannot be edited into an undated one.** `@due` is what
+makes a line a task outside a list section of the capture note, so dropping it
+would not reschedule the task, it would delete it from the index. The sheet
+does not offer the toggle and `updateTask` refuses anyway
+(`TaskUpdateError.dueDateRequired`), because the sheet is a caller and the
+rule is the file format's.
+
 **Deleting one task is unconfirmed but undoable.** The swipe is already
 deliberate; the bulk Clear All is what warrants a dialog. Undo reinserts the
 line near stable neighboring task identities rather than restoring a whole old
@@ -725,6 +779,41 @@ groups and "Completed" — and not in what a tap does. `clearCompleted` takes
 the sweep as a closure, because *which* tasks a screen clears is the one thing
 the two genuinely disagree about, and registers the returned deletion records
 as one Undo group.
+
+**A row's tap opens the task, not the file it lives in.** Pushing the editor
+with the caret on the line is the right escape hatch and it was the wrong
+default: it made rescheduling something the one action on these screens that
+meant hand-editing a `@due(...)` tag while everything else was a gesture.
+`TaskEditSheet` is what a tap opens; **Open in Note** is in the sheet, in the
+row's context menu, and on a leading swipe. The two sheets share
+`TaskScheduleFields` and `TaskNotificationNote`, so a repeat option offered on
+one is offered on the other — the same reason `TaskRow` and `TaskActions` are
+shared by the two screens.
+
+**Which means the task screens need explicit navigation paths.** A sheet and a
+swipe action cannot carry a `NavigationLink`, so `TaskActions` records the
+push as `pendingNoteDestination` and the screen owning the stack consumes it:
+`TasksView` keeps a `[NoteDestination]`, and `ListsView` keeps a type-erased
+`NavigationPath` it hands into `TaskListDetailView`, which sits one level
+inside it and cannot reach the stack any other way. `coveTaskScreen(_:openNote:)`
+is the one modifier carrying the sheet, that hand-off, and the Undo bar, for
+the same reason `TaskRows` is one view.
+
+**The Undo bar carries the reversal itself rather than calling
+`UndoManager.undo()`.** Outside a `DocumentGroup`, SwiftUI's `\.undoManager`
+is **nil on iOS** — which was found by building the bar against it and
+watching the button do nothing — so a bar that only drove the manager would
+have been dead on the one platform it exists for. It prefers the manager when
+there is one, so a Mac keeps a single stack and the Edit menu stays in step.
+
+**And the bar goes at the top, which is not where a toast goes.** iOS 26's tab
+bar floats *over* scrolling content and contributes no safe-area inset, so a
+bar placed against the bottom edge came out underneath it — a sliver of card
+behind the tab labels, which is exactly the failure the storage banner had one
+level up and in the opposite direction. Under the navigation bar it is
+unobstructed, it stacks predictably with the storage banner that already
+reports from up there, and it needs no guess at how tall the platform's chrome
+is this year.
 
 **A task row omits its source note** — tasks nearly all live in the capture
 note, so the caption repeated "Tasks" under every row. It does name its
@@ -1042,10 +1131,32 @@ external changes, and scene activation.
 
 ### Navigation and presentation
 
-`RootView` keeps a five-section tab bar on iOS and the same destinations in a
-branded `NavigationSplitView` sidebar on macOS, sharing one selection model so
-no behavior diverges. Five is the ceiling: iOS collapses a sixth tab into
-"More", so a later section has to displace one rather than join them.
+`RootView` keeps a five-section tab bar on iPhone and the same destinations in
+a branded `NavigationSplitView` sidebar on macOS and on a regular-width iPad,
+sharing one selection model so no behavior diverges. Five is the ceiling: iOS
+collapses a sixth tab into "More", so a later section has to displace one
+rather than join them.
+
+**iPad takes the Mac's sidebar rather than a layout of its own.** Five tab
+labels stretched across a 13-inch window, with the sections they name
+reachable only at the bottom of it, is a phone layout on a desk-sized canvas —
+and the sidebar is the same five destinations arranged the way a regular-width
+canvas wants them. The gate is the idiom **and** the size class: a Max-sized
+iPhone reports regular width in landscape, and swapping its tab bar for a
+sidebar on rotation would be a different app in each orientation. The one
+divergence the shared view needs is `.listStyle(.sidebar)` on iOS, where a
+plain `List` in a split view is still an inset-grouped table, and an optional
+selection binding, which is the only form `List(_:selection:)` offers there —
+clearing it is ignored, since the detail column has to be showing something.
+
+**The manual rescan is a gesture on iOS and a button on macOS.** It was a
+toolbar item on all four list screens, which on iOS 26 is a floating control
+beside the navigation title — prominence an action that is automatic almost
+all of the time does not earn, given the index rebuilds on launch, after every
+change Cove makes, on iCloud's own change events, and on scene activation.
+`coveRefreshable(_:)` is `.refreshable` plus a hidden ⌘R button on iOS and the
+`CoveRefreshButton` toolbar item on macOS, where there is no pull gesture and
+a toolbar is not scarce.
 
 **Every editor push carries a `NoteDestination`, not a `URL`.** A search hit
 knows the line it matched, a task row knows its own line, and a format warning
@@ -1331,6 +1442,15 @@ while the edge of an *empty* control is the only thing saying it is there.
 `CoveThemeTests` pins the direction in each appearance rather than a single
 ratio, because a token that quietly went back to sinking in dark would look
 plausible in a screenshot and fail the one reader it was changed for.
+
+**The example moved out of the placeholder and under the field.** A
+placeholder is one line that cannot wrap, so the sentence teaching the
+grammar — "e.g. Get bread tomorrow at 3pm" — truncated to about three words at
+accessibility text sizes, and the words it kept were the least useful ones.
+The field now says "Add a task…", which fits at any size, and
+`QuickCaptureField`'s `hint` carries the example as wrapping caption text
+below the empty field. It gives way to the live preview the moment there is a
+sentence, so it costs a line only when there is nothing better to show.
 
 **The capture placeholder is drawn, not handed to the field.** The system's is
 a tertiary fill at about a third opacity, and it is the only instruction the
@@ -1720,7 +1840,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **567 tests** (macOS host), plus clean macOS and
+Current verified suite: **581 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -1892,8 +2012,25 @@ Rough edges and surprises, not restatements of the design above.
 ### Tasks
 
 * Tasks kept outside `Tasks.md` are indistinguishable in the list until
-  opened, since a row doesn't name its note. Fine for the intended
-  single-capture-note workflow.
+  opened, since a row doesn't name its note. The details sheet names it, so it
+  is one tap rather than none — but the list itself still doesn't say.
+* The details sheet edits a task's title and schedule, and nothing else. It
+  cannot move a task to another list or another note, and it cannot check it
+  off — the checkbox on the row is what does that, and it carries recurrence
+  semantics a toggle in a form would bypass.
+* An edit is refused when the line changed elsewhere in the meantime, and the
+  sheet does not reload itself or merge — the same trade the subscription
+  sheet makes, and with the same cost: the typed values have to be re-entered
+  after reopening it.
+* The Undo bar shows only the most recent action and lasts six seconds. A
+  second delete replaces the first notice, after which the earlier one is
+  reachable through ⌘Z on a Mac and — since `\.undoManager` is nil on iOS —
+  not at all on a phone. Leaving a list's detail view has the same effect,
+  because the notice belongs to that screen's `TaskActions`.
+* Pull-to-refresh is not advertised anywhere on iOS, which is the cost of
+  taking the button out of the toolbar. It is the platform's own gesture on a
+  list, and ⌘R still works with a keyboard, but a reader who never pulls down
+  will not find it.
 * Opening a task lands on the line the index last saw. An external edit that
   shifted the note since the last rebuild puts the caret on whatever now sits
   there, and a line number past the end of the file simply opens the top —
@@ -2093,9 +2230,17 @@ Rough edges and surprises, not restatements of the design above.
   rather than `CoveTheme.alert`, so a swipe action's red fill sits a shade off
   the rust an overdue task uses. Deliberate — the role also carries VoiceOver
   and confirmation semantics that a tinted plain button would drop.
-* ⌘1–⌘5 and ⌘L are hidden buttons in the view tree rather than menu commands,
-  so they work but appear in no menu — on macOS there is nothing in the menu
-  bar that discovers them.
+* ⌘1–⌘5, ⌘L, and iOS's ⌘R are hidden buttons in the view tree rather than menu
+  commands, so they work but appear in no menu — on macOS there is nothing in
+  the menu bar that discovers them.
+* Changing size class on iPad — entering Split View or Slide Over — swaps the
+  sidebar for the tab bar and back, which rebuilds the navigation and resets
+  whatever each section had pushed. The selected section survives; a folder
+  you had opened does not.
+* Cove Recovery is two taps away rather than one now that it lives under
+  Advanced. The group opens itself for a recovered *draft*, so the case that
+  matters is still one tap from the banner — but a deleted item waiting out
+  its week is not signposted from the top level at all.
 * The eyebrow is uppercased by `textCase`, so a vault or list name that is
   already an acronym or deliberately lowercase is restyled in the panel.
 * The Lists overview panel appears and disappears as the second list is added

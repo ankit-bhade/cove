@@ -84,6 +84,37 @@ struct EditorRecoveryDraftStore: Sendable {
         try FileManager.default.removeItem(at: url)
     }
 
+    /// Moves a draft that could not be decoded aside instead of leaving it in
+    /// the slot the next clean load clears.
+    ///
+    /// A draft is not derived state — it is the only copy of whatever was
+    /// unsaved — so bytes Cove cannot read are the last thing it should
+    /// delete. Damaged JSON, a record written by a future version, and a hash
+    /// collision all land here, and all three are recoverable by hand from the
+    /// preserved file. The extension is deliberately not `json`, so a
+    /// quarantined record is skipped by `summaries()` rather than breaking the
+    /// recovery list it can never be shown in.
+    ///
+    /// The slot holds one file per note and a later quarantine replaces an
+    /// earlier one: the alternative is unbounded growth in a container the
+    /// user has no view of, and the newest unreadable bytes are the ones most
+    /// likely to still matter.
+    @discardableResult
+    func quarantineUnreadable(for originalURL: URL) throws -> URL? {
+        let source = draftURL(for: originalURL)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            return nil
+        }
+        let destination = source
+            .deletingPathExtension()
+            .appendingPathExtension("unreadable")
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.moveItem(at: source, to: destination)
+        return destination
+    }
+
     /// Newest first. Decodes only the identity fields, so listing drafts does
     /// not pull every unsaved note into memory.
     func summaries() throws -> [EditorRecoveryDraftSummary] {
@@ -377,9 +408,21 @@ final class NoteDocument {
             // A damaged recovery record must never make a readable Markdown
             // file unopenable. Surface the recovery failure after loading the
             // actual note.
+            //
+            // The bytes are set aside rather than left in place, because a
+            // draft Cove cannot read still reads as *absent* below — and the
+            // clean-load path clears an absent draft. Deleting the only copy
+            // of some unsaved text because it could not be decoded is the one
+            // outcome this whole journal exists to prevent.
             draft = nil
-            saveErrorDescription =
-                "A saved recovery draft could not be read: \(error.localizedDescription)"
+            let quarantine = try? draftStore.quarantineUnreadable(for: fileURL)
+            if let quarantine {
+                saveErrorDescription =
+                    "A saved recovery draft could not be read, so it was kept as \(quarantine.lastPathComponent): \(error.localizedDescription)"
+            } else {
+                saveErrorDescription =
+                    "A saved recovery draft could not be read: \(error.localizedDescription)"
+            }
         }
 
         do {

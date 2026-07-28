@@ -700,10 +700,24 @@ enum TaskParser {
         return .success(result as String)
     }
 
-    static func removingTaskResult(
+    /// One removal: the text left behind and the exact line that left it.
+    struct TaskRemoval: Equatable, Sendable {
+        let text: String
+        /// The removed line as the file actually held it, terminator included.
+        let removedLine: String
+    }
+
+    /// Removes one task's line and reports what was removed.
+    ///
+    /// Completion, the bullet character, and interior spacing are all outside
+    /// the semantic key, so the line a delete finds is not necessarily the one
+    /// the index last saw. Undo restores bytes, so the bytes it restores have
+    /// to come from the same coordinated read the removal was computed
+    /// against rather than from the index.
+    static func removingTaskWithLineResult(
         _ identity: TaskIdentity,
         in fileText: String
-    ) -> Result<String, MutationError> {
+    ) -> Result<TaskRemoval, MutationError> {
         switch matchResult(identity, in: fileText) {
         case .missing:
             return .failure(.taskMissing)
@@ -711,8 +725,18 @@ enum TaskParser {
             return .failure(.ambiguousTask(tasks.map(\.lineNumber)))
         case .matched(let task):
             return .success(
-                (fileText as NSString).replacingCharacters(in: task.lineRange, with: ""))
+                TaskRemoval(
+                    text: (fileText as NSString).replacingCharacters(
+                        in: task.lineRange, with: ""),
+                    removedLine: task.sourceLine))
         }
+    }
+
+    static func removingTaskResult(
+        _ identity: TaskIdentity,
+        in fileText: String
+    ) -> Result<String, MutationError> {
+        removingTaskWithLineResult(identity, in: fileText).map(\.text)
     }
 
     static func removingTask(_ identity: TaskIdentity, in fileText: String) -> String? {

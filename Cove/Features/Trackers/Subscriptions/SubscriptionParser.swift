@@ -71,11 +71,18 @@ enum SubscriptionParser {
         case subscriptionMissing
         case ambiguousSubscription([Int])
         case invalidLine
+        /// The line still matches, but its status moved under the edit. Status
+        /// is outside the semantic key so that setting one is idempotent, which
+        /// leaves it the one field a whole-line rewrite could silently revert.
+        case statusChangedOnDisk(SubscriptionStatus)
 
         var errorDescription: String? {
             switch self {
             case .subscriptionMissing:
                 return "The subscription changed or was removed in another editor."
+            case .statusChangedOnDisk(let status):
+                return
+                    "This subscription was set to \(status.displayName.lowercased()) in another editor. Reopen it to edit the current version."
             case .ambiguousSubscription(let lines):
                 let shown = lines.map { String($0 + 1) }.joined(separator: ", ")
                 return
@@ -369,14 +376,35 @@ enum SubscriptionParser {
             .replacingCharacters(in: parsed.lineRange, with: line)
     }
 
+    /// One removal: the text left behind and the line that left it.
+    struct SubscriptionRemoval: Equatable, Sendable {
+        let text: String
+        let removed: ParsedSubscription
+    }
+
+    /// Removes one subscription's whole line and reports what was removed.
+    ///
+    /// Status, the bullet character, and interior spacing are all outside the
+    /// semantic key, so the line a removal finds is not necessarily the one
+    /// the index last saw. Undo restores bytes, so the bytes have to come from
+    /// the same coordinated read the removal was computed against.
+    static func removingSubscriptionWithRecordResult(
+        _ identity: SubscriptionIdentity,
+        in fileText: String
+    ) throws -> SubscriptionRemoval {
+        let parsed = try matching(identity, in: fileText)
+        return SubscriptionRemoval(
+            text: (fileText as NSString)
+                .replacingCharacters(in: parsed.enclosingRange, with: ""),
+            removed: parsed)
+    }
+
     /// Removes one subscription's whole line, terminator included.
     static func removingSubscriptionResult(
         _ identity: SubscriptionIdentity,
         in fileText: String
     ) throws -> String {
-        let parsed = try matching(identity, in: fileText)
-        return (fileText as NSString)
-            .replacingCharacters(in: parsed.enclosingRange, with: "")
+        try removingSubscriptionWithRecordResult(identity, in: fileText).text
     }
 
     static func isValidSingleLine(_ line: String) -> Bool {

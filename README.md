@@ -44,7 +44,9 @@ journaled locally as you type, so a crash or a forced quit doesn't take it.
 If the note is renamed or deleted out from under the editor, the recovered
 text is offered back with a Save Copy action rather than dropped. Recovered
 edits are held for review before they overwrite anything, and Settings → Cove
-Recovery lists both deleted items and unsaved drafts.
+Recovery lists both deleted items and unsaved drafts. A journal entry Cove
+cannot read is set aside rather than cleared — the note still opens, and the
+banner names the file the unreadable copy was kept as.
 
 ### Search
 
@@ -77,7 +79,9 @@ Undo, so later edits to the same note are preserved — including for a
 recurring task, where undoing a completion rolls its date back rather than
 failing to find the line it just advanced. If two task lines are identical in
 every respect, Cove refuses to act on either rather than guess which one you
-meant, and points at them from Settings.
+meant, and points at them from Settings. A checkbox another device already
+ticked simply corrects itself: nothing is written, and nothing lands in Undo
+that would reverse that other change.
 
 ### Quick capture
 
@@ -151,7 +155,9 @@ after February. A subscription can be paused or cancelled, after which it
 counts toward nothing and folds away at the bottom. Categories can be
 created, renamed, and deleted from the screen; deleting one takes the charges
 filed under it, so the confirmation says how many and how to keep them, and
-the deletion is undoable.
+the deletion is undoable. If a charge is paused or cancelled somewhere else
+while you have its sheet open, saving is refused rather than putting it back
+the way the sheet found it.
 
 Currencies are never converted. Totals are kept per currency, the chart names
 which currency it is drawn in when there is more than one, and weekly or

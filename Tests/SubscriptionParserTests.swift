@@ -287,6 +287,20 @@ final class SubscriptionParserTests: XCTestCase {
         XCTAssertFalse(updated.contains("\n\n\n"))
     }
 
+    /// The removal reports the line it actually took, so Undo restores the
+    /// bytes that left the file rather than the index's older copy of them.
+    func testRemovalReportsTheLineItTook() throws {
+        let target = SubscriptionParser.subscriptions(in: note)[2]
+        let removal = try SubscriptionParser.removingSubscriptionWithRecordResult(
+            identity(of: target), in: note)
+        XCTAssertEqual(
+            removal.removed.sourceLine,
+            "- Spotify @cost(11.99 USD) @every(month) @since(2023-08-19) @status(paused)\n"
+        )
+        XCTAssertEqual(removal.removed.category, "Streaming")
+        XCTAssertFalse(removal.text.contains("Spotify"))
+    }
+
     func testMutatingAMissingSubscriptionThrows() {
         let target = SubscriptionIdentity(
             filePath: "/vault/Subscriptions.md",

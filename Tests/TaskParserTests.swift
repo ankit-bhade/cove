@@ -577,6 +577,142 @@ final class TaskParserTests: XCTestCase {
         XCTAssertNil(removing("- [ ] Buy milk @due(2026-07-25)\n"))
     }
 
+    // MARK: - Editing a task in place
+
+    private func replacing(
+        _ text: String,
+        with body: String,
+        line: Int = 0,
+        due: String? = "2026-07-20",
+        time: String? = nil,
+        recurrence: RecurrenceRule? = nil,
+        list: String? = nil,
+        anchor: String? = nil,
+        keepsAnchor: Bool = false
+    ) throws -> TaskParser.TaskReplacement {
+        var identity = identity(
+            "Buy milk", due: due, time: time,
+            recurrence: recurrence, list: list, line: line)
+        if let anchor {
+            identity = TaskIdentity(
+                filePath: identity.filePath,
+                lineNumber: identity.lineNumber,
+                text: identity.text,
+                dueDateString: identity.dueDateString,
+                dueTimeString: identity.dueTimeString,
+                recurrenceTag: identity.recurrenceTag,
+                listName: identity.listName,
+                recurrenceAnchorDateString: anchor)
+        }
+        return try TaskParser.replacingTaskResult(
+            identity,
+            withBody: body,
+            keepingRecurrenceAnchor: keepsAnchor,
+            in: text
+        ).get()
+    }
+
+    func testReplacingRewritesOnlyTheLineBody() throws {
+        let replacement = try replacing(
+            "Intro\n- [ ] Buy milk @due(2026-07-20)\nOutro\n",
+            with: "Buy oat milk @due(2026-08-01 09:00)",
+            line: 1)
+        XCTAssertEqual(
+            replacement.text,
+            "Intro\n- [ ] Buy oat milk @due(2026-08-01 09:00)\nOutro\n")
+        XCTAssertEqual(replacement.previousBody, "Buy milk @due(2026-07-20)")
+        XCTAssertEqual(
+            replacement.newLine, "- [ ] Buy oat milk @due(2026-08-01 09:00)")
+    }
+
+    /// An edit changed the task, not how the file writes it down: the
+    /// indentation, the bullet, the checkbox, and the line ending all belong
+    /// to the file and none of them was asked about.
+    func testReplacingKeepsIndentationBulletCompletionAndLineEnding() throws {
+        let replacement = try replacing(
+            "  * [x]   Buy milk @due(2026-07-20)  \r\nOutro\r\n",
+            with: "Buy oat milk @due(2026-08-01)")
+        XCTAssertEqual(
+            replacement.text,
+            "  * [x]   Buy oat milk @due(2026-08-01)  \r\nOutro\r\n")
+    }
+
+    func testReplacingRefusesDuplicateLines() {
+        let text = """
+            - [ ] Buy milk @due(2026-07-20)
+            - [ ] Buy milk @due(2026-07-20)
+
+            """
+        let result = TaskParser.replacingTaskResult(
+            identity(
+                "Buy milk", due: "2026-07-20", time: nil,
+                recurrence: nil, list: nil, line: 0),
+            withBody: "Buy oat milk @due(2026-07-20)",
+            keepingRecurrenceAnchor: false,
+            in: text)
+        XCTAssertEqual(result, .failure(.ambiguousTask([0, 1])))
+    }
+
+    func testReplacingRefusesWhenTheTaskIsGone() {
+        let result = TaskParser.replacingTaskResult(
+            identity(
+                "Buy milk", due: "2026-07-20", time: nil,
+                recurrence: nil, list: nil, line: 0),
+            withBody: "Buy oat milk @due(2026-07-20)",
+            keepingRecurrenceAnchor: false,
+            in: "- [ ] Buy bread @due(2026-07-20)\n")
+        XCTAssertEqual(result, .failure(.taskMissing))
+    }
+
+    /// The anchor records the occurrence a recurring task was last advanced
+    /// from. An edit that left the schedule alone must not lose it.
+    func testReplacingKeepsTheRecurrenceAnchorWhenTheScheduleIsUnchanged() throws {
+        let replacement = try replacing(
+            "- [ ] Buy milk @due(2026-07-20) @repeat(monthly) @anchor(2026-01-31)\n",
+            with: "Buy oat milk @due(2026-07-20) @repeat(monthly)",
+            recurrence: RecurrenceRule(frequency: .monthly),
+            anchor: "2026-01-31",
+            keepsAnchor: true)
+        XCTAssertEqual(
+            replacement.text,
+            "- [ ] Buy oat milk @due(2026-07-20) @repeat(monthly) @anchor(2026-01-31)\n"
+        )
+        XCTAssertEqual(
+            replacement.previousBody,
+            "Buy milk @due(2026-07-20) @repeat(monthly) @anchor(2026-01-31)")
+    }
+
+    /// A new due date *is* a new anchor, so the old one goes with the old
+    /// schedule rather than dragging the cadence back to it.
+    func testReplacingDropsTheRecurrenceAnchorWhenTheScheduleChanges() throws {
+        let replacement = try replacing(
+            "- [ ] Buy milk @due(2026-07-20) @repeat(monthly) @anchor(2026-01-31)\n",
+            with: "Buy milk @due(2026-08-05) @repeat(monthly)",
+            recurrence: RecurrenceRule(frequency: .monthly),
+            anchor: "2026-01-31",
+            keepsAnchor: false)
+        XCTAssertEqual(
+            replacement.text,
+            "- [ ] Buy milk @due(2026-08-05) @repeat(monthly)\n")
+    }
+
+    func testReplacingAnUndatedListItemKeepsItInItsSection() throws {
+        let text = """
+            ## Groceries
+            - [ ] Buy milk
+
+            """
+        let replacement = try TaskParser.replacingTaskResult(
+            identity(
+                "Buy milk", due: nil, time: nil,
+                recurrence: nil, list: "Groceries", line: 1),
+            withBody: "Buy oat milk",
+            keepingRecurrenceAnchor: false,
+            in: text
+        ).get()
+        XCTAssertEqual(replacement.text, "## Groceries\n- [ ] Buy oat milk\n")
+    }
+
     // MARK: - Clearing completed tasks
 
     func testClearingCompletedTasksRemovesOnlyStrictCompletedTaskLines() {

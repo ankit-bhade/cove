@@ -14,13 +14,24 @@ import SwiftUI
 /// the system's own row insets are now the ones a note row and a list row use,
 /// so the text column lines up across all four screens.
 ///
-/// Tapping the row opens the task's note; swiping (or the context menu)
-/// deletes the line. An undated list item simply shows no due line.
+/// Tapping the row opens the task's own details — its title, date, time, and
+/// repeat rule — and the Markdown line behind it is one menu item (or one
+/// leading swipe) away. It was the other way round: a tap dropped the reader
+/// into the note with the caret on the line, which is the right *escape
+/// hatch* and the wrong default, since rescheduling something meant editing
+/// Markdown by hand while every other action on the row was a gesture.
+///
+/// Swiping (or the context menu) deletes the line. An undated list item simply
+/// shows no due line.
 struct TaskRow: View {
     let task: TaskItem
     let now: Date
     let onToggle: () -> Void
     let onDelete: () -> Void
+    /// Opens the task's details. The row's primary tap.
+    let onSelect: () -> Void
+    /// Opens the note the line lives in, at that line.
+    let onOpenInNote: () -> Void
     var isProcessing = false
     /// Whether a list item names its list under its title. True on the Tasks
     /// screen, where a dated list item sits among unlisted ones and would
@@ -75,10 +86,7 @@ struct TaskRow: View {
                             ? "Mark complete"
                             : "Complete and reschedule")
 
-            // The line travels with the note, so tapping a task opens its own
-            // line rather than the top of a capture note that may hold a
-            // hundred of them.
-            NavigationLink(value: NoteDestination(task.fileURL, line: task.lineNumber)) {
+            Button(action: onSelect) {
                 // The source note is deliberately not shown: tasks nearly
                 // always live in the capture note, so the row read as a
                 // repeated "Tasks" caption under every task.
@@ -102,7 +110,12 @@ struct TaskRow: View {
                     metadata(overdue: overdue)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // The row's empty trailing space belongs to the tap that
+                // opens the task, not to nothing.
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens task details")
             // Pinned to the text column for the same reason `CoveRow` pins
             // it there: left to itself SwiftUI derives the inset from
             // whichever nested label it selects, and recurring metadata can
@@ -115,7 +128,19 @@ struct TaskRow: View {
                 Label("Delete", systemImage: "trash")
             }
         }
+        .swipeActions(edge: .leading) {
+            Button(action: onOpenInNote) {
+                Label("Open in Note", systemImage: "doc.text")
+            }
+            .tint(CoveTheme.moss)
+        }
         .contextMenu {
+            Button(action: onSelect) {
+                Label("Task Details", systemImage: "slider.horizontal.3")
+            }
+            Button(action: onOpenInNote) {
+                Label("Open in Note", systemImage: "doc.text")
+            }
             Button(role: .destructive, action: onDelete) {
                 Label("Delete Task", systemImage: "trash")
             }

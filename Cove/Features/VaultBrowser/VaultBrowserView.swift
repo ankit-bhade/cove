@@ -181,6 +181,7 @@ struct VaultBrowserView: View {
         }
         .searchable(text: $searchText, prompt: "Search all notes")
         .navigationTitle(folderURL == nil ? "Notes" : folder?.displayName ?? "Folder")
+        .coveRefreshable { await vaultManager.refresh() }
         .toolbar {
             if let destinationURL {
                 toolbarContent(in: destinationURL)
@@ -394,11 +395,6 @@ struct VaultBrowserView: View {
                 }
             } label: {
                 Label("Add", systemImage: "plus")
-            }
-        }
-        ToolbarItem {
-            CoveRefreshButton {
-                await vaultManager.refresh()
             }
         }
     }

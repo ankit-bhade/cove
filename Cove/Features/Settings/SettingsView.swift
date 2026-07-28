@@ -42,9 +42,7 @@ struct SettingsView: View {
                 storageHealthSection
                 appearanceSection
                 notificationsSection
-                #if os(iOS)
-                    widgetSection
-                #endif
+                advancedSection
             }
             .coveFormStyle()
             .coveReadableWidth(680)
@@ -160,26 +158,6 @@ struct SettingsView: View {
                 }
             }
 
-            NavigationLink {
-                RecoveryReviewView()
-            } label: {
-                CoveRow(
-                    systemName: "clock.arrow.circlepath",
-                    tint:
-                        health.recoveryItemCount + health.recoveryDraftCount > 0
-                        ? CoveTheme.accent : .secondary
-                ) {
-                    CoveRowTitle(
-                        title: "Cove Recovery",
-                        caption: recoveryCaption(health))
-                    Spacer(minLength: 0)
-                    CoveCountBadge(
-                        "\(health.recoveryItemCount + health.recoveryDraftCount)",
-                        tint: CoveTheme.accent)
-                }
-            }
-
-            advancedDisclosure(health)
         } header: {
             CoveSectionHeader("Storage Health")
         } footer: {
@@ -211,28 +189,90 @@ struct SettingsView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// Folder access and bookmark state are how Cove reaches the vault, not
-    /// anything the reader chose or can act on — when they are healthy they
-    /// are two rows of implementation detail above the warnings that matter.
-    /// They stay one tap away rather than gone: when a bookmark *isn't*
-    /// saved, that is the whole explanation for a vault that keeps asking to
-    /// be reselected, so the group opens itself in that case.
-    private func advancedDisclosure(_ health: CoveStorageHealth) -> some View {
-        DisclosureGroup(
-            "Diagnostics",
-            isExpanded: Binding(
-                get: { showsStorageDiagnostics || !health.bookmarkIsPersisted },
-                set: { showsStorageDiagnostics = $0 })
-        ) {
-            LabeledContent("Folder Access") {
-                Text(storageAccessLabel(health.accessState))
-                    .foregroundStyle(.secondary)
+    // MARK: - Advanced
+
+    /// Everything a healthy vault never has to be told.
+    ///
+    /// Settings is read for four things — which folder, which appearance,
+    /// whether reminders are on, and whether anything is wrong — and it had
+    /// grown to answer those beside a recovery count, a widget status, a
+    /// folder-access mode, and a bookmark state, none of which a reader chose
+    /// or can act on while they are healthy. They are here rather than gone
+    /// because each one is the whole explanation for something that *does* go
+    /// wrong: a bookmark that isn't saved is why a vault keeps asking to be
+    /// reselected, a widget that can't reach its container is why a checkbox
+    /// on the Home Screen did nothing. So the group opens itself in exactly
+    /// those cases, and stays shut the rest of the time.
+    ///
+    /// A recovery *draft* opens it too, since that is unsaved work waiting for
+    /// a decision. A deleted item does not: the recovery area holds them for a
+    /// week by design, so any vault where something was recently deleted would
+    /// sit permanently open — the same reason `CoveStorageHealth.attention`
+    /// refuses to count them.
+    private var advancedSection: some View {
+        let health = vaultManager.storageHealth
+        return Section {
+            DisclosureGroup(
+                "Advanced",
+                isExpanded: Binding(
+                    get: { showsStorageDiagnostics || needsAdvancedAttention },
+                    set: { showsStorageDiagnostics = $0 })
+            ) {
+                recoveryRow(health)
+                #if os(iOS)
+                    widgetRows
+                #endif
+                LabeledContent("Folder Access") {
+                    Text(storageAccessLabel(health.accessState))
+                        .foregroundStyle(.secondary)
+                }
+                LabeledContent("Bookmark") {
+                    Text(health.bookmarkIsPersisted ? "Saved" : "Not Saved")
+                        .foregroundStyle(
+                            health.bookmarkIsPersisted
+                                ? .secondary : CoveTheme.alert)
+                }
             }
-            LabeledContent("Bookmark") {
-                Text(health.bookmarkIsPersisted ? "Saved" : "Not Saved")
-                    .foregroundStyle(
-                        health.bookmarkIsPersisted
-                            ? .secondary : CoveTheme.alert)
+        } footer: {
+            Text(
+                "Deleted items stay recoverable for a week, and drafts saved from a crash wait here for review. Markdown remains the source of truth for the widget."
+            )
+        }
+    }
+
+    private var needsAdvancedAttention: Bool {
+        let health = vaultManager.storageHealth
+        if !health.bookmarkIsPersisted { return true }
+        if health.recoveryDraftCount > 0 { return true }
+        #if os(iOS)
+            if widgetNeedsAttention { return true }
+            if let widgetHealth,
+                widgetHealth.failedOperationCount
+                    + widgetHealth.discardedFailureReceiptCount > 0
+            {
+                return true
+            }
+        #endif
+        return false
+    }
+
+    private func recoveryRow(_ health: CoveStorageHealth) -> some View {
+        NavigationLink {
+            RecoveryReviewView()
+        } label: {
+            CoveRow(
+                systemName: "clock.arrow.circlepath",
+                tint:
+                    health.recoveryItemCount + health.recoveryDraftCount > 0
+                    ? CoveTheme.accent : .secondary
+            ) {
+                CoveRowTitle(
+                    title: "Cove Recovery",
+                    caption: recoveryCaption(health))
+                Spacer(minLength: 0)
+                CoveCountBadge(
+                    "\(health.recoveryItemCount + health.recoveryDraftCount)",
+                    tint: CoveTheme.accent)
             }
         }
     }
@@ -483,8 +523,13 @@ struct SettingsView: View {
     }
 
     #if os(iOS)
-        private var widgetSection: some View {
-            Section {
+        /// The Today widget's own health, as rows rather than a section of
+        /// their own: when it is working there is one word to say about it,
+        /// and it sat under its own header at the bottom of Settings saying
+        /// "Ready" to a reader who had not asked.
+        @ViewBuilder
+        private var widgetRows: some View {
+            Group {
                 CoveRow(
                     systemName: widgetStatusIcon,
                     tint: widgetNeedsAttention ? CoveTheme.alert : CoveTheme.moss
@@ -551,12 +596,6 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(CoveTheme.alert)
                 }
-            } header: {
-                CoveSectionHeader("Widget")
-            } footer: {
-                Text(
-                    "The widget stores a protected, capped snapshot in Cove’s App Group. Markdown remains the source of truth."
-                )
             }
         }
 

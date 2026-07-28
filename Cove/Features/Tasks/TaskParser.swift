@@ -732,6 +732,91 @@ enum TaskParser {
         }
     }
 
+    /// One in-place edit: the text left behind, and enough to reverse it.
+    struct TaskReplacement: Equatable, Sendable {
+        let text: String
+        /// The body the matched line carried before the edit — the title and
+        /// its tags, without the marker. What Undo writes back.
+        let previousBody: String
+        /// The whole edited line, terminator excluded. Its identity is read
+        /// back out of the parser rather than assembled, exactly as a
+        /// capture's is.
+        let newLine: String
+    }
+
+    /// Rewrites one task's title and schedule in place.
+    ///
+    /// Only the part of the line *after* the marker is replaced. The
+    /// indentation, the bullet character, the checkbox state, and the line's
+    /// own terminator all stay as the file had them: an edit changed the task,
+    /// not how the file writes it down, and rewriting the whole line
+    /// canonically would silently flatten a nested Obsidian checkbox or tick a
+    /// box another device had just ticked.
+    ///
+    /// `keepingRecurrenceAnchor` carries the one tag a draft cannot express.
+    /// The anchor records the occurrence a recurring task was last advanced
+    /// from, so it survives an edit that left the schedule alone and goes with
+    /// one that did not — a new due date *is* a new anchor.
+    static func replacingTaskResult(
+        _ identity: TaskIdentity,
+        withBody body: String,
+        keepingRecurrenceAnchor keepsAnchor: Bool,
+        in fileText: String
+    ) -> Result<TaskReplacement, MutationError> {
+        let match: ParsedTask
+        switch matchResult(identity, in: fileText) {
+        case .missing:
+            return .failure(.taskMissing)
+        case .ambiguous(let tasks):
+            return .failure(.ambiguousTask(tasks.map(\.lineNumber)))
+        case .matched(let task):
+            match = task
+        }
+
+        let ns = fileText as NSString
+        guard let bodyRange = bodyRange(of: match, in: ns) else {
+            return .failure(.taskMissing)
+        }
+        var newBody = body
+        if keepsAnchor, let anchor = match.recurrenceAnchorDateString,
+            match.recurrence != nil
+        {
+            newBody += " @anchor(\(anchor))"
+        }
+        let text = ns.replacingCharacters(in: bodyRange, with: newBody)
+        let marker = ns.substring(
+            with: NSRange(
+                location: match.lineRange.location,
+                length: bodyRange.location - match.lineRange.location))
+        return .success(
+            TaskReplacement(
+                text: text,
+                previousBody: ns.substring(with: bodyRange),
+                newLine: marker + newBody))
+    }
+
+    /// The span between a line's `- [ ] ` marker and its trailing whitespace —
+    /// the title and tags, and nothing that says how the line is written.
+    private static func bodyRange(
+        of task: ParsedTask,
+        in ns: NSString
+    ) -> NSRange? {
+        var location = task.statusRange.location + task.statusRange.length
+        guard location < ns.length,
+            ns.character(at: location) == 0x5D  // ]
+        else { return nil }
+        location += 1
+        while location < ns.length {
+            let character = ns.character(at: location)
+            guard character == 0x20 || character == 0x09 else { break }
+            location += 1
+        }
+        guard location <= task.metadataInsertionLocation else { return nil }
+        return NSRange(
+            location: location,
+            length: task.metadataInsertionLocation - location)
+    }
+
     static func removingTaskResult(
         _ identity: TaskIdentity,
         in fileText: String

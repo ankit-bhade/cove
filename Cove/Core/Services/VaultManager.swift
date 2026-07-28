@@ -30,6 +30,30 @@ struct TaskToggleRecord: Sendable {
     let completedOnDateString: String
 }
 
+/// What one in-place task edit changed, and enough to reverse it.
+///
+/// The identity is the *edited* line's, read back out of the parser, so Undo
+/// re-finds the line semantically and refuses on ambiguity like every other
+/// task mutation. `previousBody` is the span the coordinated write actually
+/// replaced — the recurrence anchor included, when the line carried one.
+struct TaskEditRecord: Sendable {
+    let identity: TaskIdentity
+    let noteURL: URL
+    let previousBody: String
+}
+
+/// Refused before a coordinated write is attempted.
+enum TaskUpdateError: LocalizedError, Equatable, Sendable {
+    case dueDateRequired
+
+    var errorDescription: String? {
+        switch self {
+        case .dueDateRequired:
+            return "A task outside a list needs a due date."
+        }
+    }
+}
+
 /// A value produced *inside* a coordinated transform and read after it.
 ///
 /// Undo restores bytes, and the only bytes worth restoring are the ones the
@@ -1024,6 +1048,85 @@ final class VaultManager {
         if let undoError { throw undoError }
     }
 
+    /// Rewrites one task's title and schedule in place.
+    ///
+    /// Rescheduling used to mean opening the note and editing Markdown by
+    /// hand, which is the one thing every other task action on these screens
+    /// does not ask for. The write is the same shape as the rest: re-read
+    /// under coordination, re-find the line semantically, refuse when that is
+    /// not unique, and rescan afterwards whether or not it succeeded.
+    ///
+    /// Returns `nil` when the edited line cannot be read back as a task, which
+    /// leaves the edit in place but registers no Undo — the alternative is an
+    /// Undo record pointing at a line the parser does not agree exists.
+    @discardableResult
+    func updateTask(_ task: TaskItem, to draft: TaskDraft) async throws -> TaskEditRecord? {
+        // `@due` is optional only inside a list section of the capture note,
+        // so an unlisted task cannot be edited into an undated one — it would
+        // simply stop being a task.
+        guard draft.dueDateString != nil || task.listName != nil else {
+            throw TaskUpdateError.dueDateRequired
+        }
+        let body = try draft.validatedLineBody()
+        let identity = task.identity
+        let keepsAnchor = draft.hasSameSchedule(as: task)
+        let editedLine = CoordinatedTransformOutput<String>()
+        let previousBody = CoordinatedTransformOutput<String>()
+        var editError: Error?
+        do {
+            _ = try await repository.updateNote(at: task.fileURL) { text in
+                let replacement = try TaskParser.replacingTaskResult(
+                    identity,
+                    withBody: body,
+                    keepingRecurrenceAnchor: keepsAnchor,
+                    in: text
+                ).get()
+                editedLine.record(replacement.newLine)
+                previousBody.record(replacement.previousBody)
+                return replacement.text
+            }
+        } catch {
+            editError = error
+        }
+        await refreshIndex(changedURLs: [task.fileURL])
+        if let editError { throw editError }
+        guard let editedLine = editedLine.value,
+            let previousBody = previousBody.value,
+            let editedIdentity = Self.identity(
+                forLine: editedLine,
+                in: task.fileURL,
+                list: task.listName,
+                isSectionedDocument: task.isSectionedDocument)
+        else { return nil }
+        return TaskEditRecord(
+            identity: editedIdentity,
+            noteURL: task.fileURL,
+            previousBody: previousBody)
+    }
+
+    /// Puts one edit's line back exactly as it was, anchor included — the body
+    /// it restores is the one the coordinated write replaced.
+    func undoTaskEdit(_ record: TaskEditRecord) async throws {
+        var undoError: Error?
+        do {
+            _ = try await repository.updateNote(at: record.noteURL) { text in
+                try TaskParser.replacingTaskResult(
+                    record.identity,
+                    withBody: record.previousBody,
+                    // The body being restored already carries whatever anchor
+                    // the line had; keeping the edited line's would append a
+                    // second one.
+                    keepingRecurrenceAnchor: false,
+                    in: text
+                ).get().text
+            }
+        } catch {
+            undoError = error
+        }
+        await refreshIndex(changedURLs: [record.noteURL])
+        if let undoError { throw undoError }
+    }
+
     /// Deletes one task's line from its original Markdown file: re-reads the
     /// file, re-finds the task by content, drops the whole line, and rescans.
     /// The tree is refreshed even when the delete fails, so a stale list
@@ -1300,27 +1403,35 @@ final class VaultManager {
             ).get()
         }
         guard
-            let identity = Self.capturedIdentity(
-                forLine: line, in: noteURL, list: list)
+            let identity = Self.identity(
+                forLine: line, in: noteURL, list: list,
+                isSectionedDocument: true)
         else { return nil }
         return CapturedTaskRecord(
             identity: identity, noteURL: noteURL, listName: list)
     }
 
-    /// The identity of a line Cove is about to write, read back out of the
-    /// parser rather than assembled by hand.
+    /// The identity of a line Cove has just written or is about to write, read
+    /// back out of the parser rather than assembled by hand.
     ///
     /// A list item is parsed under a synthetic heading, because a line's list
     /// is context the line itself does not carry — and the list is part of
     /// what re-finds it, so dropping it here would make Undo miss the very
-    /// line the capture wrote.
-    nonisolated private static func capturedIdentity(
+    /// line the write produced.
+    ///
+    /// `isSectionedDocument` travels with the identity because it decides how
+    /// the *note* is re-parsed later: a capture always lands in the sectioned
+    /// capture note, while an edit can be to a task in any note, where a `##`
+    /// heading means nothing at all.
+    nonisolated private static func identity(
         forLine line: String,
         in noteURL: URL,
-        list: String?
+        list: String?,
+        isSectionedDocument: Bool
     ) -> TaskIdentity? {
+        let sectioned = isSectionedDocument || list != nil
         let text = list.map { "## \($0)\n\(line)\n" } ?? "\(line)\n"
-        guard let task = TaskParser.tasks(in: text, sectioned: true).first
+        guard let task = TaskParser.tasks(in: text, sectioned: sectioned).first
         else { return nil }
         return TaskIdentity(
             filePath: noteURL.path,
@@ -1331,7 +1442,7 @@ final class VaultManager {
             recurrenceTag: task.recurrence?.tagText,
             listName: task.listName,
             recurrenceAnchorDateString: task.recurrenceAnchorDateString,
-            isSectionedDocument: true)
+            isSectionedDocument: sectioned)
     }
 
     /// Takes back one capture. Every other mutating task action registers

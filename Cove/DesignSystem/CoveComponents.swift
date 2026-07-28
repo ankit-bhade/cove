@@ -248,6 +248,92 @@ extension CoveEmptyState where Actions == EmptyView {
     }
 }
 
+/// A short-lived bar saying what just happened and offering to take it back.
+///
+/// It exists because Undo was reachable and invisible: every destructive task
+/// action registers one, and on a Mac the Edit menu says so, but a phone's
+/// only route to it is a shake gesture nothing on screen advertises. A swipe
+/// that removed the wrong line therefore read as final when it never was.
+///
+/// It is a card rather than a tinted wash: it sits over content, and the one
+/// thing it must not do is read as part of the list it is covering. The action
+/// takes the accent — it is the reason the bar is there — while dismissing it
+/// is the quiet glyph, since letting it time out does the same thing.
+struct CoveUndoBar: View {
+    let message: String
+    let undo: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: CoveTheme.Space.snug) {
+            Text(message)
+                .font(.subheadline)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button("Undo", action: undo)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(CoveTheme.accent)
+                .buttonStyle(.plain)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.leading, CoveTheme.Space.regular)
+        .padding(.trailing, CoveTheme.Space.tight)
+        .padding(.vertical, CoveTheme.Space.snug)
+        .background(CoveCardBackground(cornerRadius: CoveTheme.fieldRadius))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension View {
+    /// The manual rescan, put where each platform already looks for it.
+    ///
+    /// Every list screen used to carry it as a toolbar button, which on iOS 26
+    /// is a floating control sitting beside the navigation title — prominence
+    /// that an action almost never needed does not earn. Cove rebuilds its
+    /// index on launch, on every change it makes, on iCloud's own change
+    /// events, and whenever the scene activates; the manual path is for a
+    /// vault the metadata query cannot see at all.
+    ///
+    /// So on iOS it becomes the gesture the platform has for exactly this —
+    /// pull to refresh — plus ⌘R for an attached keyboard. AppKit has no pull
+    /// gesture, so the Mac keeps the button, where a toolbar is not scarce.
+    func coveRefreshable(_ action: @escaping @Sendable () async -> Void) -> some View {
+        modifier(CoveRefreshAction(action: action))
+    }
+}
+
+private struct CoveRefreshAction: ViewModifier {
+    let action: @Sendable () async -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            content
+                .refreshable { await action() }
+                .background {
+                    Button("Refresh") { Task { await action() } }
+                        .keyboardShortcut("r", modifiers: .command)
+                        .opacity(0)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+        #else
+            content.toolbar {
+                ToolbarItem {
+                    CoveRefreshButton { await action() }
+                }
+            }
+        #endif
+    }
+}
+
 /// A refresh action with progress feedback and duplicate-scan protection.
 struct CoveRefreshButton: View {
     let action: () async -> Void

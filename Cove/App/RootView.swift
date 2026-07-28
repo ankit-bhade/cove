@@ -1,8 +1,15 @@
 import SwiftUI
 
+#if canImport(UIKit)
+    import UIKit
+#endif
+
 struct RootView: View {
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
+        @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @AppStorage(AppearanceSetting.storageKey) private var appearance: AppearanceSetting = .system
     /// Tasks is the landing screen on every surface: it is the one section
     /// that is *about* right now, and it is where the Today widget's deep
@@ -171,56 +178,38 @@ struct RootView: View {
     @ViewBuilder
     private var appNavigation: some View {
         #if os(macOS)
-            NavigationSplitView {
-                List(AppSection.allCases, selection: $selectedSection) { section in
-                    HStack(spacing: CoveTheme.Space.rowGap) {
-                        Image(systemName: section.symbol)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(
-                                selectedSection == section
-                                    ? CoveTheme.accent : .secondary
-                            )
-                            .frame(width: 20)
-                        Text(section.title)
-                            .font(.body.weight(selectedSection == section ? .semibold : .regular))
-                    }
-                    .tag(section)
-                    .padding(.vertical, CoveTheme.Space.rowPadding)
-                }
-                .safeAreaInset(edge: .top) {
-                    HStack(spacing: 11) {
-                        CoveMark(size: 32)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Cove")
-                                .font(.coveHeadline)
-                            Text("Markdown, at home")
-                                .coveEyebrow()
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                    .padding(.bottom, 11)
-                    .background(.ultraThinMaterial)
-                    .overlay(alignment: .bottom) {
-                        Rectangle()
-                            .fill(CoveTheme.hairline)
-                            .frame(height: 1)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Cove")
-                }
-                .navigationSplitViewColumnWidth(min: 196, ideal: 224, max: 300)
-            } detail: {
-                sectionView(selectedSection)
-            }
-            .navigationSplitViewStyle(.balanced)
+            sidebarNavigation
         #else
-            // The tab bar takes no background override. `toolbarBackground`
-            // replaces whatever the running system draws there, which on
-            // iOS 26 meant a flat pill in place of the platform's own bar with
-            // rows showing through it unblurred — and a tab bar is the one
-            // piece of chrome every app on the device shares.
+            // A tab bar is right for a phone and wasteful on an iPad: five
+            // labels stretched across a 1000pt-wide window, with the sections
+            // they name reachable only by reaching to the bottom of it. The
+            // sidebar the Mac already has is the same five destinations laid
+            // out the way a regular-width canvas wants them, so iPad takes it
+            // rather than getting a layout of its own.
+            //
+            // Idiom *and* size class: a Max-sized iPhone in landscape reports
+            // regular width, and swapping its tab bar for a sidebar on
+            // rotation would be a different app in each orientation.
+            if isPadLayout {
+                sidebarNavigation
+            } else {
+                tabNavigation
+            }
+        #endif
+    }
+
+    #if os(iOS)
+        private var isPadLayout: Bool {
+            horizontalSizeClass == .regular
+                && UIDevice.current.userInterfaceIdiom == .pad
+        }
+
+        /// The tab bar takes no background override. `toolbarBackground`
+        /// replaces whatever the running system draws there, which on iOS 26
+        /// meant a flat pill in place of the platform's own bar with rows
+        /// showing through it unblurred — and a tab bar is the one piece of
+        /// chrome every app on the device shares.
+        private var tabNavigation: some View {
             TabView(selection: $selectedSection) {
                 ForEach(AppSection.allCases) { section in
                     sectionView(section)
@@ -228,7 +217,71 @@ struct RootView: View {
                         .tag(section)
                 }
             }
-        #endif
+        }
+    #endif
+
+    /// The sidebar's selection is optional because that is the only form
+    /// `List(_:selection:)` offers on iOS — and clearing it is ignored, since
+    /// the detail column has to be showing something.
+    private var sidebarSelection: Binding<AppSection?> {
+        Binding {
+            selectedSection
+        } set: { section in
+            if let section { selectedSection = section }
+        }
+    }
+
+    private var sidebarNavigation: some View {
+        NavigationSplitView {
+            List(AppSection.allCases, selection: sidebarSelection) { section in
+                HStack(spacing: CoveTheme.Space.rowGap) {
+                    Image(systemName: section.symbol)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(
+                            selectedSection == section
+                                ? CoveTheme.accent : .secondary
+                        )
+                        .frame(width: 20)
+                    Text(section.title)
+                        .font(.body.weight(selectedSection == section ? .semibold : .regular))
+                }
+                .tag(section)
+                .padding(.vertical, CoveTheme.Space.rowPadding)
+            }
+            #if os(iOS)
+                // Explicit on iPad, where a plain `List` in a split view is
+                // still an inset-grouped table. macOS gives a sidebar column
+                // this style already.
+                .listStyle(.sidebar)
+            #endif
+            .safeAreaInset(edge: .top) {
+                HStack(spacing: 11) {
+                    CoveMark(size: 32)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Cove")
+                            .font(.coveHeadline)
+                        Text("Markdown, at home")
+                            .coveEyebrow()
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 11)
+                .background(.ultraThinMaterial)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(CoveTheme.hairline)
+                        .frame(height: 1)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Cove")
+            }
+            .navigationSplitViewColumnWidth(min: 196, ideal: 224, max: 300)
+        } detail: {
+            sectionView(selectedSection)
+        }
+        .navigationSplitViewStyle(.balanced)
     }
 
     @ViewBuilder

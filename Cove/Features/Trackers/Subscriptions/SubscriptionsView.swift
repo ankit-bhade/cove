@@ -56,10 +56,8 @@ struct SubscriptionsView: View {
                         Label("Add", systemImage: "plus")
                     }
                 }
-                ToolbarItem {
-                    CoveRefreshButton { await vaultManager.refresh() }
-                }
             }
+            .coveRefreshable { await vaultManager.refresh() }
             .sheet(isPresented: $isAdding) {
                 SubscriptionDraftSheet(
                     mode: .add,

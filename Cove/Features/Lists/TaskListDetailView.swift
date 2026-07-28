@@ -5,6 +5,9 @@ import SwiftUI
 /// thing to buy, not a thing due today.
 struct TaskListDetailView: View {
     let listName: String
+    /// How a row here pushes its note. The navigation stack belongs to the
+    /// Lists overview, one level up.
+    let openNote: (NoteDestination) -> Void
 
     @Environment(VaultManager.self) private var vaultManager
     @Environment(\.dismiss) private var dismiss
@@ -141,6 +144,7 @@ struct TaskListDetailView: View {
             Button("Rename") { rename() }
                 .disabled(trimmedRenameText.isEmpty)
         }
+        .coveTaskScreen(actions, openNote: openNote)
         .coveErrorAlert($actions.errorMessage)
         .coveMinuteTick($now)
     }

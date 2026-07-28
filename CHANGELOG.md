@@ -15,6 +15,24 @@ meaning something and this history gets cut into releases.
 
 ### Added
 
+- **Tasks can be edited without opening Markdown.** Tapping a task row opens
+  its details — title, date, time, and repeat rule — with **Open in Note** as a
+  secondary action there, in the row's context menu, and on a leading swipe.
+  Rescheduling something was the one thing on those screens that meant editing
+  a `@due(...)` tag by hand while every other action was a gesture. The write
+  is the same shape as the rest: it re-finds the line semantically, refuses
+  when two lines are indistinguishable or when the schedule changed
+  elsewhere, keeps the line's own indentation, bullet, checkbox, and line
+  ending, and is undoable. A recurring task's anchor survives an edit that
+  left its schedule alone and goes with one that did not, since a new due date
+  is a new anchor. A list item may be edited to have no date at all; a task
+  outside a list cannot, because `@due` is what makes it one.
+- **A destructive action says it can be undone.** Deleting a task or clearing
+  the completed ones raises a short bar naming what happened with an **Undo**
+  beside it. Undo was already registered for both, and on a Mac the Edit menu
+  and ⌘Z said so — on a phone the only route to it was a shake gesture nothing
+  on screen advertises, so a swipe that took the wrong line read as final when
+  it never was.
 - Notes open at the line you came for. A search result opens on the line it
   matched, a task row opens on its own line, and a format warning in Settings
   opens on the line it names — which is what the warning already said it did.
@@ -184,6 +202,31 @@ meaning something and this history gets cut into releases.
 
 ### Changed
 
+- **iPad gets the sidebar instead of the phone's tab bar.** Five tab labels
+  stretched across a 13-inch window, with the sections they name reachable
+  only at the very bottom of it, is a phone layout on a desk-sized canvas. A
+  regular-width iPad now takes the same `NavigationSplitView` sidebar the Mac
+  has. An iPhone keeps its tab bar in every orientation, including the Max
+  sizes that report regular width in landscape.
+- **Manual refresh is a gesture on iOS rather than a button.** Every list
+  screen carried a refresh control beside its title for an action that is
+  automatic almost all of the time — Cove rebuilds its index on launch, after
+  every change it makes, on iCloud's own change events, and whenever the app
+  returns to the foreground. On iOS it is now pull-to-refresh (plus ⌘R with a
+  keyboard); the Mac keeps the toolbar button, since AppKit has no pull
+  gesture.
+- **Settings shows four things and hides the rest behind Advanced.** Vault,
+  storage health, appearance, and reminders stay in view; recovery, widget
+  status, folder access, and bookmark state moved into one **Advanced** group
+  that opens itself when something there actually needs attention — an
+  unsaved bookmark, a recovered draft, or a widget change that could not be
+  applied.
+- **The quick-capture field says "Add a task…" and puts its example
+  underneath.** A placeholder cannot wrap, so at accessibility text sizes the
+  old one truncated to about three words — and they were the least useful
+  three. The example now sits below the empty field as ordinary caption text
+  that wraps, and gets out of the way as soon as there is a live
+  interpretation to read instead.
 - **The task screens are one continuous list surface rather than a stack of
   cards.** Overdue, Today, Tomorrow, Upcoming, and Completed were each their
   own inset-grouped section, which drew five rounded capsules inside iOS's own

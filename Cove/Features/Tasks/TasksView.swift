@@ -18,21 +18,19 @@ struct TasksView: View {
     /// Ticks each minute so "Overdue" and "Today" stay accurate while the
     /// tab sits open across a due moment or across midnight.
     @State private var now = Date()
+    /// Explicit, because a row's note is now opened from a sheet and from a
+    /// swipe — neither of which can carry a `NavigationLink`.
+    @State private var path: [NoteDestination] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             list
                 .navigationTitle("Tasks")
                 .navigationDestination(for: NoteDestination.self) { destination in
                     EditorView(destination)
                 }
-                .toolbar {
-                    ToolbarItem {
-                        CoveRefreshButton {
-                            await vaultManager.refresh()
-                        }
-                    }
-                }
+                .coveRefreshable { await vaultManager.refresh() }
+                .coveTaskScreen(actions) { path.append($0) }
                 .coveErrorAlert($actions.errorMessage)
                 .confirmationDialog(
                     "Clear All Completed Tasks?",
@@ -163,7 +161,14 @@ struct TasksView: View {
                 .accessibilityLabel("\(openCount) open tasks")
         } content: {
             QuickCaptureField(
-                placeholder: "e.g. Get bread tomorrow at 3pm",
+                placeholder: "Add a task…",
+                // The example moved out of the placeholder and under the
+                // field. A placeholder cannot wrap, so at an accessibility
+                // text size "e.g. Get bread tomorrow at 3pm" truncated to
+                // about three words — and the words it kept were the least
+                // useful ones. As a caption it wraps, and the field says what
+                // to do with itself in three words that always fit.
+                hint: "Try “get bread 3p tmr” — dates, times, and repeats are understood.",
                 accessibilityHint: "Enter a task with an optional date, time, or repeat rule",
                 bindsFocusShortcut: true
             ) { draft in

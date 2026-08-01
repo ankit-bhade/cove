@@ -73,7 +73,18 @@ tightened app-wide, overview panels are drawn only where summing more than one
 thing means something, tracked capitals were pulled back to headings alone,
 and the quick-capture field got a token of its own so that at night it lifts
 off the panel rather than sinking invisibly into it.
-Most recently a UI review found the app coherent and asked for five things,
+Most recently a full review — the suite, both builds, and the app driven on
+the Simulator — found two things the reading alone had not. `main` was failing
+its own `Scripts/verify-build.sh` at the log-privacy scan, which halts before
+the tests and both builds ever run; and the **Undo bar reached two of the nine
+undoable actions**, so four confirmation dialogs promised an Undo that iPhone
+had no route to, over deletions that never reach `.cove-recovery`. Deleting a
+list on a phone destroyed its tasks permanently while saying it did not. The
+bar is now `CoveUndoCenter`, any screen can own one, and registering does both
+halves in a single call. The same pass made the lint step `--strict` — it had
+been reporting 28 findings and exiting 0 — and stopped a subscription row
+tinting its cost and cycle because a renewal happened to be within the week.
+Before that, a UI review found the app coherent and asked for five things,
 all of which were about *reach* rather than about the look: a task could be
 rescheduled only by editing Markdown by hand, an Undo that existed was
 invisible on a phone, Settings answered four questions beside four nobody
@@ -806,6 +817,25 @@ watching the button do nothing — so a bar that only drove the manager would
 have been dead on the one platform it exists for. It prefers the manager when
 there is one, so a Mac keeps a single stack and the Edit menu stays in step.
 
+**Which is why the bar is `CoveUndoCenter` rather than a part of
+`TaskActions`, and why registering goes through one call.** It started as task
+state, so only the two actions on those screens got it — and *every other*
+destructive action in the app registered its reversal with the nil manager
+alone. Four confirmation dialogs said "you can undo the deletion" over changes
+a phone had no route back from: deleting a list, deleting a list from its own
+detail view, deleting a subscription, and deleting a subscription category.
+None of those moves a file — they rewrite a `##` section or a line — so
+nothing reaches `.cove-recovery` either, and the Undo *is* the recovery. A
+list deletion on iPhone therefore destroyed its tasks permanently while the
+dialog promised otherwise. `CoveUndoCenter.register(named:announcing:
+withTarget:undoManager:reverse:)` does both halves in one call, so a
+manager-only registration is not something a call site can express any more.
+
+**A screen that dismisses itself has to announce on its parent's center.**
+Deleting a list from `TaskListDetailView` pops back to the overview, so a
+notice raised on that view's own `TaskActions` would be torn down with the
+view and never seen. `ListsView` owns the center and hands it down.
+
 **And the bar goes at the top, which is not where a toast goes.** iOS 26's tab
 bar floats *over* scrolling content and contributes no safe-area inset, so a
 bar placed against the bottom edge came out underneath it — a sliver of card
@@ -1480,6 +1510,20 @@ its checkbox is already ember. A completed task's line stays quiet for the
 reason it always did — finishing something should settle a row, not light it
 up — which is the same call the widget's muted checkboxes make.
 
+**A subscription row follows that rule, and took two goes to.** Its forward
+equivalent of lateness is a charge about to land, and the first version tinted
+the whole summary — `$11.99 · monthly · Renews tomorrow` — for anything inside
+seven days. Both halves of that were the fault above: the window is one every
+monthly charge enters once a month, so a share of the list was accented at all
+times for doing nothing unusual, and the tint covered a cost and a cycle that
+are never urgent on behalf of a clause that sometimes is. `summaryParts` splits
+the line so only the clause can be emphasised, and `isRenewingNow` narrows the
+trigger to today and tomorrow. `isImminent`'s week survives where it is
+actually a discriminator — inside **Next 30 Days**, a section already scoped to
+a month. That section is also why the row's window had to shrink rather than
+just its scope: it lists the imminent charges by name directly above, so a
+tinted row was the screen saying the same thing a third time.
+
 **A task title is regular where every other row title is medium, and that is
 what separates it from its date.** The pair was tried at medium first, with
 the gap opened up to compensate; it did not work, because distance was never
@@ -1840,7 +1884,7 @@ xcodebuild -project Cove.xcodeproj -scheme Cove -destination 'platform=macOS' te
 Scripts/verify-build.sh
 ```
 
-Current verified suite: **581 tests** (macOS host), plus clean macOS and
+Current verified suite: **591 tests** (macOS host), plus clean macOS and
 generic iOS Simulator builds, all with zero warnings.
 
 **Never pipe `xcodebuild` into `tail` or `grep` to read the result.** The
@@ -2025,8 +2069,16 @@ Rough edges and surprises, not restatements of the design above.
 * The Undo bar shows only the most recent action and lasts six seconds. A
   second delete replaces the first notice, after which the earlier one is
   reachable through ⌘Z on a Mac and — since `\.undoManager` is nil on iOS —
-  not at all on a phone. Leaving a list's detail view has the same effect,
-  because the notice belongs to that screen's `TaskActions`.
+  not at all on a phone. Leaving a list's detail view still drops that
+  screen's own notices, since they belong to its `TaskActions`; the list
+  *deletion* is the one action that survives the trip, because it announces on
+  the overview's center instead.
+* Capture, checkbox toggles, and task edits are undoable through the Edit menu
+  and ⌘Z but raise no bar, so on iPhone they cannot be reversed from the UI at
+  all. That is deliberate for the first two — a notice after every capture and
+  every checkbox is the bar becoming furniture — and it is the reason the
+  quick-capture preview is not optional chrome. An edit is the arguable one:
+  it is reversible, infrequent, and currently silent on a phone.
 * Pull-to-refresh is not advertised anywhere on iOS, which is the cost of
   taking the button out of the toolbar. It is the platform's own gesture on a
   list, and ⌘R still works with a keyboard, but a reader who never pulls down

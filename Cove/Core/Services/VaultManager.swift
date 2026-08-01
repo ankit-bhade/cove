@@ -840,7 +840,8 @@ final class VaultManager {
             SubscriptionParser.ParsedSubscription
         >()
         _ = try await repository.updateNote(at: url) { text in
-            let removal = try SubscriptionParser
+            let removal =
+                try SubscriptionParser
                 .removingSubscriptionWithRecordResult(identity, in: text)
             removed.record(removal.removed)
             return removal.text

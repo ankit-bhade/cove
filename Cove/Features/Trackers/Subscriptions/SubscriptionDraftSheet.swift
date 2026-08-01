@@ -280,7 +280,11 @@ struct SubscriptionDraftSheet: View {
     }
 
     private var cycleBinding: Binding<BillingCycle> {
-        Binding { draft.cycle } set: { draft.cycle = $0 }
+        Binding {
+            draft.cycle
+        } set: {
+            draft.cycle = $0
+        }
     }
 
     private var firstChargeBinding: Binding<Date> {

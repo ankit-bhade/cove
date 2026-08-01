@@ -28,45 +28,12 @@ final class TaskActions {
     /// stack consumes it, since a sheet and a swipe action cannot push.
     var pendingNoteDestination: NoteDestination?
     /// What the last destructive action was, while an Undo of it is still one
-    /// tap away.
-    private(set) var undoNotice: UndoNotice?
-    private var undoNoticeDismissal: Task<Void, Never>?
-
-    /// One line of "this happened, and it doesn't have to have".
-    ///
-    /// Every destructive task action registers a real Undo, and on a Mac the
-    /// Edit menu and ⌘Z say so. On a phone the only route to it is a shake,
-    /// which nothing on screen advertises and few people use — so a swipe that
-    /// removed the wrong line read as final when it never was.
-    ///
-    /// The notice carries the reversal itself rather than calling
-    /// `UndoManager.undo()`, because outside a `DocumentGroup` SwiftUI's
-    /// `\.undoManager` is **nil on iOS** — so a bar that only drove the
-    /// manager would have been a button that does nothing on the one platform
-    /// it exists for. It still prefers the manager when there is one, so a Mac
-    /// keeps a single undo stack and the Edit menu stays in step.
-    struct UndoNotice: Identifiable {
-        let id = UUID()
-        let message: String
-        let undo: () -> Void
-    }
-
-    /// How long a notice stays up. Long enough to read a short sentence and
-    /// reach for it, short enough that it is gone before it becomes furniture.
-    static let undoNoticeDuration: Duration = .seconds(6)
+    /// tap away. Shared with every other screen that raises the bar — see
+    /// `CoveUndoCenter` for why it is not a task-specific idea.
+    let undo = CoveUndoCenter()
 
     func isProcessing(_ task: TaskItem) -> Bool {
         pendingTaskIDs.contains(task.id)
-    }
-
-    private func announceUndo(_ message: String, undo: @escaping () -> Void) {
-        undoNoticeDismissal?.cancel()
-        undoNotice = UndoNotice(message: message, undo: undo)
-        undoNoticeDismissal = Task { [weak self] in
-            try? await Task.sleep(for: Self.undoNoticeDuration)
-            guard !Task.isCancelled else { return }
-            self?.undoNotice = nil
-        }
     }
 
     /// Registers one reversal everywhere it can be reached from: the platform
@@ -85,28 +52,17 @@ final class TaskActions {
                 } catch {
                     self?.errorMessage = error.localizedDescription
                     CoveLog.vault.error(
-                        "\(name, privacy: .public) undo failed: \(error.localizedDescription, privacy: .private)"
+                        "\(name) undo failed: \(error.localizedDescription, privacy: .private)"
                     )
                 }
             }
         }
-        undoManager?.registerUndo(withTarget: vaultManager) { _ in reverse() }
-        undoManager?.setActionName(name)
-        announceUndo(message) { [weak undoManager] in
-            // The manager owns the stack when there is one, so going through
-            // it keeps the Edit menu and this bar from undoing twice.
-            if let undoManager, undoManager.canUndo {
-                undoManager.undo()
-            } else {
-                reverse()
-            }
-        }
-    }
-
-    func dismissUndoNotice() {
-        undoNoticeDismissal?.cancel()
-        undoNoticeDismissal = nil
-        undoNotice = nil
+        undo.register(
+            named: name,
+            announcing: message,
+            withTarget: vaultManager,
+            undoManager: undoManager,
+            reverse: reverse)
     }
 
     /// Toggling a recurring task rolls its due date forward instead of
@@ -384,29 +340,7 @@ private struct TaskScreenModifier: ViewModifier {
                 actions.editingTask = nil
                 openNote(destination)
             }
-            // Under the navigation bar, not over the tab bar. The bottom is
-            // where a toast is conventionally put and it is the one edge this
-            // app cannot use: iOS 26's tab bar floats *over* scrolling
-            // content and contributes no safe-area inset, so a bar placed
-            // against the bottom edge came out underneath it — legible only
-            // as a sliver of card behind the tab labels. Above the content it
-            // is unobstructed, it stacks predictably under the storage banner
-            // that already reports from the top, and it needs no guess at how
-            // tall the platform's chrome happens to be this year.
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let notice = actions.undoNotice {
-                    CoveUndoBar(message: notice.message) {
-                        notice.undo()
-                        actions.dismissUndoNotice()
-                    } dismiss: {
-                        actions.dismissUndoNotice()
-                    }
-                    .padding(.horizontal, CoveTheme.Space.regular)
-                    .padding(.bottom, CoveTheme.Space.tight)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .animation(.easeInOut(duration: 0.2), value: actions.undoNotice?.id)
+            .coveUndoBar(actions.undo)
     }
 }
 

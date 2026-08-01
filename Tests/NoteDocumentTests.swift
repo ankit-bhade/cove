@@ -163,7 +163,8 @@ final class NoteDocumentTests: XCTestCase {
         XCTAssertEqual(document.loadState, .loaded)
         XCTAssertEqual(document.text, "original")
         XCTAssertFalse(fileManager.fileExists(atPath: draftURL.path))
-        let quarantine = draftURL
+        let quarantine =
+            draftURL
             .deletingPathExtension()
             .appendingPathExtension("unreadable")
         XCTAssertEqual(

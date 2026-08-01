@@ -35,19 +35,44 @@ enum SubscriptionPresentation {
         timeZone: TimeZone = .autoupdatingCurrent,
         locale: Locale = .autoupdatingCurrent
     ) -> String {
+        let parts = summaryParts(
+            for: subscription, on: today, timeZone: timeZone, locale: locale)
+        guard let clause = parts.clause else { return parts.details }
+        return "\(parts.details) · \(clause)"
+    }
+
+    /// The same line, split where a row may want to emphasise one half.
+    ///
+    /// `details` is what the charge costs and how often — facts that are never
+    /// urgent — and `clause` is when it next lands, or why it never will. The
+    /// row tints only the clause: colouring the whole line put "$11.99" and
+    /// "monthly" in the accent because a renewal happened to be near, which is
+    /// two facts shouting on behalf of a third.
+    ///
+    /// `summary` is built from this rather than beside it, so the joined
+    /// wording and the split one cannot drift.
+    static func summaryParts(
+        for subscription: Subscription,
+        on today: Date,
+        timeZone: TimeZone = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent
+    ) -> (details: String, clause: String?) {
         let cost = money(subscription.cost, locale: locale)
         let cycle = subscription.cycle.displayName.lowercased()
+        let details = "\(cost) · \(cycle)"
         guard subscription.status == .active else {
-            return "\(cost) · \(cycle) · \(subscription.status.displayName)"
+            return (details, subscription.status.displayName)
         }
         guard
             let next = SubscriptionMath.nextChargeDateString(
                 for: subscription, on: today, timeZone: timeZone)
         else {
-            return "\(cost) · \(cycle)"
+            return (details, nil)
         }
-        return
-            "\(cost) · \(cycle) · \(renewal(on: next, today: today, timeZone: timeZone, locale: locale))"
+        return (
+            details,
+            renewal(on: next, today: today, timeZone: timeZone, locale: locale)
+        )
     }
 
     /// "Renews today", "Renews tomorrow", "Renews in 4 days", "Renews Nov 2".
@@ -62,8 +87,9 @@ enum SubscriptionPresentation {
         locale: Locale = .autoupdatingCurrent
     ) -> String {
         let todayString = SubscriptionMath.dateString(from: today, timeZone: timeZone)
-        guard let days = SubscriptionMath.daysBetween(
-            todayString, dateString, timeZone: timeZone)
+        guard
+            let days = SubscriptionMath.daysBetween(
+                todayString, dateString, timeZone: timeZone)
         else { return "Renews \(dateString)" }
 
         switch days {
@@ -72,8 +98,9 @@ enum SubscriptionPresentation {
         case 1: return "Renews tomorrow"
         case 2...6: return "Renews in \(days) days"
         default:
-            guard let date = SubscriptionMath.date(
-                from: dateString, timeZone: timeZone)
+            guard
+                let date = SubscriptionMath.date(
+                    from: dateString, timeZone: timeZone)
             else { return "Renews \(dateString)" }
             var style = Date.FormatStyle.dateTime.month(.abbreviated).day()
             if days > 300 { style = style.year() }
@@ -81,19 +108,46 @@ enum SubscriptionPresentation {
         }
     }
 
-    /// A charge that lands within the week reads as soon; that is the only
-    /// thing a subscription row raises its voice for, which is the same rule
-    /// the task rows follow for lateness.
+    /// A charge that lands within the week. This is what sorts the *next
+    /// thirty days* into what is nearly here and what merely qualifies — a
+    /// useful cut inside a section that is already scoped to a month.
     static func isImminent(
         _ dateString: String,
         today: Date,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> Bool {
-        let todayString = SubscriptionMath.dateString(from: today, timeZone: timeZone)
-        guard let days = SubscriptionMath.daysBetween(
+        daysUntil(dateString, today: today, timeZone: timeZone)
+            .map { $0 >= 0 && $0 <= 6 } ?? false
+    }
+
+    /// A charge landing today or tomorrow, which is the only thing a
+    /// subscription *row* raises its voice for.
+    ///
+    /// A row lives in the full list, not in a section that has already
+    /// narrowed the field, so `isImminent`'s week was too generous a trigger
+    /// there: every monthly charge enters it once a month, so on any given day
+    /// a share of the list was accented for doing nothing unusual. That is the
+    /// fault the task rows fixed by tinting for lateness alone — "a list where
+    /// every date is coloured says nothing about which one to read first."
+    /// Today and tomorrow are what a reader can still act on.
+    static func isRenewingNow(
+        _ dateString: String,
+        today: Date,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> Bool {
+        daysUntil(dateString, today: today, timeZone: timeZone)
+            .map { $0 >= 0 && $0 <= 1 } ?? false
+    }
+
+    private static func daysUntil(
+        _ dateString: String,
+        today: Date,
+        timeZone: TimeZone
+    ) -> Int? {
+        let todayString = SubscriptionMath.dateString(
+            from: today, timeZone: timeZone)
+        return SubscriptionMath.daysBetween(
             todayString, dateString, timeZone: timeZone)
-        else { return false }
-        return days >= 0 && days <= 6
     }
 
     /// "3 subscriptions · $94.20/mo" — the caption under the tracker's name on

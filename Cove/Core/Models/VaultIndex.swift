@@ -95,9 +95,7 @@ struct VaultIndex: Sendable {
         }
     }
 
-    var subscriptionDiagnostics:
-        [(fileURL: URL, diagnostic: SubscriptionParser.Diagnostic)]
-    {
+    var subscriptionDiagnostics: [(fileURL: URL, diagnostic: SubscriptionParser.Diagnostic)] {
         entries.flatMap { entry in
             entry.subscriptionDiagnostics.map { (entry.url, $0) }
         }

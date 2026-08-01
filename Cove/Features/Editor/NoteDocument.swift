@@ -105,7 +105,8 @@ struct EditorRecoveryDraftStore: Sendable {
         guard FileManager.default.fileExists(atPath: source.path) else {
             return nil
         }
-        let destination = source
+        let destination =
+            source
             .deletingPathExtension()
             .appendingPathExtension("unreadable")
         if FileManager.default.fileExists(atPath: destination.path) {

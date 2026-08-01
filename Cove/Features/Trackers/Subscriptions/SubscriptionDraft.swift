@@ -108,7 +108,8 @@ struct SubscriptionDraft: Equatable, Sendable {
         return
             result
             .replacingOccurrences(
-                of: #"[ \t]+"#, with: " ", options: .regularExpression)
+                of: #"[ \t]+"#, with: " ", options: .regularExpression
+            )
             .trimmingCharacters(in: .whitespaces)
     }
 
@@ -124,8 +125,9 @@ struct SubscriptionDraft: Equatable, Sendable {
         if name.trimmingCharacters(in: .whitespaces) != sanitizedName {
             issues.append(.unsafeName)
         }
-        if amount < 0 { issues.append(.negativeAmount) }
-        else if !Self.isWritableAmount(amount) {
+        if amount < 0 {
+            issues.append(.negativeAmount)
+        } else if !Self.isWritableAmount(amount) {
             issues.append(.unwritableAmount("\(amount)"))
         }
         if !Self.isValidCurrencyCode(normalizedCurrencyCode) {

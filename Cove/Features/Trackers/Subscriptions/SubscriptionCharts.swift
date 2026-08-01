@@ -21,7 +21,8 @@ enum SubscriptionChartStyle {
     /// The floor keeps the smallest bar a visible ember rather than a ghost.
     static func opacity(for value: Decimal, of maximum: Decimal) -> Double {
         guard maximum > 0 else { return 1 }
-        let share = (value as NSDecimalNumber).doubleValue
+        let share =
+            (value as NSDecimalNumber).doubleValue
             / (maximum as NSDecimalNumber).doubleValue
         return 0.45 + 0.55 * min(max(share, 0), 1)
     }

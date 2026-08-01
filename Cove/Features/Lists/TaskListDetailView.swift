@@ -1,3 +1,4 @@
+import OSLog
 import SwiftUI
 
 /// One list's items, with the same quick-entry field the Tasks screen uses.
@@ -5,6 +6,10 @@ import SwiftUI
 /// thing to buy, not a thing due today.
 struct TaskListDetailView: View {
     let listName: String
+    /// The Lists overview's undo bar, for the one action that outlives this
+    /// screen: deleting the list pops back there, so a notice raised on this
+    /// view's own `actions` would be dismissed along with the view.
+    let undo: CoveUndoCenter
     /// How a row here pushes its note. The navigation stack belongs to the
     /// Lists overview, one level up.
     let openNote: (NoteDestination) -> Void
@@ -213,15 +218,21 @@ struct TaskListDetailView: View {
     private func registerListDeletionUndo(
         _ record: TaskListDocument.SectionRemovalRecord
     ) {
-        undoManager?.registerUndo(withTarget: vaultManager) { manager in
+        undo.register(
+            named: "Delete List",
+            announcing: "List deleted.",
+            withTarget: vaultManager,
+            undoManager: undoManager
+        ) { [vaultManager] in
             Task {
                 do {
-                    try await manager.restoreDeletedList(record)
+                    try await vaultManager.restoreDeletedList(record)
                 } catch {
-                    actions.errorMessage = error.localizedDescription
+                    CoveLog.vault.error(
+                        "Delete List undo failed: \(error.localizedDescription, privacy: .private)"
+                    )
                 }
             }
         }
-        undoManager?.setActionName("Delete List")
     }
 }

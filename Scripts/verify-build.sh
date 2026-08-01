@@ -58,7 +58,13 @@ plutil -lint \
   Cove/Cove-iOS.entitlements \
   CoveWidgets/CoveWidgets.entitlements
 
-xcrun swift-format lint --configuration .swift-format --recursive Cove CoveWidgets Tests
+# `--strict` is what makes this a gate. Without it swift-format reports its
+# findings as warnings and still exits 0, so the step printed a wall of
+# complaints and passed anyway — 28 of them had accumulated, unnoticed,
+# because every other check in this script fails hard and this one only
+# looked like it did.
+xcrun swift-format lint --strict --configuration .swift-format \
+  --recursive Cove CoveWidgets Tests
 
 # The filesystem is the source of truth and nothing leaves the device. That
 # is a fixed rule, so it is worth enforcing mechanically rather than trusting

@@ -495,4 +495,3 @@ struct TaskItem: Identifiable, Hashable, Sendable {
             < (rhs.dueDateString ?? "9999-99-99", rhs.dueTimeString ?? "", rhs.fileTitle, rhs.lineNumber)
     }
 }
-

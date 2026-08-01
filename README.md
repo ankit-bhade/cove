@@ -91,10 +91,13 @@ meant, and points at them from Settings. A checkbox another device already
 ticked simply corrects itself: nothing is written, and nothing lands in Undo
 that would reverse that other change.
 
-Deleting a task or clearing the completed ones raises a short bar naming what
-happened with an Undo beside it, which stays for a few seconds. It is the
-same reversal ⌘Z performs on a Mac — the bar exists because a phone's only
-route to it is a shake gesture nothing on screen advertises.
+Every destructive action raises a short bar naming what happened with an Undo
+beside it, which stays for a few seconds: deleting a task, clearing the
+completed ones, deleting a list, and deleting a subscription or one of its
+categories. It is the same reversal ⌘Z performs on a Mac — the bar exists
+because a phone's only route to it is a shake gesture nothing on screen
+advertises. It matters most for the deletions that rewrite a note rather than
+move a file, since those leave nothing in Cove Recovery to go back to.
 
 ### Quick capture
 

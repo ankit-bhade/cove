@@ -117,14 +117,33 @@ struct CoveCountBadge: View {
 /// which is otherwise the one reader the tint doesn't reach.
 struct CoveDueLabel: View {
     let text: String
+    /// A trailing clause that may carry its own tint, joined with the same
+    /// separator the rest of the line uses. A subscription row draws "$11.99 ·
+    /// monthly" here and "Renews tomorrow" as the clause, so imminence can be
+    /// emphasised without the cost and the cycle being dragged along with it.
+    var clause: String?
+    var clauseTint: Color?
     var isOverdue = false
     var tint: Color = .secondary
 
     var body: some View {
-        Text(text)
+        line
             .font(.footnote)
-            .foregroundStyle(tint)
-            .accessibilityLabel(isOverdue ? "Overdue, \(text)" : text)
+            .accessibilityLabel(accessibilityText)
+    }
+
+    /// Built as one `Text` rather than an `HStack` so the two halves wrap as a
+    /// single sentence instead of as two blocks that break independently.
+    private var line: Text {
+        let lead = Text(text).foregroundStyle(tint)
+        guard let clause else { return lead }
+        return lead + Text(" · ").foregroundStyle(tint)
+            + Text(clause).foregroundStyle(clauseTint ?? tint)
+    }
+
+    private var accessibilityText: String {
+        let full = clause.map { "\(text) · \($0)" } ?? text
+        return isOverdue ? "Overdue, \(full)" : full
     }
 }
 
@@ -248,9 +267,128 @@ extension CoveEmptyState where Actions == EmptyView {
     }
 }
 
+/// The one place a screen keeps "this just happened, and it doesn't have to
+/// have" while an Undo of it is still one tap away.
+///
+/// It lives here rather than inside `TaskActions` because the bar is not a
+/// task idea — it is what makes Undo *exist* on a phone. Outside a
+/// `DocumentGroup` SwiftUI's `\.undoManager` is nil on iOS, so an action that
+/// registers its reversal only there has no route to it at all: no Edit menu,
+/// and a shake gesture nothing on screen advertises. Deleting a list or a
+/// subscription category is a text edit rather than a file move, so it does
+/// not reach Cove Recovery either — which left a confirmation dialog promising
+/// "you can undo the deletion" over a change that, on iPhone, nothing could
+/// take back.
+///
+/// A screen owns one of these, hands it to `coveUndoBar(_:)`, and announces
+/// through it. `TaskActions` holds one for the same reason every other screen
+/// does rather than keeping a private copy.
+@MainActor
+@Observable
+final class CoveUndoCenter {
+    /// One line of "this happened, and it doesn't have to have".
+    ///
+    /// The notice carries the reversal itself rather than calling
+    /// `UndoManager.undo()`, because the manager is exactly what is missing on
+    /// the platform this bar exists for. Callers that also register with a real
+    /// manager pass a closure that prefers it, so a Mac keeps one stack and the
+    /// Edit menu stays in step.
+    struct Notice: Identifiable {
+        let id = UUID()
+        let message: String
+        let undo: () -> Void
+    }
+
+    private(set) var notice: Notice?
+    private var dismissal: Task<Void, Never>?
+
+    /// How long a notice stays up. Long enough to read a short sentence and
+    /// reach for it, short enough that it is gone before it becomes furniture.
+    static let duration: Duration = .seconds(6)
+
+    func announce(_ message: String, undo: @escaping () -> Void) {
+        dismissal?.cancel()
+        notice = Notice(message: message, undo: undo)
+        dismissal = Task { [weak self] in
+            try? await Task.sleep(for: Self.duration)
+            guard !Task.isCancelled else { return }
+            self?.notice = nil
+        }
+    }
+
+    func dismiss() {
+        dismissal?.cancel()
+        dismissal = nil
+        notice = nil
+    }
+
+    /// Registers one reversal everywhere it can be reached from: the platform
+    /// undo stack when there is one, and the bar that says it is there.
+    ///
+    /// Both halves or neither. Registering only with the manager is what left
+    /// four confirmation dialogs promising an Undo that iPhone had no route
+    /// to, and announcing only through the bar would drop a Mac's Edit menu
+    /// and ⌘Z. Every destructive action in the app goes through here so the
+    /// two cannot come apart again.
+    func register(
+        named name: String,
+        announcing message: String,
+        withTarget target: some AnyObject,
+        undoManager: UndoManager?,
+        reverse: @escaping () -> Void
+    ) {
+        undoManager?.registerUndo(withTarget: target) { _ in reverse() }
+        undoManager?.setActionName(name)
+        announce(message) { [weak undoManager] in
+            // The manager owns the stack when there is one, so going through
+            // it keeps the Edit menu and this bar from undoing twice.
+            if let undoManager, undoManager.canUndo {
+                undoManager.undo()
+            } else {
+                reverse()
+            }
+        }
+    }
+}
+
+private struct CoveUndoBarModifier: ViewModifier {
+    let center: CoveUndoCenter
+
+    func body(content: Content) -> some View {
+        content
+            // Under the navigation bar, not over the tab bar. The bottom is
+            // where a toast is conventionally put and it is the one edge this
+            // app cannot use: iOS 26's tab bar floats *over* scrolling content
+            // and contributes no safe-area inset, so a bar placed against the
+            // bottom edge came out underneath it — legible only as a sliver of
+            // card behind the tab labels.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let notice = center.notice {
+                    CoveUndoBar(message: notice.message) {
+                        notice.undo()
+                        center.dismiss()
+                    } dismiss: {
+                        center.dismiss()
+                    }
+                    .padding(.horizontal, CoveTheme.Space.regular)
+                    .padding(.bottom, CoveTheme.Space.tight)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: center.notice?.id)
+    }
+}
+
+extension View {
+    /// Shows `center`'s notice above this screen's content.
+    func coveUndoBar(_ center: CoveUndoCenter) -> some View {
+        modifier(CoveUndoBarModifier(center: center))
+    }
+}
+
 /// A short-lived bar saying what just happened and offering to take it back.
 ///
-/// It exists because Undo was reachable and invisible: every destructive task
+/// It exists because Undo was reachable and invisible: every destructive
 /// action registers one, and on a Mac the Edit menu says so, but a phone's
 /// only route to it is a shake gesture nothing on screen advertises. A swipe
 /// that removed the wrong line therefore read as final when it never was.

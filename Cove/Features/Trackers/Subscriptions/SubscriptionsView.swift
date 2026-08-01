@@ -20,6 +20,10 @@ struct SubscriptionsView: View {
     @State private var isAddingCategory = false
     @State private var newCategoryName = ""
     @State private var errorMessage: String?
+    /// Deleting a charge or a category rewrites Subscriptions.md rather than
+    /// moving a file, so nothing reaches Cove Recovery and the Undo is the
+    /// only way back — which is what both confirmation dialogs promise.
+    @State private var undo = CoveUndoCenter()
     @State private var isInactiveExpanded = false
     /// Keeps "renews today" and "renews in 4 days" true across midnight while
     /// the screen sits open.
@@ -125,6 +129,7 @@ struct SubscriptionsView: View {
                 Text(deletionMessage(for: pendingCategoryDeletion ?? ""))
             }
             .coveErrorAlert($errorMessage)
+            .coveUndoBar(undo)
             .coveMinuteTick($now)
     }
 
@@ -156,7 +161,8 @@ struct SubscriptionsView: View {
                         CoveEmptyState(
                             "Nothing Tracked Yet",
                             systemName: "creditcard",
-                            description: "Add what you pay for on a schedule and Cove keeps the monthly and yearly totals."
+                            description:
+                                "Add what you pay for on a schedule and Cove keeps the monthly and yearly totals."
                         ) {
                             Button("New Subscription") { isAdding = true }
                                 .buttonStyle(.borderedProminent)
@@ -356,17 +362,21 @@ struct SubscriptionsView: View {
             do {
                 let record = try await vaultManager.deleteSubscriptionCategory(
                     named: name)
-                undoManager?.registerUndo(withTarget: vaultManager) { manager in
+                undo.register(
+                    named: "Delete Category",
+                    announcing: "Category deleted.",
+                    withTarget: vaultManager,
+                    undoManager: undoManager
+                ) {
                     Task {
                         do {
-                            try await manager.restoreDeletedSubscriptionCategory(
-                                record)
+                            try await vaultManager
+                                .restoreDeletedSubscriptionCategory(record)
                         } catch {
                             errorMessage = error.localizedDescription
                         }
                     }
                 }
-                undoManager?.setActionName("Delete Category")
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -393,8 +403,9 @@ struct SubscriptionsView: View {
             if bars.count > 1 {
                 Section {
                     SubscriptionSpendChart(
-                        bars: bars, currencyCode: leading.currencyCode)
-                        .padding(.vertical, CoveTheme.Space.tight)
+                        bars: bars, currencyCode: leading.currencyCode
+                    )
+                    .padding(.vertical, CoveTheme.Space.tight)
                     if totals.count > 1 {
                         Text(
                             "Charted in \(leading.currencyCode) only. Amounts are never converted."
@@ -572,15 +583,19 @@ struct SubscriptionsView: View {
     }
 
     private func registerDeletionUndo(_ record: DeletedSubscriptionRecord) {
-        undoManager?.registerUndo(withTarget: vaultManager) { manager in
+        undo.register(
+            named: "Delete Subscription",
+            announcing: "Subscription deleted.",
+            withTarget: vaultManager,
+            undoManager: undoManager
+        ) {
             Task {
                 do {
-                    try await manager.restoreDeletedSubscription(record)
+                    try await vaultManager.restoreDeletedSubscription(record)
                 } catch {
                     errorMessage = error.localizedDescription
                 }
             }
         }
-        undoManager?.setActionName("Delete Subscription")
     }
 }

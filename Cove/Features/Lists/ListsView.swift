@@ -16,13 +16,21 @@ struct ListsView: View {
     /// row inside that view pushes a note, and the detail view can only ask
     /// for the second because the stack lives here.
     @State private var path = NavigationPath()
+    /// Deleting a list takes its tasks with it and is a text edit rather than
+    /// a file move, so nothing lands in Cove Recovery — the Undo *is* the
+    /// recovery. It is owned here rather than in the detail view because
+    /// deleting from there pops back to this screen, and a bar belonging to a
+    /// view that just went away is a bar nobody sees.
+    @State private var undo = CoveUndoCenter()
 
     var body: some View {
         NavigationStack(path: $path) {
             content
                 .navigationTitle("Lists")
                 .navigationDestination(for: String.self) { name in
-                    TaskListDetailView(listName: name) { path.append($0) }
+                    TaskListDetailView(listName: name, undo: undo) {
+                        path.append($0)
+                    }
                 }
                 .navigationDestination(for: NoteDestination.self) { destination in
                     EditorView(destination)
@@ -47,6 +55,7 @@ struct ListsView: View {
                     Text("Lists are sections of Tasks.md, so you can edit them as Markdown too.")
                 }
                 .coveErrorAlert($errorMessage)
+                .coveUndoBar(undo)
         }
     }
 
@@ -190,15 +199,19 @@ struct ListsView: View {
     private func registerListDeletionUndo(
         _ record: TaskListDocument.SectionRemovalRecord
     ) {
-        undoManager?.registerUndo(withTarget: vaultManager) { manager in
+        undo.register(
+            named: "Delete List",
+            announcing: "List deleted.",
+            withTarget: vaultManager,
+            undoManager: undoManager
+        ) {
             Task {
                 do {
-                    try await manager.restoreDeletedList(record)
+                    try await vaultManager.restoreDeletedList(record)
                 } catch {
                     errorMessage = error.localizedDescription
                 }
             }
         }
-        undoManager?.setActionName("Delete List")
     }
 }

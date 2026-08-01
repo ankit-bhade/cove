@@ -128,10 +128,12 @@ struct BillingCycle: Hashable, Sendable {
     /// A weekday set parses as a perfectly good `RecurrenceRule` and is then
     /// refused, because it is not a billing cycle.
     init?(tagText: String) {
-        let normalized = tagText
+        let normalized =
+            tagText
             .trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(
-                of: #"[ \t]+"#, with: " ", options: .regularExpression)
+                of: #"[ \t]+"#, with: " ", options: .regularExpression
+            )
             .lowercased()
         guard !normalized.isEmpty else { return nil }
 

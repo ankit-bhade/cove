@@ -173,6 +173,24 @@ meaning something and this history gets cut into releases.
 
 ### Fixed
 
+- **Deleting a list, a subscription, or a subscription category can actually
+  be undone on iPhone.** All four dialogs said "you can undo the deletion" and
+  all four registered that Undo only with the platform undo manager — which,
+  outside a `DocumentGroup`, SwiftUI leaves nil on iOS. There was no Edit menu
+  to reach it from and no ⌘Z, and none of these deletions moves a file, so
+  nothing landed in Cove Recovery either: deleting a list took its tasks with
+  it permanently while the dialog promised otherwise. Each now raises the same
+  Undo bar a deleted task does. The bar itself moved out of `TaskActions` into
+  a `CoveUndoCenter` any screen can own, and registering a reversal goes
+  through one call that does both halves, so a manager-only registration
+  cannot silently come back.
+- **A subscription row no longer shouts its price because a renewal is near.**
+  The accent covered the whole line — cost, cycle, and renewal — for anything
+  charging within seven days, which every monthly subscription enters once a
+  month, so a share of the list was always coloured and the **Next 30 Days**
+  section above had already said the same thing. Only the "Renews…" clause is
+  tinted now, and only for today and tomorrow. The seven-day window still
+  sorts the Next 30 Days section, where it is a useful cut.
 - **A recovery draft Cove cannot read is kept, not deleted.** Damaged bytes —
   or a record written by a future version — read as *no draft at all*, and the
   clean-load path then cleared the slot, throwing away the only copy of
@@ -202,6 +220,11 @@ meaning something and this history gets cut into releases.
 
 ### Changed
 
+- **The lint step in `Scripts/verify-build.sh` is a gate rather than a
+  report.** `swift-format lint` exits 0 with its findings printed as warnings,
+  so the step scrolled 28 of them past and passed — while every other check in
+  that script fails hard. It now runs `--strict`, and the sources it was
+  quietly accumulating complaints about are formatted.
 - **iPad gets the sidebar instead of the phone's tab bar.** Five tab labels
   stretched across a 13-inch window, with the sections they name reachable
   only at the very bottom of it, is a phone layout on a desk-sized canvas. A

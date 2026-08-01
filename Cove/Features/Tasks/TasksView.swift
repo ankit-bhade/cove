@@ -46,7 +46,9 @@ struct TasksView: View {
                         }
                     }
                 } message: {
-                    Text("This removes every completed task line shown here from its Markdown note, including dated items from your lists. You can undo the clear.")
+                    Text(
+                        "This removes every completed task line shown here from its Markdown note, including dated items from your lists. You can undo the clear."
+                    )
                 }
                 // No refresh on appearance. It was here because editor
                 // autosaves did not reach the index — they do now, through

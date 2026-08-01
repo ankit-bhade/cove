@@ -27,7 +27,10 @@ struct SubscriptionRow: View {
                     .strikethrough(subscription.status == .cancelled)
                     .foregroundStyle(
                         subscription.countsTowardSpending ? .primary : .secondary)
-                CoveDueLabel(text: summary, tint: summaryTint)
+                CoveDueLabel(
+                    text: summary.details,
+                    clause: summary.clause,
+                    clauseTint: clauseTint)
                 if showsCategory, let category = subscription.category {
                     CoveListLabel(category)
                 }
@@ -60,23 +63,26 @@ struct SubscriptionRow: View {
         .lineLimit(1)
         .opacity(subscription.countsTowardSpending ? 1 : 0.6)
         .accessibilityLabel(
-            "\(SubscriptionPresentation.money(SubscriptionMath.monthlyEquivalent(subscription), currencyCode: subscription.cost.currencyCode)) per month")
+            "\(SubscriptionPresentation.money(SubscriptionMath.monthlyEquivalent(subscription), currencyCode: subscription.cost.currencyCode)) per month"
+        )
     }
 
-    private var summary: String {
-        SubscriptionPresentation.summary(for: subscription, on: now)
+    private var summary: (details: String, clause: String?) {
+        SubscriptionPresentation.summaryParts(for: subscription, on: now)
     }
 
-    /// Lateness is the one thing a task row raises its voice for; here it is
-    /// imminence, which is the same idea pointed forward — a charge landing
-    /// this week is the only thing on this screen worth noticing before the
-    /// rest of it.
-    private var summaryTint: Color {
+    /// Lateness is the one thing a task row raises its voice for; here it is a
+    /// charge landing today or tomorrow — the same idea pointed forward, and
+    /// narrowed to what a reader can still do something about.
+    ///
+    /// Nil leaves the clause at the line's own tint, which is the ordinary
+    /// case: most of the list is not about to be charged.
+    private var clauseTint: Color? {
         guard subscription.countsTowardSpending,
             let next = SubscriptionMath.nextChargeDateString(
                 for: subscription, on: now),
-            SubscriptionPresentation.isImminent(next, today: now)
-        else { return .secondary }
+            SubscriptionPresentation.isRenewingNow(next, today: now)
+        else { return nil }
         return CoveTheme.accent
     }
 

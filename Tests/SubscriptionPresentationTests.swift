@@ -83,6 +83,69 @@ final class SubscriptionPresentationTests: XCTestCase {
                 "2026-09-01", today: today, timeZone: zone))
     }
 
+    /// A row tints for today and tomorrow only. `isImminent`'s week is too
+    /// generous for a full list — every monthly charge enters it once a month,
+    /// so a share of the rows would be accented at all times for doing nothing
+    /// unusual.
+    func testOnlyTodayAndTomorrowCountAsRenewingNow() {
+        let today = day("2026-07-27")
+        XCTAssertTrue(
+            SubscriptionPresentation.isRenewingNow(
+                "2026-07-27", today: today, timeZone: zone))
+        XCTAssertTrue(
+            SubscriptionPresentation.isRenewingNow(
+                "2026-07-28", today: today, timeZone: zone))
+        XCTAssertFalse(
+            SubscriptionPresentation.isRenewingNow(
+                "2026-07-29", today: today, timeZone: zone))
+        // Still inside the week, so the upcoming section would emphasise it
+        // and a row would not — which is the whole point of the two windows.
+        XCTAssertTrue(
+            SubscriptionPresentation.isImminent(
+                "2026-07-29", today: today, timeZone: zone))
+    }
+
+    // MARK: - Split summary
+
+    /// The cost and the cycle are never urgent, so they are separable from the
+    /// clause that sometimes is.
+    func testSummaryPartsKeepCostAndCycleOutOfTheRenewalClause() {
+        let parts = SubscriptionPresentation.summaryParts(
+            for: subscription(),
+            on: day("2026-08-01"),
+            timeZone: zone,
+            locale: locale)
+        XCTAssertEqual(parts.details, "$15.49 · monthly")
+        XCTAssertEqual(parts.clause, "Renews in 3 days")
+    }
+
+    func testPausedSummaryPartsCarryTheStatusAsTheClause() {
+        let parts = SubscriptionPresentation.summaryParts(
+            for: subscription(status: .paused),
+            on: day("2026-07-27"),
+            timeZone: zone,
+            locale: locale)
+        XCTAssertEqual(parts.details, "$15.49 · monthly")
+        XCTAssertEqual(parts.clause, "Paused")
+    }
+
+    /// The joined wording and the split one are the same sentence, or a row and
+    /// the string everything else reads would disagree.
+    func testJoinedSummaryMatchesItsParts() {
+        for status in [SubscriptionStatus.active, .paused, .cancelled] {
+            let charge = subscription(status: status)
+            let today = day("2026-08-01")
+            let parts = SubscriptionPresentation.summaryParts(
+                for: charge, on: today, timeZone: zone, locale: locale)
+            let joined =
+                parts.clause.map { "\(parts.details) · \($0)" } ?? parts.details
+            XCTAssertEqual(
+                joined,
+                SubscriptionPresentation.summary(
+                    for: charge, on: today, timeZone: zone, locale: locale))
+        }
+    }
+
     // MARK: - Row summary
 
     func testSummaryNamesCostCycleAndRenewal() {

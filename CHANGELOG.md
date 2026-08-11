@@ -244,12 +244,14 @@ meaning something and this history gets cut into releases.
   that opens itself when something there actually needs attention — an
   unsaved bookmark, a recovered draft, or a widget change that could not be
   applied.
-- **The quick-capture field says "Add a task…" and puts its example
-  underneath.** A placeholder cannot wrap, so at accessibility text sizes the
-  old one truncated to about three words — and they were the least useful
-  three. The example now sits below the empty field as ordinary caption text
-  that wraps, and gets out of the way as soon as there is a live
-  interpretation to read instead.
+- **The quick-capture field says "Add a task…" and nothing else.** A
+  placeholder cannot wrap, so at accessibility text sizes the old one
+  truncated to about three words — and they were the least useful three. The
+  example moved below the field as wrapping caption text, and has since gone
+  entirely: it spent a line of the landing screen on every launch teaching
+  something a personal app's one reader learns once. The live interpretation
+  under the field is what teaches the grammar, against the reader's own
+  sentence rather than an example of someone else's.
 - **The task screens are one continuous list surface rather than a stack of
   cards.** Overdue, Today, Tomorrow, Upcoming, and Completed were each their
   own inset-grouped section, which drew five rounded capsules inside iOS's own

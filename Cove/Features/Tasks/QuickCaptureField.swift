@@ -12,12 +12,6 @@ import SwiftUI
 /// sentence that came out wrong, where picking a date beats rewording.
 struct QuickCaptureField: View {
     let placeholder: String
-    /// The example the placeholder used to carry. A placeholder is one line
-    /// that cannot wrap, so a sentence long enough to *teach* the grammar was
-    /// truncated at exactly the text sizes where it mattered most. Shown under
-    /// the empty field, it wraps — and it gets out of the way the moment there
-    /// is a live interpretation to read instead.
-    var hint: String?
     let accessibilityHint: String
     /// The list this field captures into, when it belongs to a list screen.
     /// List items may stay undated; a task bound for the Tasks screen
@@ -45,39 +39,29 @@ struct QuickCaptureField: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: CoveTheme.Space.tight) {
-            well
-            if let hint, trimmedText.isEmpty {
-                Text(hint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 2)
-            }
-        }
-        .animation(.easeInOut(duration: 0.15), value: trimmedText.isEmpty)
-        .background {
-            if bindsFocusShortcut {
-                Button("Capture Task") { isFieldFocused = true }
-                    .keyboardShortcut("l", modifiers: .command)
-                    .opacity(0)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }
-        .sheet(item: $pendingDraft) { pending in
-            TaskDraftSheet(
-                sentence: pending.sentence,
-                draft: pending.draft,
-                listName: listName
-            ) { draft in
-                try await onCapture(draft)
-                if trimmedText == pending.sentence {
-                    text = ""
+        well
+            .background {
+                if bindsFocusShortcut {
+                    Button("Capture Task") { isFieldFocused = true }
+                        .keyboardShortcut("l", modifiers: .command)
+                        .opacity(0)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
             }
-        }
-        .coveErrorAlert($errorMessage)
+            .sheet(item: $pendingDraft) { pending in
+                TaskDraftSheet(
+                    sentence: pending.sentence,
+                    draft: pending.draft,
+                    listName: listName
+                ) { draft in
+                    try await onCapture(draft)
+                    if trimmedText == pending.sentence {
+                        text = ""
+                    }
+                }
+            }
+            .coveErrorAlert($errorMessage)
     }
 
     private var well: some View {

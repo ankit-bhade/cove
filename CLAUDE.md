@@ -95,7 +95,8 @@ says it can be taken back, Settings keeps four rows and puts the rest behind
 **Advanced**, iOS refreshes by pulling instead of by a button, and a
 regular-width iPad takes the Mac's sidebar. The quick-capture placeholder,
 which truncated to three useless words at accessibility sizes, became "Add a
-task…" with its example moved into wrapping text under the field.
+task…"; the example under the field has since gone too, leaving the live
+preview as the only thing teaching the grammar.
 Before that, a durability review found four places where a *second device*
 was quietly overruled. Completion and status are deliberately outside the
 semantic keys that re-find a line, which is what makes setting them
@@ -1473,14 +1474,17 @@ while the edge of an *empty* control is the only thing saying it is there.
 ratio, because a token that quietly went back to sinking in dark would look
 plausible in a screenshot and fail the one reader it was changed for.
 
-**The example moved out of the placeholder and under the field.** A
-placeholder is one line that cannot wrap, so the sentence teaching the
-grammar — "e.g. Get bread tomorrow at 3pm" — truncated to about three words at
-accessibility text sizes, and the words it kept were the least useful ones.
-The field now says "Add a task…", which fits at any size, and
-`QuickCaptureField`'s `hint` carries the example as wrapping caption text
-below the empty field. It gives way to the live preview the moment there is a
-sentence, so it costs a line only when there is nothing better to show.
+**The example left the placeholder, then left the screen.** A placeholder is
+one line that cannot wrap, so the sentence teaching the grammar — "e.g. Get
+bread tomorrow at 3pm" — truncated to about three words at accessibility text
+sizes, and the words it kept were the least useful ones. It moved under the
+field as wrapping caption text, which fixed the truncation and then cost a
+line of the landing screen on every launch to teach something a reader of a
+personal app learns once. `QuickCaptureField`'s `hint` is gone with it: the
+field says "Add a task…", which fits at any size, and the live preview under
+it is what actually teaches the grammar — it answers "did it understand me?"
+against the reader's own sentence rather than against an example of someone
+else's.
 
 **The capture placeholder is drawn, not handed to the field.** The system's is
 a tertiary fill at about a third opacity, and it is the only instruction the

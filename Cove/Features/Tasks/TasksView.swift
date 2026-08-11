@@ -164,13 +164,6 @@ struct TasksView: View {
         } content: {
             QuickCaptureField(
                 placeholder: "Add a task…",
-                // The example moved out of the placeholder and under the
-                // field. A placeholder cannot wrap, so at an accessibility
-                // text size "e.g. Get bread tomorrow at 3pm" truncated to
-                // about three words — and the words it kept were the least
-                // useful ones. As a caption it wraps, and the field says what
-                // to do with itself in three words that always fit.
-                hint: "Try “get bread 3p tmr” — dates, times, and repeats are understood.",
                 accessibilityHint: "Enter a task with an optional date, time, or repeat rule",
                 bindsFocusShortcut: true
             ) { draft in

@@ -231,9 +231,10 @@ review, or a widget change that could not be applied.
 
 ### The look of it
 
-The app has its own icon and launch screen — the `CoveMark` stamp, a bay cut
-into the land's edge with its shoreline traced in ember, warm paper over ink
-in light and night over paper in dark.
+The app has its own icon and launch screen — the `CoveMark` stamp, a disc cut
+once left of centre, the larger piece in ink and the smaller in ember, on warm
+paper in light and on night in dark. The app icon keeps the ink ground in both
+appearances.
 
 Inside, the interface is set in ink on warm paper: a warm off-white canvas,
 screen titles and headlines in the system serif, tracked capitals for labels,

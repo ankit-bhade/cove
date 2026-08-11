@@ -220,6 +220,20 @@ meaning something and this history gets cut into releases.
 
 ### Changed
 
+- **The mark is one disc, cut once.** The coastline it replaces was a horizon
+  line: below about 40pt its shoreline is thinner than a pixel, and what
+  survived read as texture rather than as a mark — at a Dock size, in a 32pt
+  sidebar stamp, and on a Home Screen, which is where an icon is actually
+  looked at. `CoveMark` is now a circle split by a single vertical kerf left of
+  centre, the larger piece in ink and the smaller in ember, the two telling
+  each other apart by value rather than by outline. Nothing in it is stroked,
+  so nothing needs to be widened optically at small sizes; the kerf is the
+  narrowest feature at 6% of the tile and holds down to 16pt on its own. The
+  app icon now keeps its ink ground in **both** appearances, since a dark tile
+  is the one that holds its edge against any wallpaper — the in-app mark still
+  follows the app's light and dark. All 18 PNGs in the asset catalog were
+  regenerated, and `Scripts/render-mark.swift` draws them: the first generator
+  kept in the repo rather than deleted after use.
 - **The lint step in `Scripts/verify-build.sh` is a gate rather than a
   report.** `swift-format lint` exits 0 with its findings printed as warnings,
   so the step scrolled 28 of them past and passed — while every other check in
